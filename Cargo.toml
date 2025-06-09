@@ -5,3 +5,9 @@ edition = "2024"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.1", features = ["Win32_System_LibraryLoader", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+ash = { version = "0.38" }
+
+[dependencies]
+log = "0.4.27"
+chrono = "0.4.41"
+ansi_term = "0.12.1"

@@ -1,11 +1,18 @@
+pub trait Graphics {
+    type Error;
+    type InitArgs;
+
+    fn new(init: Self::InitArgs) -> Result<Self, Self::Error>
+    where
+        Self: Sized;
+}
+
 pub trait Window {
     type Error;
 
-    fn new() -> Result<Self, Self::Error>
+    fn new(title: &str, width: u32, height: u32) -> Result<Self, Self::Error>
     where
         Self: Sized;
 
-    fn set_title(&self, title: &str) -> Result<(), Self::Error>;
-    fn show(&self) -> Result<(), Self::Error>;
     fn event_loop(&self) -> Result<(), Self::Error>;
 }
