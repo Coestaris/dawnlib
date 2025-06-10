@@ -2,11 +2,12 @@ extern crate core;
 
 mod graphics;
 mod platforms;
+mod utils;
 
 use crate::graphics::window::Window;
-use crate::platforms::win32::Win32Window;
 use ansi_term::Colour::{Blue, Cyan, Green, Red, Yellow};
-use log::{Level, LevelFilter, Metadata, Record, info};
+use log::{info, Level, LevelFilter, Metadata, Record};
+use std::time::SystemTime;
 
 struct SimpleLogger;
 
@@ -27,13 +28,13 @@ impl log::Log for SimpleLogger {
                 }
             }
 
+            const DATE_FORMAT: &str = "%Y-%m-%d %H:%M:%S.{ms}";
+            let system_time =time_format::from_system_time_ms(SystemTime::now()).unwrap();
+            let formatted_date = time_format::strftime_ms_utc(DATE_FORMAT, system_time).unwrap();
+
             println!(
                 "[{}][{}][{}]: {} [{}:{}]",
-                Cyan.paint(
-                    chrono::Local::now()
-                        .format("%Y-%m-%d %H:%M:%S%.3f")
-                        .to_string()
-                ),
+                Cyan.paint(formatted_date),
                 Yellow.paint(std::thread::current().name().unwrap_or("main")),
                 colored_level(record.level()).paint(record.level().to_string()),
                 record.args(),
@@ -56,4 +57,6 @@ fn main() {
 
     let window = create_window!("Yage2 Engine", 1280, 720).unwrap();
     window.event_loop().unwrap();
+
+    info!("Yage2 Engine finished");
 }

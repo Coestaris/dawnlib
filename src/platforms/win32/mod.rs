@@ -10,16 +10,16 @@ use crate::graphics::window::Window;
 use ash::vk;
 use ash::vk::Win32SurfaceCreateInfoKHR;
 
+use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::{
     GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WIN32_ERROR, WPARAM,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateWindowExW, DefWindowProcA, DispatchMessageA,
-    GetMessageA, MSG, PostQuitMessage, RegisterClassW, WINDOW_EX_STYLE, WM_DESTROY, WM_PAINT,
-    WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    CreateWindowExW, DefWindowProcA, DispatchMessageA, GetMessageA, PostQuitMessage,
+    RegisterClassW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, WINDOW_EX_STYLE, WM_DESTROY,
+    WM_PAINT, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
-use windows::core::{HSTRING, PCWSTR};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -115,10 +115,10 @@ impl Window for Win32Window {
                 .create_win32_surface(&create_info, None)
                 .map_err(Win32Error::VulkanCreateSurfaceError)?;
             graphics
-                .update_surface(surface)
+                .update_surface(surface, width, height)
                 .map_err(Win32Error::VulkanUpdateSurfaceError)?;
 
-            info!("Vulkan initialized successfully");
+            info!("WIN32 Window with Vulkan graphics created successfully");
             Ok(Win32Window {
                 hwnd,
                 hinstance,
