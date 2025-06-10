@@ -1,4 +1,4 @@
-use crate::window::Graphics;
+use crate::graphics::graphics::Graphics;
 use ash::{Instance, vk};
 use log::{debug, info, trace, warn};
 use std::ffi::{CStr, c_char};

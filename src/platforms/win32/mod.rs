@@ -1,6 +1,15 @@
-use crate::window::{Graphics, Window};
-use ash::vk;
+use log::{debug, info};
 use std::ffi::c_char;
+
+use crate::graphics::graphics::Graphics;
+use crate::graphics::vulkan::{
+    VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs, VulkanGraphicsInternal,
+};
+use crate::graphics::window::Window;
+
+use ash::vk;
+use ash::vk::Win32SurfaceCreateInfoKHR;
+
 use windows::Win32::Foundation::{
     GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WIN32_ERROR, WPARAM,
 };
@@ -11,12 +20,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 use windows::core::{HSTRING, PCWSTR};
-
-use crate::vulkan::{
-    VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs, VulkanGraphicsInternal,
-};
-use ash::vk::Win32SurfaceCreateInfoKHR;
-use log::{debug, info};
 
 #[derive(Debug)]
 #[allow(dead_code)]

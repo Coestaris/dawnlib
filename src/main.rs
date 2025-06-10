@@ -1,13 +1,12 @@
 extern crate core;
 
-use crate::win32::Win32Window;
-use crate::window::Window;
+mod graphics;
+mod platforms;
+
+use crate::graphics::window::Window;
+use crate::platforms::win32::Win32Window;
 use ansi_term::Colour::{Blue, Cyan, Green, Red, Yellow};
 use log::{Level, LevelFilter, Metadata, Record, info};
-
-mod vulkan;
-mod win32;
-mod window;
 
 struct SimpleLogger;
 
@@ -55,6 +54,6 @@ fn main() {
 
     info!("Yage2 Engine started");
 
-    let window = Win32Window::new("Yage2 Engine", 1280, 720).unwrap();
+    let window = create_window!("Yage2 Engine", 1280, 720).unwrap();
     window.event_loop().unwrap();
 }
