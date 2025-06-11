@@ -98,7 +98,8 @@ impl Window for Win32Window {
 
             debug!("Creating Vulkan graphics");
             let mut graphics = VulkanGraphics::new(VulkanGraphicsInitArgs {
-                extensions: vec![ash::khr::win32_surface::NAME.as_ptr() as *const c_char],
+                instance_extensions: vec![ash::khr::win32_surface::NAME.as_ptr() as *const c_char],
+                device_extensions: vec![],
                 layers: vec![],
             })
             .map_err(Win32Error::GraphicsCreateError)?;
@@ -115,7 +116,7 @@ impl Window for Win32Window {
                 .create_win32_surface(&create_info, None)
                 .map_err(Win32Error::VulkanCreateSurfaceError)?;
             graphics
-                .update_surface(surface, width, height)
+                .update_surface(surface)
                 .map_err(Win32Error::VulkanUpdateSurfaceError)?;
 
             info!("WIN32 Window with Vulkan graphics created successfully");

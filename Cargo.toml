@@ -10,8 +10,8 @@ windows = { version = "0.61.1", features = ["Win32_System_LibraryLoader", "Win32
 x11 = "2.21.0"
 
 [dependencies]
+libc = "0.2.172"
 ash = "0.38"
 log = "0.4.27"
 ansi_term = "0.12.1"
-time-format = "1.2.1"
 

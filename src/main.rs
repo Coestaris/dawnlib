@@ -8,6 +8,7 @@ use crate::graphics::window::Window;
 use ansi_term::Colour::{Blue, Cyan, Green, Red, Yellow};
 use log::{info, Level, LevelFilter, Metadata, Record};
 use std::time::SystemTime;
+use crate::utils::format_now;
 
 struct SimpleLogger;
 
@@ -28,9 +29,8 @@ impl log::Log for SimpleLogger {
                 }
             }
 
-            const DATE_FORMAT: &str = "%Y-%m-%d %H:%M:%S.{ms}";
-            let system_time =time_format::from_system_time_ms(SystemTime::now()).unwrap();
-            let formatted_date = time_format::strftime_ms_utc(DATE_FORMAT, system_time).unwrap();
+            const DATE_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
+            let formatted_date = format_now(DATE_FORMAT).unwrap_or("unknown".to_string());
 
             println!(
                 "[{}][{}][{}]: {} [{}:{}]",
