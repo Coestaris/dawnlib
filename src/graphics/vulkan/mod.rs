@@ -4,37 +4,59 @@ mod instance;
 mod queue;
 
 use crate::graphics::graphics::Graphics;
-use crate::graphics::vulkan::cfg::{DEBUG_REPORT_EXTENSION_NAME, DEBUG_UTILS_EXTENSION_NAME};
 use crate::graphics::vulkan::device::get_physical_device;
-use crate::graphics::vulkan::instance::{get_instance_extensions, get_layers};
+use crate::graphics::vulkan::instance::{get_instance_extensions, get_layers, setup_debug};
 use crate::graphics::vulkan::queue::{get_device_extensions, get_queue_family_index};
-use crate::utils::contains;
-use ash::vk::{Handle, PhysicalDeviceFeatures};
 use ash::{vk, Instance};
-use log::{debug, error, info, trace, warn};
-use std::ffi::{c_char, c_void, CStr};
+use log::{debug, info};
+use std::ffi::c_char;
 
-pub struct VulkanGraphicsInitArgs {
+pub struct VulkanGraphicsInitArgs<'a> {
     pub(crate) instance_extensions: Vec<*const c_char>,
     pub(crate) device_extensions: Vec<*const c_char>,
     pub(crate) layers: Vec<*const c_char>,
+    pub(crate) surface_constructor:
+        Box<dyn Fn(&ash::Entry, &Instance) -> Result<vk::SurfaceKHR, VulkanGraphicsError> + 'a>,
 }
 
-pub struct VulkanGraphics {
-    pub(crate) entry: ash::Entry,
-    pub(crate) instance: Instance,
+struct Frame {
+    index: usize,
+
+    vk_image: vk::Image,
+    vk_image_view: vk::ImageView,
+
+    /* Currently using a single command buffer per frame/pool */
+    command_buffer: vk::CommandBuffer,
+    command_pool: vk::CommandPool,
+
+    semaphore: vk::Semaphore,
+    fence: vk::Fence,
+}
+
+struct VulkanObjects {
+    entry: ash::Entry,
+    instance: Instance,
     device: ash::Device,
     surface: vk::SurfaceKHR,
     physical_device: vk::PhysicalDevice,
-    swapchain: vk::SwapchainKHR,
     debug_messenger: vk::DebugUtilsMessengerEXT,
     debug_report_callback: vk::DebugReportCallbackEXT,
+    swapchain: vk::SwapchainKHR,
+
+    swapchain_loader: ash::khr::swapchain::Device,
+}
+
+pub struct VulkanGraphics {
+    vk: VulkanObjects,
+    frames: Vec<Frame>,
+    current_frame_index: usize,
 }
 
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum VulkanGraphicsError {
     EntryCreationError(ash::LoadingError),
+    SurfaceCreateError(vk::Result),
     EnumerateVersionError(vk::Result),
     InstanceCreationError(vk::Result),
     EnumerateLayersError(vk::Result),
@@ -44,134 +66,88 @@ pub enum VulkanGraphicsError {
     CreateDebugMessengerFailed(vk::Result),
     CreateDebugReportFailed(vk::Result),
     CreateSwapchainFailed(vk::Result),
+    GetSwapchainImagesFailed(vk::Result),
+    CreateImageViewFailed(vk::Result),
+    CreateCommandPoolFailed(vk::Result),
     EnumerateSurfaceCapabilitiesError(vk::Result),
+    CreateCommandBufferFailed(vk::Result),
+    CreateSemaphoreFailed(vk::Result),
+    CreateFenceFailed(vk::Result),
 }
 
-pub(crate) trait VulkanGraphicsInternal {
-    fn update_surface(&mut self, surface: vk::SurfaceKHR) -> Result<(), VulkanGraphicsError>;
-}
-
+#[allow(deprecated)]
 impl Drop for VulkanGraphics {
     fn drop(&mut self) {
         unsafe {
-            if self.surface != vk::SurfaceKHR::null() {
-                debug!("Destroying Vulkan surface");
-                let surface_loader = ash::khr::surface::Instance::new(&self.entry, &self.instance);
-                surface_loader.destroy_surface(self.surface, None);
+            let _ = self.vk.device.device_wait_idle();
+
+            /* We must destroy thing in reverse order of creation. */
+            for frame in self.frames.iter_mut() {
+                debug!(
+                    "Destroying Vulkan command buffer: {:?}",
+                    frame.command_buffer
+                );
+                self.vk
+                    .device
+                    .free_command_buffers(frame.command_pool, &[frame.command_buffer]);
+                debug!("Destroying Vulkan command pool: {:?}", frame.command_pool);
+                self.vk
+                    .device
+                    .destroy_command_pool(frame.command_pool, None);
             }
 
-            if self.swapchain != vk::SwapchainKHR::null() {
+            for frame in self.frames.drain(..) {
+                debug!("Destroying Vulkan image view: {:?}", frame.vk_image_view);
+                self.vk.device.destroy_image_view(frame.vk_image_view, None);
+            }
+
+            /* Note: Images are not explicitly destroyed in Vulkan, they are managed by the swapchain. */
+
+            if self.vk.swapchain != vk::SwapchainKHR::null() {
                 debug!("Destroying Vulkan swapchain");
-                let swapchain_loader =
-                    ash::khr::swapchain::Device::new(&self.instance, &self.device);
-                swapchain_loader.destroy_swapchain(self.swapchain, None);
+                self.vk
+                    .swapchain_loader
+                    .destroy_swapchain(self.vk.swapchain, None);
+            }
+
+            if self.vk.surface != vk::SurfaceKHR::null() {
+                debug!("Destroying Vulkan surface");
+                let surface_loader =
+                    ash::khr::surface::Instance::new(&self.vk.entry, &self.vk.instance);
+                surface_loader.destroy_surface(self.vk.surface, None);
             }
 
             if cfg!(debug_assertions) {
-                if self.debug_report_callback != vk::DebugReportCallbackEXT::null() {
+                if self.vk.debug_report_callback != vk::DebugReportCallbackEXT::null() {
                     debug!("Destroying Vulkan debug report callback");
                     let debug_report_loader =
-                        ash::ext::debug_report::Instance::new(&self.entry, &self.instance);
+                        ash::ext::debug_report::Instance::new(&self.vk.entry, &self.vk.instance);
                     debug_report_loader
-                        .destroy_debug_report_callback(self.debug_report_callback, None);
+                        .destroy_debug_report_callback(self.vk.debug_report_callback, None);
                 }
 
-                if self.debug_messenger != vk::DebugUtilsMessengerEXT::null() {
+                if self.vk.debug_messenger != vk::DebugUtilsMessengerEXT::null() {
                     debug!("Destroying Vulkan debug utils messenger");
                     let debug_utils_loader =
-                        ash::ext::debug_utils::Instance::new(&self.entry, &self.instance);
-                    debug_utils_loader.destroy_debug_utils_messenger(self.debug_messenger, None);
+                        ash::ext::debug_utils::Instance::new(&self.vk.entry, &self.vk.instance);
+                    debug_utils_loader.destroy_debug_utils_messenger(self.vk.debug_messenger, None);
                 }
             }
 
             debug!("Destroying Vulkan device");
-            self.device.destroy_device(None);
+            self.vk.device.destroy_device(None);
 
             debug!("Destroying Vulkan instance");
-            self.instance.destroy_instance(None);
+            self.vk.instance.destroy_instance(None);
         }
     }
 }
 
-unsafe extern "system" fn dd(
-    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-    message_types: vk::DebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
-    p_user_data: *mut c_void,
-) -> vk::Bool32 {
-    let callback_data = &*p_callback_data;
-    let message = CStr::from_ptr(callback_data.p_message).to_string_lossy();
-
-    if message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::ERROR) {
-        error!("[VK][{:?}]: {}", message_types, message);
-    } else if message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::WARNING) {
-        warn!("[VK][{:?}]: {}", message_types, message);
-    } else if message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::INFO) {
-        info!("[VK][{:?}]: {}", message_types, message);
-    } else if message_severity.contains(vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE) {
-        trace!("[VK][{:?}]: {}", message_types, message);
-    }
-
-    vk::FALSE
-}
-
-unsafe extern "system" fn ee(
-    flags: vk::DebugReportFlagsEXT,
-    object_type: vk::DebugReportObjectTypeEXT,
-    object: u64,
-    location: usize,
-    message_code: i32,
-    p_layer_prefix: *const c_char,
-    p_message: *const c_char,
-    p_user_data: *mut c_void,
-) -> vk::Bool32 {
-    let message = CStr::from_ptr(p_message).to_string_lossy();
-    let layer_prefix = if p_layer_prefix.is_null() {
-        "Unknown Layer"
-    } else {
-        &*CStr::from_ptr(p_layer_prefix).to_string_lossy()
-    };
-
-    if flags.contains(vk::DebugReportFlagsEXT::ERROR) {
-        error!(
-            "[VK][{}][{:?},0x{:x},0x{:x}] {} ({})",
-            layer_prefix, object_type, object, location, message, message_code
-        );
-    } else if flags.contains(vk::DebugReportFlagsEXT::WARNING) {
-        warn!(
-            "[VK][{}][{:?},0x{:x},0x{:x}] {} ({})",
-            layer_prefix, object_type, object, location, message, message_code
-        );
-    } else if flags.contains(vk::DebugReportFlagsEXT::PERFORMANCE_WARNING) {
-        warn!(
-            "[VK PERF][{}][{:?},0x{:x},0x{:x}] {} ({})",
-            layer_prefix, object_type, object, location, message, message_code
-        );
-    } else if flags.contains(vk::DebugReportFlagsEXT::DEBUG) {
-        debug!(
-            "[VK][{}][{:?},0x{:x},0x{:x}] {} ({})",
-            layer_prefix, object_type, object, location, message, message_code
-        );
-    } else if flags.contains(vk::DebugReportFlagsEXT::INFORMATION) {
-        trace!(
-            "[VK][{}][{:?},0x{:x},0x{:x}] {} ({})",
-            layer_prefix,
-            object_type,
-            object,
-            location,
-            message,
-            message_code
-        );
-    }
-
-    vk::FALSE
-}
-
 impl Graphics for VulkanGraphics {
     type Error = VulkanGraphicsError;
-    type InitArgs = VulkanGraphicsInitArgs;
+    type InitArgs<'a> = VulkanGraphicsInitArgs<'a>;
 
-    fn new(init: VulkanGraphicsInitArgs) -> Result<Self, Self::Error>
+    fn new(init: VulkanGraphicsInitArgs<'_>) -> Result<Self, Self::Error>
     where
         Self: Sized,
     {
@@ -199,10 +175,8 @@ impl Graphics for VulkanGraphics {
             };
             let instance_extensions = get_instance_extensions(&entry, &init)?;
             let instance_extensions_array = instance_extensions.as_slice();
-
             let layers = get_layers(&entry, &init)?;
             let layers_array = layers.as_slice();
-
             let create_info = vk::InstanceCreateInfo::default()
                 .application_info(&app_info)
                 .enabled_layer_names(layers_array)
@@ -211,120 +185,193 @@ impl Graphics for VulkanGraphics {
                 .create_instance(&create_info, None)
                 .map_err(VulkanGraphicsError::InstanceCreationError)?;
 
-            let mut debug_messenger = vk::DebugUtilsMessengerEXT::null();
-            let mut debug_report_callback = vk::DebugReportCallbackEXT::null();
-
-            if cfg!(debug_assertions) {
-                if contains(&instance_extensions, DEBUG_REPORT_EXTENSION_NAME) {
-                    debug!("Debug Report extension is enabled");
-                    let debug_report_loader =
-                        ash::ext::debug_report::Instance::new(&entry, &instance);
-                    let debug_report_create_info = vk::DebugReportCallbackCreateInfoEXT::default()
-                        .flags(
-                            vk::DebugReportFlagsEXT::ERROR
-                                | vk::DebugReportFlagsEXT::WARNING
-                                | vk::DebugReportFlagsEXT::PERFORMANCE_WARNING
-                                | vk::DebugReportFlagsEXT::DEBUG
-                                | vk::DebugReportFlagsEXT::INFORMATION,
-                        )
-                        .pfn_callback(Some(ee));
-                    debug_report_callback = debug_report_loader
-                        .create_debug_report_callback(&debug_report_create_info, None)
-                        .map_err(VulkanGraphicsError::CreateDebugReportFailed)?;
-                } else if contains(&instance_extensions, DEBUG_UTILS_EXTENSION_NAME) {
-                    debug!("Debug Utils extension is enabled");
-                    let debug_utils_loader =
-                        ash::ext::debug_utils::Instance::new(&entry, &instance);
-                    let debug_utils_create_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
-                        .message_severity(
-                            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                                | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                                | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-                                | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
-                        )
-                        .message_type(
-                            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-                        )
-                        .pfn_user_callback(Some(dd));
-                    debug_messenger = debug_utils_loader
-                        .create_debug_utils_messenger(&debug_utils_create_info, None)
-                        .map_err(VulkanGraphicsError::CreateDebugMessengerFailed)?;
-                } else {
-                    warn!("None of the debug extensions are enabled. Debugging will be limited.");
-                }
-            }
+            let (debug_report_callback, debug_messenger) =
+                setup_debug(&entry, &instance, &instance_extensions)?;
 
             debug!("Creating Vulkan device");
             let physical_device = get_physical_device(&instance)?;
             let queue_family_index = get_queue_family_index(&instance, physical_device)?;
-
             let queue_priority = [1.0f32];
             let queue_create_info = vk::DeviceQueueCreateInfo::default()
                 .queue_family_index(queue_family_index as u32)
                 .queue_priorities(&queue_priority);
-
-            let device_extensions =
-                get_device_extensions(&entry, &instance, physical_device, &init)?;
+            let device_extensions = get_device_extensions(&instance, physical_device, &init)?;
             let device_extensions_array = device_extensions.as_slice();
-
             let device_create_info = vk::DeviceCreateInfo::default()
                 .enabled_extension_names(device_extensions_array)
                 .queue_create_infos(std::slice::from_ref(&queue_create_info));
             let device = instance
                 .create_device(physical_device, &device_create_info, None)
                 .map_err(VulkanGraphicsError::EnumerateQueueFamiliesError)?;
-
-            info!("Vulkan device created successfully");
-
-            Ok(VulkanGraphics {
-                entry,
-                instance,
-                device,
-                physical_device,
-                surface: vk::SurfaceKHR::null(),
-                swapchain: vk::SwapchainKHR::null(),
-                debug_messenger,
-                debug_report_callback,
-            })
-        }
-    }
-}
-
-impl VulkanGraphicsInternal for VulkanGraphics {
-    fn update_surface(&mut self, surface: vk::SurfaceKHR) -> Result<(), VulkanGraphicsError> {
-        unsafe {
-            debug!("Updating Vulkan surface: {:?}", surface);
-            self.surface = surface;
-
-            let surface_loader = ash::khr::surface::Instance::new(&self.entry, &self.instance);
+            let surface = (init.surface_constructor)(&entry, &instance)?;
+            let surface_loader = ash::khr::surface::Instance::new(&entry, &instance);
             let surface_capabilities = surface_loader
-                .get_physical_device_surface_capabilities(self.physical_device, self.surface)
+                .get_physical_device_surface_capabilities(physical_device, surface)
                 .map_err(VulkanGraphicsError::EnumerateSurfaceCapabilitiesError)?;
             debug!("Surface capabilities: {:?}", surface_capabilities);
 
             debug!("Creating Vulkan swapchain");
-            let swapchain_loader = ash::khr::swapchain::Device::new(&self.instance, &self.device);
+            let swapchain_loader = ash::khr::swapchain::Device::new(&instance, &device);
             let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
-                .surface(self.surface)
+                .surface(surface)
                 .min_image_count(surface_capabilities.min_image_count)
                 .image_format(vk::Format::B8G8R8A8_SRGB)
                 .image_color_space(vk::ColorSpaceKHR::SRGB_NONLINEAR)
+                .image_array_layers(surface_capabilities.max_image_array_layers)
                 .image_extent(vk::Extent2D {
                     width: surface_capabilities.current_extent.width,
                     height: surface_capabilities.current_extent.height,
                 })
-                .image_usage(vk::ImageUsageFlags::TRANSFER_DST)
+                .image_usage(
+                    vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                )
                 .pre_transform(surface_capabilities.current_transform)
                 .composite_alpha(surface_capabilities.supported_composite_alpha)
                 .present_mode(vk::PresentModeKHR::FIFO)
                 .clipped(true);
-
-            self.swapchain = swapchain_loader
+            let swapchain = swapchain_loader
                 .create_swapchain(&swapchain_create_info, None)
                 .map_err(VulkanGraphicsError::CreateSwapchainFailed)?;
+            let swapchain_images = swapchain_loader
+                .get_swapchain_images(swapchain)
+                .map_err(VulkanGraphicsError::GetSwapchainImagesFailed)?;
+            let mut frames = Vec::with_capacity(swapchain_images.len());
+            for image in &swapchain_images {
+                debug!("Creating image view for swapchain image: {:?}", image);
+                let image_view_create_info = vk::ImageViewCreateInfo::default()
+                    .image(*image)
+                    .view_type(vk::ImageViewType::TYPE_2D)
+                    .format(vk::Format::B8G8R8A8_SRGB)
+                    .components(vk::ComponentMapping {
+                        r: vk::ComponentSwizzle::IDENTITY,
+                        g: vk::ComponentSwizzle::IDENTITY,
+                        b: vk::ComponentSwizzle::IDENTITY,
+                        a: vk::ComponentSwizzle::IDENTITY,
+                    })
+                    .subresource_range(vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::COLOR,
+                        base_mip_level: 0,
+                        level_count: 1,
+                        base_array_layer: 0,
+                        layer_count: 1,
+                    });
+                let image_view = device
+                    .create_image_view(&image_view_create_info, None)
+                    .map_err(VulkanGraphicsError::CreateImageViewFailed)?;
+
+                debug!("Created command pool for frame: {:?}", frames.len());
+                let command_pool_create_info = vk::CommandPoolCreateInfo::default()
+                    .queue_family_index(queue_family_index as u32)
+                    .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
+                let command_pool = device
+                    .create_command_pool(&command_pool_create_info, None)
+                    .map_err(VulkanGraphicsError::CreateCommandPoolFailed)?;
+
+                debug!("Allocating command buffer for frame: {:?}", frames.len());
+                let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::default()
+                    .command_pool(command_pool)
+                    .level(vk::CommandBufferLevel::PRIMARY)
+                    .command_buffer_count(1);
+                let command_buffers = device
+                    .allocate_command_buffers(&command_buffer_allocate_info)
+                    .map_err(VulkanGraphicsError::CreateCommandBufferFailed)?;
+                let command_buffer = command_buffers[0];
+
+                debug!("Creating semaphore for frame: {:?}", frames.len());
+                let semaphore_create_info = vk::SemaphoreCreateInfo::default();
+                let semaphore = device
+                    .create_semaphore(&semaphore_create_info, None)
+                    .map_err(VulkanGraphicsError::CreateSemaphoreFailed)?;
+
+                debug!("Creating fence for frame: {:?}", frames.len());
+                let fence_create_info =
+                    vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
+                let fence = device
+                    .create_fence(&fence_create_info, None)
+                    .map_err(VulkanGraphicsError::CreateFenceFailed)?;
+
+                frames.push(Frame {
+                    index: frames.len(),
+                    vk_image: *image,
+                    vk_image_view: image_view,
+                    command_buffer,
+                    command_pool,
+                    semaphore,
+                    fence,
+                })
+            }
+
+            info!("Vulkan device created successfully");
+
+            Ok(VulkanGraphics {
+                vk: VulkanObjects {
+                    entry,
+                    instance,
+                    device,
+                    surface,
+                    physical_device,
+                    debug_messenger,
+                    debug_report_callback,
+                    swapchain,
+                    swapchain_loader,
+                },
+                frames,
+                current_frame_index: 0,
+            })
         }
-        Ok(())
+    }
+
+    fn draw(&mut self) -> Result<(), Self::Error> {
+        unsafe {
+            let frame = self.get_current_frame();
+
+            let fences = [frame.fence];
+            self.vk
+                .device
+                .wait_for_fences(&fences, true, u64::MAX)
+                .unwrap();
+            self.vk.device.reset_fences(&fences).unwrap();
+
+            let image_index = self
+                .vk
+                .swapchain_loader
+                .acquire_next_image(
+                    self.vk.swapchain,
+                    u64::MAX,
+                    frame.semaphore,
+                    vk::Fence::null(),
+                )
+                .unwrap();
+
+            self.vk
+                .device
+                .reset_command_buffer(
+                    frame.command_buffer,
+                    vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+                )
+                .unwrap();
+
+            let command_buffer_begin_info = vk::CommandBufferBeginInfo::default()
+                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+            self.vk
+                .device
+                .begin_command_buffer(frame.command_buffer, &command_buffer_begin_info)
+                .unwrap();
+            
+            let clear_value = vk::ClearColorValue {
+                float32: [0.0, 1.0, 0.0, 1.0],
+            };
+            let clear_values = [vk::ClearValue {
+                color: clear_value,
+            }];
+
+            Ok(())
+        }
+    }
+}
+
+impl VulkanGraphics {
+    fn get_current_frame(&mut self) -> &mut Frame {
+        &mut self.frames[self.current_frame_index]
     }
 }

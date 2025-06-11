@@ -34,7 +34,6 @@ unsafe fn get_supported_device_extensions(
 }
 
 pub unsafe fn get_device_extensions(
-    entry: &ash::Entry,
     instance: &Instance,
     physical_device: vk::PhysicalDevice,
     init: &VulkanGraphicsInitArgs,

@@ -2,9 +2,7 @@ use log::{debug, info};
 use std::ffi::c_char;
 
 use crate::graphics::graphics::Graphics;
-use crate::graphics::vulkan::{
-    VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs, VulkanGraphicsInternal,
-};
+use crate::graphics::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
 use crate::graphics::window::Window;
 
 use ash::vk;
@@ -97,27 +95,26 @@ impl Window for Win32Window {
             }?;
 
             debug!("Creating Vulkan graphics");
-            let mut graphics = VulkanGraphics::new(VulkanGraphicsInitArgs {
+            let graphics = VulkanGraphics::new(VulkanGraphicsInitArgs {
                 instance_extensions: vec![ash::khr::win32_surface::NAME.as_ptr() as *const c_char],
                 device_extensions: vec![],
                 layers: vec![],
+                surface_constructor: Box::new(|entry, instance| {
+                    debug!("Creating Win32 Vulkan surface");
+                    let surface_loader = ash::khr::win32_surface::Instance::new(entry, instance);
+                    let create_info = Win32SurfaceCreateInfoKHR {
+                        hinstance: hinstance.0.addr() as _,
+                        hwnd: hwnd.0.addr() as _,
+                        ..Default::default()
+                    };
+                    let surface = surface_loader
+                        .create_win32_surface(&create_info, None)
+                        .map_err(VulkanGraphicsError::SurfaceCreateError)?;
+
+                    Ok(surface)
+                }),
             })
             .map_err(Win32Error::GraphicsCreateError)?;
-
-            debug!("Creating Win32 Vulkan surface");
-            let create_info = Win32SurfaceCreateInfoKHR {
-                hinstance: hinstance.0.addr() as _,
-                hwnd: hwnd.0.addr() as _,
-                ..Default::default()
-            };
-            let surface_loader =
-                ash::khr::win32_surface::Instance::new(&graphics.entry, &graphics.instance);
-            let surface = surface_loader
-                .create_win32_surface(&create_info, None)
-                .map_err(Win32Error::VulkanCreateSurfaceError)?;
-            graphics
-                .update_surface(surface)
-                .map_err(Win32Error::VulkanUpdateSurfaceError)?;
 
             info!("WIN32 Window with Vulkan graphics created successfully");
             Ok(Win32Window {

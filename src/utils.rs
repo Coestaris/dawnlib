@@ -1,7 +1,7 @@
 use libc::localtime_s;
 use std::ffi::{c_char, CStr};
 use std::mem;
-use std::ptr::{addr_of_mut};
+use std::ptr::addr_of_mut;
 
 pub(crate) fn contains(vec: &Vec<*const c_char>, item: *const c_char) -> bool {
     vec.iter()
@@ -11,7 +11,7 @@ pub(crate) fn contains(vec: &Vec<*const c_char>, item: *const c_char) -> bool {
 /* Use a simple format instead of something like strftime,
  * to avoid unnecessary complexity, and to not extend the
  * dependency tree with a crate that provides it. */
-pub(crate) fn format_now(format: &str) -> Option<String> {
+pub(crate) fn format_now() -> Option<String> {
     /* Get tm-like representation of the current time */
     let system_time = std::time::SystemTime::now();
     let duration = system_time.duration_since(std::time::UNIX_EPOCH).ok()?;
@@ -19,7 +19,7 @@ pub(crate) fn format_now(format: &str) -> Option<String> {
     let tm = unsafe {
         let datetime = libc::time_t::try_from(duration.as_secs()).ok()?;
         let mut ret = mem::zeroed();
-        if (localtime_s(addr_of_mut!(ret), &datetime) == 0) {
+        if localtime_s(addr_of_mut!(ret), &datetime) == 0 {
             ret
         } else {
             return None;

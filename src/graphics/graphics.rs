@@ -1,8 +1,10 @@
 pub trait Graphics {
     type Error;
-    type InitArgs;
+    type InitArgs<'a>;
 
-    fn new(init: Self::InitArgs) -> Result<Self, Self::Error>
+    fn new(init: Self::InitArgs<'_>) -> Result<Self, Self::Error>
     where
         Self: Sized;
+    
+    fn draw(&mut self) -> Result<(), Self::Error>;
 }
