@@ -1,13 +1,13 @@
+use crate::engine::application::Application;
 use crate::engine::graphics::Graphics;
 use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
 use crate::engine::window::Window;
 use ash::vk;
 use log::{debug, info};
 use std::ffi::c_char;
-use std::ptr::{addr_of_mut};
+use std::ptr::addr_of_mut;
 use x11::xlib::{
-    XAutoRepeatOff, XClearWindow, XDefaultScreen, XMapRaised, XOpenDisplay,
-    XStoreName, XSync,
+    XAutoRepeatOff, XClearWindow, XDefaultScreen, XMapRaised, XOpenDisplay, XStoreName, XSync,
 };
 
 #[derive(Debug)]
@@ -24,6 +24,29 @@ pub struct X11Window {
     display: *mut x11::xlib::Display,
     window: x11::xlib::Window,
     graphics: VulkanGraphics,
+}
+
+pub struct X11Application {
+    window: X11Window,
+}
+
+impl Application for X11Application {
+    type Win = X11Window;
+    type PlatformError = X11Error;
+
+    fn new(
+        title: &str,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, crate::engine::application::ApplicationError<Self::PlatformError>>
+    where
+        Self: Sized,
+    {
+        info!("Creating X11 application with title: {}", title);
+        let window = X11Window::new(title, width, height)
+            .map_err(crate::engine::application::ApplicationError::InitError)?;
+        Ok(X11Application { window })
+    }
 }
 
 impl Drop for X11Window {

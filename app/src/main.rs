@@ -3,7 +3,7 @@ extern crate core;
 use ansi_term::Colour::{Blue, Cyan, Green, Red, Yellow};
 use log::{info, Level, LevelFilter, Metadata, Record};
 use yage2::core::utils::format_now;
-use yage2::engine::window::Window;
+use yage2::engine::application::Application;
 
 struct SimpleLogger;
 
@@ -47,10 +47,8 @@ fn main() {
         .map(|()| log::set_max_level(LevelFilter::Trace))
         .unwrap();
 
-    yage2::log_prelude();
-
-    let window = yage2::create_window!("Yage2 Engine", 1280, 720).unwrap();
-    window.event_loop().unwrap();
+    let app = yage2::create_app!("Yage2 Engine", 1280, 720).unwrap();
+    app.run().unwrap();
 
     info!("Yage2 Engine finished");
 }
