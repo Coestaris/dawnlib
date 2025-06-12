@@ -47,7 +47,14 @@ fn main() {
         .map(|()| log::set_max_level(LevelFilter::Trace))
         .unwrap();
 
-    let app = yage2::create_app!("Yage2 Engine", 1280, 720).unwrap();
+    let application_config = yage2::engine::application::ApplicationConfig {
+        window_config: yage2::engine::window::WindowConfig {
+            title: "Yage2 Engine".to_string(),
+            width: 1280,
+            height: 720,
+        },
+    };
+    let app = yage2::create_app!(application_config).unwrap();
     app.run().unwrap();
 
     info!("Yage2 Engine finished");

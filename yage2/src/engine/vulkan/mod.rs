@@ -321,7 +321,7 @@ impl Graphics for VulkanGraphics {
         }
     }
 
-    fn draw(&mut self) -> Result<(), Self::Error> {
+    fn tick(&mut self) -> Result<(), Self::Error> {
         unsafe {
             let frame = self.get_current_frame();
 

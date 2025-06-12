@@ -1,11 +1,12 @@
-use crate::engine::application::Application;
+use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
 use crate::engine::graphics::Graphics;
 use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
-use crate::engine::window::Window;
+use crate::engine::window::{Window, WindowConfig, WindowFactory};
 use ash::vk;
 use log::{debug, info};
 use std::ffi::c_char;
 use std::ptr::addr_of_mut;
+use std::sync::Arc;
 use x11::xlib::{
     XAutoRepeatOff, XClearWindow, XDefaultScreen, XMapRaised, XOpenDisplay, XStoreName, XSync,
 };
@@ -27,43 +28,40 @@ pub struct X11Window {
 }
 
 pub struct X11Application {
-    window: X11Window,
+    window_factory: X11WindowFactory,
 }
 
-impl Application for X11Application {
-    type Win = X11Window;
-    type PlatformError = X11Error;
-
-    fn new(
-        title: &str,
-        width: u32,
-        height: u32,
-    ) -> Result<Self, crate::engine::application::ApplicationError<Self::PlatformError>>
+impl Application<X11Error, VulkanGraphics, X11Window> for X11Application {
+    fn new(config: ApplicationConfig) -> Result<X11Application, ApplicationError<X11Error>>
     where
         Self: Sized,
     {
-        info!("Creating X11 application with title: {}", title);
-        let window = X11Window::new(title, width, height)
-            .map_err(crate::engine::application::ApplicationError::InitError)?;
-        Ok(X11Application { window })
+        info!("Creating X11 application with config: {:?}", config);
+        let window_factory =
+            X11WindowFactory::new(config.window_config).map_err(ApplicationError::InitError)?;
+        Ok(X11Application { window_factory })
+    }
+
+    fn get_window_factory(&self) -> Arc<dyn WindowFactory<X11Window, X11Error, VulkanGraphics> + Send + Sync> {
+        Arc::new(self.window_factory.clone())
     }
 }
 
-impl Drop for X11Window {
-    fn drop(&mut self) {
-        unsafe {
-            if !self.display.is_null() {
-                debug!("Closing X11 display");
-                x11::xlib::XCloseDisplay(self.display);
-            }
-        }
-    }
+#[derive(Clone, Debug)]
+struct X11WindowFactory {
+    config: WindowConfig,
 }
 
-impl Window for X11Window {
-    type Error = X11Error;
+impl WindowFactory<X11Window, X11Error, VulkanGraphics> for X11WindowFactory {
+    fn new(config: WindowConfig) -> Result<Self, X11Error>
+    where
+        Self: Sized,
+    {
+        info!("Creating X11 window factory with config: {:?}", config);
+        Ok(X11WindowFactory { config })
+    }
 
-    fn new(title: &str, width: u32, height: u32) -> Result<Self, Self::Error> {
+    fn create_window(&self) -> Result<X11Window, X11Error> {
         unsafe {
             debug!("Opening X11 display");
             let display = XOpenDisplay(std::ptr::null());
@@ -95,8 +93,8 @@ impl Window for X11Window {
                 x11::xlib::XRootWindow(display, screen_id),
                 0,
                 0,
-                width,
-                height,
+                self.config.width,
+                self.config.height,
                 0,
                 x11::xlib::CopyFromParent as i32,
                 x11::xlib::InputOutput as u32,
@@ -109,7 +107,7 @@ impl Window for X11Window {
             }
 
             debug!("Setting up X11 window attributes");
-            XStoreName(display, window, title.as_ptr() as *const c_char);
+            XStoreName(display, window, self.config.title.as_ptr() as *const c_char);
             XSync(display, 0);
             XAutoRepeatOff(display);
             XClearWindow(display, window);
@@ -144,26 +142,45 @@ impl Window for X11Window {
             })
         }
     }
+}
 
-    fn event_loop(&self) -> Result<(), Self::Error> {
+impl Window<X11Error, VulkanGraphics> for X11Window {
+    fn tick(&mut self) -> Result<bool, X11Error> {
+        let event = unsafe {
+            let mut event: x11::xlib::XEvent = std::mem::zeroed();
+            x11::xlib::XNextEvent(self.display, &mut event);
+            event
+        };
+
+        match event.get_type() {
+            x11::xlib::Expose => {
+                debug!("Expose event received");
+                // Handle expose event (e.g., redraw the window)
+            }
+            x11::xlib::KeyPress => {
+                debug!("Key press event received");
+                // Handle key press event
+            }
+            _ => {
+                debug!("Unhandled event type: {}", event.get_type());
+            }
+        }
+
+        /* Return true to indicate the window is still active */
+        Ok(true)
+    }
+
+    fn get_graphics(&mut self) -> &mut VulkanGraphics {
+        &mut self.graphics
+    }
+}
+
+impl Drop for X11Window {
+    fn drop(&mut self) {
         unsafe {
-            loop {
-                let mut event: x11::xlib::XEvent = std::mem::zeroed();
-                x11::xlib::XNextEvent(self.display, &mut event);
-
-                match event.get_type() {
-                    x11::xlib::Expose => {
-                        debug!("Expose event received");
-                        // Handle expose event (e.g., redraw the window)
-                    }
-                    x11::xlib::KeyPress => {
-                        debug!("Key press event received");
-                        // Handle key press event
-                    }
-                    _ => {
-                        debug!("Unhandled event type: {}", event.get_type());
-                    }
-                }
+            if !self.display.is_null() {
+                debug!("Closing X11 display");
+                x11::xlib::XCloseDisplay(self.display);
             }
         }
     }

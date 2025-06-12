@@ -6,5 +6,5 @@ pub trait Graphics {
     where
         Self: Sized;
     
-    fn draw(&mut self) -> Result<(), Self::Error>;
+    fn tick(&mut self) -> Result<(), Self::Error>;
 }

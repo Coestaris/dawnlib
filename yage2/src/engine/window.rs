@@ -1,9 +1,22 @@
-pub trait Window {
-    type Error;
+pub trait Window<PlatformError, Graphics> {
+    fn tick(&mut self) -> Result<bool, PlatformError>;
 
-    fn new(title: &str, width: u32, height: u32) -> Result<Self, Self::Error>
+    fn get_graphics(&mut self) -> &mut Graphics;
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowConfig {
+    pub title: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+pub trait WindowFactory<Win, PlatformError, Graphics>: Send + Sync {
+    fn new(config: WindowConfig) -> Result<Self, PlatformError>
     where
         Self: Sized;
 
-    fn event_loop(&self) -> Result<(), Self::Error>;
+    fn create_window(&self) -> Result<Win, PlatformError>
+    where
+        Win: Window<PlatformError, Graphics> + Sized;
 }

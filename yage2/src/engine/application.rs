@@ -1,5 +1,17 @@
-use crate::engine::window::Window;
+use crate::engine::graphics::Graphics;
+use crate::engine::window::{Window, WindowConfig, WindowFactory};
 use log::{debug, info};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::thread;
+use std::thread::JoinHandle;
+
+#[derive(Debug)]
+pub struct ApplicationConfig {
+    pub window_config: WindowConfig,
+}
 
 #[derive(Debug)]
 pub enum ApplicationError<PlatformError> {
@@ -9,29 +21,26 @@ pub enum ApplicationError<PlatformError> {
     LogicThreadStopError(LogicThreadError),
     LogicThreadJoinError(LogicThreadError),
 
-    StatisticsThreadStartError(StatisticsThreadError),
-    StatisticsThreadStopError(StatisticsThreadError),
-    StatisticsThreadJoinError(StatisticsThreadError),
-
-    ResourcesThreadStartError(ResourcesThreadError),
-    ResourcesThreadStopError(ResourcesThreadError),
-    ResourcesThreadJoinError(ResourcesThreadError),
-
-    RendererThreadStartError(RendererThreadError),
-    RendererThreadStopError(RendererThreadError),
-    RendererThreadJoinError(RendererThreadError),
+    RendererThreadStartError(RendererThreadError<PlatformError>),
+    RendererThreadStopError(RendererThreadError<PlatformError>),
+    RendererThreadJoinError(RendererThreadError<PlatformError>),
 }
 
-pub trait Application {
-    type Win;
-    type PlatformError;
-
-    fn new(title: &str, width: u32, height: u32) -> Result<Self, ApplicationError<Self::PlatformError>>
+pub trait Application<PlatformError, Graphics, Win> {
+    fn new(config: ApplicationConfig) -> Result<Self, ApplicationError<PlatformError>>
     where
-        Self::Win: Window<Error = Self::PlatformError>,
         Self: Sized;
 
-    fn run(&self) -> Result<(), ApplicationError<Self::PlatformError>> {
+    fn get_window_factory(
+        &self,
+    ) -> Arc<dyn WindowFactory<Win, PlatformError, Graphics> + Send + Sync>;
+
+    fn run(&self) -> Result<(), ApplicationError<PlatformError>>
+    where
+        Win: Window<PlatformError, Graphics> + 'static,
+        PlatformError: std::fmt::Debug + Send + 'static,
+        Graphics: crate::engine::graphics::Graphics + 'static,
+    {
         log_prelude();
 
         /*
@@ -40,10 +49,9 @@ pub trait Application {
          * Renderer:   ||  Start drawing scene   |              || Copy objects data
          * Logic:      ||  Process input | Update objects | etc ||
          */
-        let renderer_thread = RendererThread {};
-        let statistics_thread = StatisticsThread {};
-        let resources_thread = ResourcesThread {};
-        let logic_thread = LogicThread {};
+        let mut renderer_thread =
+            RendererThread::<Win, PlatformError, Graphics>::new(self.get_window_factory());
+        let mut logic_thread = LogicThread::new();
 
         info!("Starting renderer thread");
         logic_thread
@@ -53,14 +61,6 @@ pub trait Application {
         renderer_thread
             .start()
             .map_err(ApplicationError::RendererThreadStartError)?;
-        info!("Starting statistics thread");
-        statistics_thread
-            .start()
-            .map_err(ApplicationError::StatisticsThreadStartError)?;
-        info!("Starting resources thread");
-        resources_thread
-            .start()
-            .map_err(ApplicationError::ResourcesThreadStartError)?;
 
         renderer_thread
             .join()
@@ -71,136 +71,178 @@ pub trait Application {
         logic_thread
             .stop()
             .map_err(ApplicationError::LogicThreadStopError)?;
-        statistics_thread
-            .stop()
-            .map_err(ApplicationError::StatisticsThreadStopError)?;
-        resources_thread
-            .stop()
-            .map_err(ApplicationError::ResourcesThreadStopError)?;
-
         logic_thread
             .join()
             .map_err(ApplicationError::LogicThreadJoinError)?;
         info!("Logic thread finished");
-        statistics_thread
-            .join()
-            .map_err(ApplicationError::StatisticsThreadJoinError)?;
-        info!("Statistics thread finished");
-        resources_thread
-            .join()
-            .map_err(ApplicationError::ResourcesThreadJoinError)?;
-        info!("Resources thread finished");
-
-        info!("Yage2 Engine finished");
         Ok(())
     }
 }
 
 #[derive(Debug)]
-enum RendererThreadError {}
+enum RendererThreadError<PlatformError> {
+    AlreadyRunning,
+    ThreadSpawnFailed,
+    ThreadJoinError,
+
+    WindowCreationError(PlatformError),
+    WindowTickError(PlatformError),
+    GraphicsTickError,
+}
+
 #[derive(Debug)]
-enum LogicThreadError {}
-#[derive(Debug)]
-enum StatisticsThreadError {}
-#[derive(Debug)]
-enum ResourcesThreadError {}
-
-trait ThreadTrait {
-    type Error;
-
-    fn start(&self) -> Result<(), Self::Error>;
-    fn stop(&self) -> Result<(), Self::Error>;
-    fn join(&self) -> Result<(), Self::Error>;
+enum LogicThreadError {
+    AlreadyRunning,
+    ThreadSpawnFailed,
+    ThreadJoinError,
 }
 
-
-struct RendererThread {
-    thread: std::thread::Thread
+pub struct RendererThread<Win, PlatformError, Graphics> {
+    window_factory: Arc<dyn WindowFactory<Win, PlatformError, Graphics>>,
+    stop_signal: Arc<AtomicBool>,
+    thread: Option<JoinHandle<Result<(), RendererThreadError<PlatformError>>>>,
 }
 
+impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> {
+    pub fn new(
+        factory: Arc<dyn WindowFactory<Win, PlatformError, Graphics>>,
+    ) -> RendererThread<Win, PlatformError, Graphics>
+    where
+        Win: Window<PlatformError, Graphics>,
+    {
+        RendererThread {
+            window_factory: factory,
+            stop_signal: Arc::new(AtomicBool::new(false)),
+            thread: None,
+        }
+    }
 
+    pub fn start(&mut self) -> Result<(), RendererThreadError<PlatformError>>
+    where
+        Win: Window<PlatformError, Graphics> + 'static,
+        PlatformError: std::fmt::Debug + Send + 'static,
+        Graphics: crate::engine::graphics::Graphics + 'static,
+    {
+        if self.thread.is_some() {
+            return Err(RendererThreadError::AlreadyRunning);
+        }
 
-impl ThreadTrait for RendererThread {
-    type Error = RendererThreadError;
-    fn start(&self) -> Result<(), RendererThreadError> {
-        // Start the renderer thread
+        let factory = Arc::clone(&self.window_factory);
+        let stop_signal = self.stop_signal.clone();
+
+        let handle = thread::Builder::new()
+            .name("RendererThread".into())
+            .spawn(move || {
+                let mut window = factory
+                    .create_window()
+                    .map_err(RendererThreadError::WindowCreationError)?;
+
+                info!("Renderer thread started");
+                while !stop_signal.load(Ordering::Relaxed) {
+                    /* Process window events and OS specific stuff */
+                    let win_res = window.tick();
+                    if cfg!(debug_assertions) {
+                        if !win_res.map_err(RendererThreadError::WindowTickError)? {
+                            debug!("Window tick returned false, stopping renderer thread");
+                            break;
+                        }
+                    } else {
+                        /* Ignore error and hope for the best */
+                        if let Ok(false) = win_res {
+                            debug!("Window tick returned false, stopping renderer thread");
+                            break;
+                        }
+                    }
+
+                    /* Render the scene */
+                    let graphics_tick = window.get_graphics().tick();
+                    if cfg!(debug_assertions) {
+                        graphics_tick.map_err(|_| RendererThreadError::GraphicsTickError)?;
+                    } else {
+                        /* Ignore error and hope for the best */
+                        let _ = graphics_tick;
+                    }
+                }
+
+                info!("Renderer thread stopping gracefully");
+                Ok(())
+            })
+            .map_err(|_| RendererThreadError::ThreadSpawnFailed)?;
+
+        self.thread = Some(handle);
         Ok(())
     }
 
-    fn stop(&self) -> Result<(), RendererThreadError> {
-        // Stop the renderer thread
+    pub fn stop(&self) -> Result<(), RendererThreadError<PlatformError>> {
+        self.stop_signal.store(true, Ordering::Relaxed);
         Ok(())
     }
 
-    fn join(&self) -> Result<(), RendererThreadError> {
-        // Join the renderer thread
+    pub fn join(&mut self) -> Result<(), RendererThreadError<PlatformError>> {
+        if let Some(handle) = self.thread.take() {
+            handle
+                .join()
+                .map_err(|_| RendererThreadError::ThreadJoinError)??;
+        }
         Ok(())
     }
 }
 
-struct LogicThread {
-    // Logic thread implementation
+pub struct LogicThread {
+    stop_signal: Arc<AtomicBool>,
+    thread: Option<JoinHandle<Result<(), LogicThreadError>>>,
 }
 
-struct StatisticsThread {
-    // Statistics thread implementation
-}
+impl LogicThread {
+    pub fn new() -> LogicThread {
+        LogicThread {
+            stop_signal: Arc::new(AtomicBool::new(false)),
+            thread: None,
+        }
+    }
 
-struct ResourcesThread {
-    // Resources thread implementation
-}
+    pub fn start(&mut self) -> Result<(), LogicThreadError> {
+        if self.thread.is_some() {
+            return Err(LogicThreadError::AlreadyRunning);
+        }
 
-impl ThreadTrait for LogicThread {
-    type Error = LogicThreadError;
-    fn start(&self) -> Result<(), LogicThreadError> {
-        // Start the logic thread
+        let stop_signal = self.stop_signal.clone();
+
+        let handle = thread::Builder::new()
+            .name("LogicThread".into())
+            .spawn(move || {
+                info!("Logic thread started");
+
+                loop {
+                    if stop_signal.load(Ordering::Relaxed) {
+                        break;
+                    }
+
+                    /* TODO: Implement logic processing here */
+
+                    thread::sleep(std::time::Duration::from_millis(16)); // Simulate ~60 FPS
+                }
+
+                info!("Logic thread stopping gracefully");
+                Ok(())
+            })
+            .map_err(|_| LogicThreadError::ThreadSpawnFailed)?;
+
+        self.thread = Some(handle);
         Ok(())
     }
 
-    fn stop(&self) -> Result<(), LogicThreadError> {
-        // Stop the logic thread
+    pub fn stop(&self) -> Result<(), LogicThreadError> {
+        self.stop_signal.store(true, Ordering::Relaxed);
         Ok(())
     }
 
-    fn join(&self) -> Result<(), LogicThreadError> {
-        // Join the logic thread
-        Ok(())
-    }
-}
-
-impl ThreadTrait for StatisticsThread {
-    type Error = StatisticsThreadError;
-    fn start(&self) -> Result<(), StatisticsThreadError> {
-        // Start the statistics thread
-        Ok(())
-    }
-
-    fn stop(&self) -> Result<(), StatisticsThreadError> {
-        // Stop the statistics thread
-        Ok(())
-    }
-
-    fn join(&self) -> Result<(), StatisticsThreadError> {
-        // Join the statistics thread
-        Ok(())
-    }
-}
-
-impl ThreadTrait for ResourcesThread {
-    type Error = ResourcesThreadError;
-
-    fn start(&self) -> Result<(), ResourcesThreadError> {
-        // Start the resources thread
-        Ok(())
-    }
-
-    fn stop(&self) -> Result<(), ResourcesThreadError> {
-        // Stop the resources thread
-        Ok(())
-    }
-
-    fn join(&self) -> Result<(), ResourcesThreadError> {
-        // Join the resources thread
+    pub fn join(&mut self) -> Result<(), LogicThreadError> {
+        if let Some(handle) = self.thread.take() {
+            handle
+                .join()
+                .map_err(|_| LogicThreadError::ThreadJoinError)??;
+        }
         Ok(())
     }
 }
