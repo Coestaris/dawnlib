@@ -1,9 +1,9 @@
-use crate::graphics::vulkan::cfg::{
+use crate::engine::vulkan::cfg::{
     get_required_instance_extensions, get_required_layers, get_wanted_instance_extensions,
     get_wanted_layers, DEBUG_REPORT_EXTENSION_NAME, DEBUG_UTILS_EXTENSION_NAME,
 };
-use crate::graphics::vulkan::{VulkanGraphicsError, VulkanGraphicsInitArgs};
-use crate::utils::contains;
+use crate::engine::vulkan::{VulkanGraphicsError, VulkanGraphicsInitArgs};
+use crate::core::utils::contains;
 use ash::vk;
 use log::{debug, error, info, trace, warn};
 use std::ffi::{c_char, c_void, CStr};

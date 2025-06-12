@@ -1,4 +1,4 @@
-use crate::graphics::vulkan::VulkanGraphicsError;
+use crate::engine::vulkan::VulkanGraphicsError;
 use ash::{vk, Instance};
 use log::{info, trace};
 use std::ffi::CStr;

@@ -3,10 +3,10 @@ mod device;
 mod instance;
 mod queue;
 
-use crate::graphics::graphics::Graphics;
-use crate::graphics::vulkan::device::get_physical_device;
-use crate::graphics::vulkan::instance::{get_instance_extensions, get_layers, setup_debug};
-use crate::graphics::vulkan::queue::{get_device_extensions, get_queue_family_index};
+use crate::engine::graphics::Graphics;
+use crate::engine::vulkan::device::get_physical_device;
+use crate::engine::vulkan::instance::{get_instance_extensions, get_layers, setup_debug};
+use crate::engine::vulkan::queue::{get_device_extensions, get_queue_family_index};
 use ash::{vk, Instance};
 use log::{debug, info};
 use std::ffi::c_char;
@@ -325,6 +325,7 @@ impl Graphics for VulkanGraphics {
         unsafe {
             let frame = self.get_current_frame();
 
+            /*
             let fences = [frame.fence];
             self.vk
                 .device
@@ -357,14 +358,12 @@ impl Graphics for VulkanGraphics {
                 .device
                 .begin_command_buffer(frame.command_buffer, &command_buffer_begin_info)
                 .unwrap();
-            
+
             let clear_value = vk::ClearColorValue {
                 float32: [0.0, 1.0, 0.0, 1.0],
             };
-            let clear_values = [vk::ClearValue {
-                color: clear_value,
-            }];
-
+            let clear_values = [vk::ClearValue { color: clear_value }];
+*/
             Ok(())
         }
     }

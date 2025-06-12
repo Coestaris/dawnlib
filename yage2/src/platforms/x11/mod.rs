@@ -1,14 +1,12 @@
-use crate::graphics::graphics::Graphics;
-use crate::graphics::vulkan::{
-    VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs, VulkanGraphicsInternal,
-};
-use crate::graphics::window::Window;
+use crate::engine::graphics::Graphics;
+use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
+use crate::engine::window::Window;
 use ash::vk;
 use log::{debug, info};
 use std::ffi::c_char;
-use std::ptr::{addr_of, addr_of_mut};
+use std::ptr::{addr_of_mut};
 use x11::xlib::{
-    XAutoRepeatOff, XClearWindow, XDefaultScreen, XMapRaised, XOpenDisplay, XSetLocaleModifiers,
+    XAutoRepeatOff, XClearWindow, XDefaultScreen, XMapRaised, XOpenDisplay,
     XStoreName, XSync,
 };
 
@@ -95,29 +93,25 @@ impl Window for X11Window {
             XMapRaised(display, window);
 
             debug!("Creating Vulkan graphics");
-            let mut graphics = VulkanGraphics::new(VulkanGraphicsInitArgs {
+            let graphics = VulkanGraphics::new(VulkanGraphicsInitArgs {
                 instance_extensions: vec![ash::khr::xlib_surface::NAME.as_ptr() as *const c_char],
                 device_extensions: vec![],
                 layers: vec![],
+                surface_constructor: Box::new(|entry, instance| {
+                    debug!("Creating X11 Vulkan surface");
+                    let surface_loader = ash::khr::xlib_surface::Instance::new(entry, instance);
+                    let create_info = vk::XlibSurfaceCreateInfoKHR {
+                        dpy: display as *mut _,
+                        window,
+                        ..Default::default()
+                    };
+                    let surface = surface_loader
+                        .create_xlib_surface(&create_info, None)
+                        .map_err(VulkanGraphicsError::SurfaceCreateError)?;
+                    Ok(surface)
+                }),
             })
             .map_err(X11Error::GraphicsCreateError)?;
-
-            debug!("Creating X11 Vulkan surface");
-            let surface_loader =
-                ash::khr::xlib_surface::Instance::new(&graphics.entry, &graphics.instance);
-            let surface = surface_loader
-                .create_xlib_surface(
-                    &vk::XlibSurfaceCreateInfoKHR {
-                        dpy: display as *mut _,
-                        window: window,
-                        ..Default::default()
-                    },
-                    None,
-                )
-                .map_err(X11Error::VulkanCreateSurfaceError)?;
-            graphics
-                .update_surface(surface)
-                .map_err(X11Error::VulkanUpdateSurfaceError)?;
 
             info!("X11 Window with Vulkan graphics created successfully");
             Ok(X11Window {
