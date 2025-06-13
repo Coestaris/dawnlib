@@ -94,6 +94,12 @@ impl Drop for VulkanGraphics {
                 self.vk
                     .device
                     .destroy_command_pool(frame.command_pool, None);
+                
+                debug!("Destroying Vulkan semaphore: {:?}", frame.semaphore);
+                self.vk.device.destroy_semaphore(frame.semaphore, None);
+                
+                debug!("Destroying Vulkan fence: {:?}", frame.fence);
+                self.vk.device.destroy_fence(frame.fence, None);
             }
 
             for frame in self.frames.drain(..) {

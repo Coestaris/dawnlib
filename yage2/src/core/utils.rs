@@ -1,6 +1,8 @@
 use std::ffi::{c_char, CStr};
 use std::mem;
 use std::ptr::addr_of_mut;
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 pub(crate) fn contains(vec: &Vec<*const c_char>, item: *const c_char) -> bool {
     vec.iter()
@@ -45,4 +47,63 @@ pub fn format_now() -> Option<String> {
         tm.tm_sec,
         duration.subsec_millis()
     ))
+}
+
+/* Sync point that allows threads to synchronize at specific points.
+ * Allows threads to wait for each other before proceeding. */
+pub struct Rendezvous {
+    mutex: Arc<Mutex<u32>>,
+    condvar: Arc<Condvar>,
+    max_val: u32,
+}
+
+impl Rendezvous {
+    pub fn new(max_val: u32) -> Self {
+        Self {
+            mutex: Arc::new(Mutex::new(0)),
+            condvar: Arc::new(Condvar::new()),
+            max_val: 2,
+        }
+    }
+
+    /* Waits at the rendezvous point until `max_val` threads have called this method.
+     * If `timeout` is `Some(ms)`, the thread will wait at most that many milliseconds.
+     * Returns `true` if the rendezvous was successfully reached, `false` if timed out. */
+    pub fn wait(&self, timeout: Option<u64>) -> bool {
+        let mut count = self.mutex.lock().unwrap();
+        *count += 1;
+
+        if *count >= self.max_val {
+            // Reset count for next rendezvous point
+            *count = 0;
+            self.condvar.notify_all();
+            true
+        } else {
+            let condvar = &self.condvar;
+            let result = if let Some(ms) = timeout {
+                let duration = Duration::from_millis(ms);
+                let now = Instant::now();
+
+                let (mut count, timeout_result) = condvar
+                    .wait_timeout_while(count, duration, |c| *c < self.max_val)
+                    .unwrap();
+
+                if *count >= self.max_val {
+                    // Another thread triggered the rendezvous
+                    true
+                } else {
+                    // Timed out
+                    false
+                }
+            } else {
+                // Wait without timeout
+                while *count < self.max_val {
+                    count = condvar.wait(count).unwrap();
+                }
+                true
+            };
+
+            result
+        }
+    }
 }

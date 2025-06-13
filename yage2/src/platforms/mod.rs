@@ -3,9 +3,9 @@ pub mod win32;
 #[cfg(windows)]
 #[macro_export]
 macro_rules! create_app {
-    ($title:expr, $width:expr, $height:expr) => {{
+    ($application_config:expr) => {{
         use yage2::platforms::win32::Win32Application;
-        Win32Application::new($title, $width, $height)
+        Win32Application::new($application_config)
     }};
 }
 

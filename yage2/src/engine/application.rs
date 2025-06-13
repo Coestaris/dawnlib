@@ -1,9 +1,10 @@
+use crate::core::utils::Rendezvous;
 use crate::engine::graphics::Graphics;
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Barrier, Condvar, Mutex,
 };
 use std::thread;
 use std::thread::JoinHandle;
@@ -14,6 +15,7 @@ pub struct ApplicationConfig {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ApplicationError<PlatformError> {
     InitError(PlatformError),
 
@@ -24,6 +26,26 @@ pub enum ApplicationError<PlatformError> {
     RendererThreadStartError(RendererThreadError<PlatformError>),
     RendererThreadStopError(RendererThreadError<PlatformError>),
     RendererThreadJoinError(RendererThreadError<PlatformError>),
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+enum RendererThreadError<PlatformError> {
+    AlreadyRunning,
+    ThreadSpawnFailed,
+    ThreadJoinError,
+
+    WindowCreationError(PlatformError),
+    WindowTickError(PlatformError),
+    GraphicsTickError,
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+enum LogicThreadError {
+    AlreadyRunning,
+    ThreadSpawnFailed,
+    ThreadJoinError,
 }
 
 pub trait Application<PlatformError, Graphics, Win> {
@@ -53,13 +75,17 @@ pub trait Application<PlatformError, Graphics, Win> {
             RendererThread::<Win, PlatformError, Graphics>::new(self.get_window_factory());
         let mut logic_thread = LogicThread::new();
 
+        /* Create barriers for synchronization */
+        let before_frame = Arc::new(Rendezvous::new(2));
+        let after_frame = Arc::new(Rendezvous::new(2));
+
         info!("Starting renderer thread");
         logic_thread
-            .start()
+            .start(Arc::clone(&before_frame), Arc::clone(&after_frame))
             .map_err(ApplicationError::LogicThreadStartError)?;
         info!("Starting logic thread");
         renderer_thread
-            .start()
+            .start(Arc::clone(&before_frame), Arc::clone(&after_frame))
             .map_err(ApplicationError::RendererThreadStartError)?;
 
         renderer_thread
@@ -79,32 +105,14 @@ pub trait Application<PlatformError, Graphics, Win> {
     }
 }
 
-#[derive(Debug)]
-enum RendererThreadError<PlatformError> {
-    AlreadyRunning,
-    ThreadSpawnFailed,
-    ThreadJoinError,
-
-    WindowCreationError(PlatformError),
-    WindowTickError(PlatformError),
-    GraphicsTickError,
-}
-
-#[derive(Debug)]
-enum LogicThreadError {
-    AlreadyRunning,
-    ThreadSpawnFailed,
-    ThreadJoinError,
-}
-
-pub struct RendererThread<Win, PlatformError, Graphics> {
+struct RendererThread<Win, PlatformError, Graphics> {
     window_factory: Arc<dyn WindowFactory<Win, PlatformError, Graphics>>,
     stop_signal: Arc<AtomicBool>,
     thread: Option<JoinHandle<Result<(), RendererThreadError<PlatformError>>>>,
 }
 
 impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> {
-    pub fn new(
+    fn new(
         factory: Arc<dyn WindowFactory<Win, PlatformError, Graphics>>,
     ) -> RendererThread<Win, PlatformError, Graphics>
     where
@@ -117,7 +125,11 @@ impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> 
         }
     }
 
-    pub fn start(&mut self) -> Result<(), RendererThreadError<PlatformError>>
+    fn start(
+        &mut self,
+        before_frame: Arc<Rendezvous>,
+        after_frame: Arc<Rendezvous>,
+    ) -> Result<(), RendererThreadError<PlatformError>>
     where
         Win: Window<PlatformError, Graphics> + 'static,
         PlatformError: std::fmt::Debug + Send + 'static,
@@ -139,22 +151,29 @@ impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> 
 
                 info!("Renderer thread started");
                 while !stop_signal.load(Ordering::Relaxed) {
-                    /* Process window events and OS specific stuff */
+                    /* 1. Synchronize with the logic thread */
+                    if !before_frame.wait(Some(1000)) {
+                        warn!("Thread pre-frame synchronization failed, stopping renderer thread");
+                        break;
+
+                    }
+
+                    /* 2. Process window events and OS specific stuff */
                     let win_res = window.tick();
                     if cfg!(debug_assertions) {
                         if !win_res.map_err(RendererThreadError::WindowTickError)? {
-                            debug!("Window tick returned false, stopping renderer thread");
+                            warn!("Window tick returned false, stopping renderer thread");
                             break;
                         }
                     } else {
                         /* Ignore error and hope for the best */
                         if let Ok(false) = win_res {
-                            debug!("Window tick returned false, stopping renderer thread");
+                            warn!("Window tick returned false, stopping renderer thread");
                             break;
                         }
                     }
 
-                    /* Render the scene */
+                    /* 3. Render the scene */
                     let graphics_tick = window.get_graphics().tick();
                     if cfg!(debug_assertions) {
                         graphics_tick.map_err(|_| RendererThreadError::GraphicsTickError)?;
@@ -162,6 +181,15 @@ impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> 
                         /* Ignore error and hope for the best */
                         let _ = graphics_tick;
                     }
+
+                    /* 4. Synchronize with the logic thread */
+                    if !after_frame.wait(Some(1000)) {
+                        warn!("Thread post-frame synchronization failed, stopping renderer thread");
+                        break;
+                    }
+
+                    /* 5. Copy renderable objects data */
+                    /* TODO: Implement copying of renderable objects data here */
                 }
 
                 info!("Renderer thread stopping gracefully");
@@ -173,12 +201,12 @@ impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> 
         Ok(())
     }
 
-    pub fn stop(&self) -> Result<(), RendererThreadError<PlatformError>> {
+    fn stop(&self) -> Result<(), RendererThreadError<PlatformError>> {
         self.stop_signal.store(true, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn join(&mut self) -> Result<(), RendererThreadError<PlatformError>> {
+    fn join(&mut self) -> Result<(), RendererThreadError<PlatformError>> {
         if let Some(handle) = self.thread.take() {
             handle
                 .join()
@@ -188,20 +216,24 @@ impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> 
     }
 }
 
-pub struct LogicThread {
+struct LogicThread {
     stop_signal: Arc<AtomicBool>,
     thread: Option<JoinHandle<Result<(), LogicThreadError>>>,
 }
 
 impl LogicThread {
-    pub fn new() -> LogicThread {
+    fn new() -> LogicThread {
         LogicThread {
             stop_signal: Arc::new(AtomicBool::new(false)),
             thread: None,
         }
     }
 
-    pub fn start(&mut self) -> Result<(), LogicThreadError> {
+    fn start(
+        &mut self,
+        before_frame: Arc<Rendezvous>,
+        after_frame: Arc<Rendezvous>,
+    ) -> Result<(), LogicThreadError> {
         if self.thread.is_some() {
             return Err(LogicThreadError::AlreadyRunning);
         }
@@ -214,13 +246,26 @@ impl LogicThread {
                 info!("Logic thread started");
 
                 loop {
-                    if stop_signal.load(Ordering::Relaxed) {
+                    /* 1. Synchronize with the renderer thread */
+                    if !before_frame.wait(Some(1000)) {
+                        warn!("Thread pre-frame synchronization failed, stopping logic thread");
                         break;
                     }
 
+                    /* 2. Process input, update game logic, etc. */
                     /* TODO: Implement logic processing here */
+                    thread::sleep(std::time::Duration::from_millis(2));
 
-                    thread::sleep(std::time::Duration::from_millis(16)); // Simulate ~60 FPS
+                    /* 3. Synchronize with the renderer thread */
+                    if !after_frame.wait(Some(1000)) {
+                        warn!("Thread post-frame synchronization failed, stopping logic thread");
+                        break;
+                    }
+
+                    /* 4. Check if we need to stop */
+                    if stop_signal.load(Ordering::Relaxed) {
+                        break;
+                    }
                 }
 
                 info!("Logic thread stopping gracefully");
@@ -232,12 +277,12 @@ impl LogicThread {
         Ok(())
     }
 
-    pub fn stop(&self) -> Result<(), LogicThreadError> {
+    fn stop(&self) -> Result<(), LogicThreadError> {
         self.stop_signal.store(true, Ordering::Relaxed);
         Ok(())
     }
 
-    pub fn join(&mut self) -> Result<(), LogicThreadError> {
+    fn join(&mut self) -> Result<(), LogicThreadError> {
         if let Some(handle) = self.thread.take() {
             handle
                 .join()
@@ -247,7 +292,7 @@ impl LogicThread {
     }
 }
 
-pub fn log_prelude() {
+fn log_prelude() {
     info!("Starting Yage2 Engine");
     // debug!(" - Version: {} (rust {})", env!("VERGEN_CARGO_PKG_VERSION"), env!("CARGO_PKG_RUST_VERSION"));
     debug!(
