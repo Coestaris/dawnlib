@@ -1,6 +1,6 @@
 pub trait Window<PlatformError, Graphics> {
     fn tick(&mut self) -> Result<bool, PlatformError>;
-
+    fn kill(&mut self) -> Result<(), PlatformError>;
     fn get_graphics(&mut self) -> &mut Graphics;
 }
 

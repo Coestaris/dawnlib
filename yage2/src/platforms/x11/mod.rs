@@ -6,9 +6,12 @@ use ash::vk;
 use log::{debug, info};
 use std::ffi::c_char;
 use std::ptr::addr_of_mut;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::thread;
 use x11::xlib::{
-    XAutoRepeatOff, XClearWindow, XDefaultScreen, XMapRaised, XOpenDisplay, XStoreName, XSync,
+    CurrentTime, Display, XAutoRepeatOff, XClearWindow, XCloseDisplay, XDefaultScreen, XEvent,
+    XFlush, XMapRaised, XOpenDisplay, XSendEvent, XStoreName, XSync,
 };
 
 #[derive(Debug)]
@@ -16,15 +19,23 @@ use x11::xlib::{
 pub enum X11Error {
     OpenDisplayError,
     CreateWindowError,
+    SpawnEventsThreadError,
+    JoinEventsThreadError,
     GraphicsCreateError(VulkanGraphicsError),
     VulkanCreateSurfaceError(vk::Result),
     VulkanUpdateSurfaceError(VulkanGraphicsError),
 }
 
 pub struct X11Window {
-    display: *mut x11::xlib::Display,
+    display: *mut Display,
     window: x11::xlib::Window,
     graphics: VulkanGraphics,
+
+    delete_message: x11::xlib::Atom,
+
+    /* A signal to stop the event handling thread */
+    stop_signal: Arc<AtomicBool>,
+    events_thread: Option<thread::JoinHandle<Result<(), X11Error>>>,
 }
 
 pub struct X11Application {
@@ -42,7 +53,9 @@ impl Application<X11Error, VulkanGraphics, X11Window> for X11Application {
         Ok(X11Application { window_factory })
     }
 
-    fn get_window_factory(&self) -> Arc<dyn WindowFactory<X11Window, X11Error, VulkanGraphics> + Send + Sync> {
+    fn get_window_factory(
+        &self,
+    ) -> Arc<dyn WindowFactory<X11Window, X11Error, VulkanGraphics> + Send + Sync> {
         Arc::new(self.window_factory.clone())
     }
 }
@@ -50,6 +63,44 @@ impl Application<X11Error, VulkanGraphics, X11Window> for X11Application {
 #[derive(Clone, Debug)]
 struct X11WindowFactory {
     config: WindowConfig,
+}
+
+fn process_events_sync(
+    display: *mut Display,
+    close_atom: x11::xlib::Atom,
+) -> Result<bool, X11Error> {
+    let event = unsafe {
+        let mut event: x11::xlib::XEvent = std::mem::zeroed();
+        x11::xlib::XNextEvent(display, &mut event);
+        event
+    };
+
+    match event.get_type() {
+        x11::xlib::ClientMessage => unsafe {
+            debug!("Client message event received");
+            let ptr = event.client_message.data.as_longs()[0];
+            if ptr == close_atom as i64 {
+                debug!("Window close requested via client message");
+                return Ok(false);
+            } else {
+                debug!("Unhandled client message: {}", ptr);
+            }
+        },
+
+        x11::xlib::Expose => {
+            debug!("Expose event received");
+            // Handle expose event (e.g., redraw the window)
+        }
+        x11::xlib::KeyPress => {
+            debug!("Key press event received");
+            // Handle key press event
+        }
+        _ => {
+            debug!("Unhandled event type: {}", event.get_type());
+        }
+    }
+
+    Ok(true)
 }
 
 impl WindowFactory<X11Window, X11Error, VulkanGraphics> for X11WindowFactory {
@@ -134,54 +185,129 @@ impl WindowFactory<X11Window, X11Error, VulkanGraphics> for X11WindowFactory {
             })
             .map_err(X11Error::GraphicsCreateError)?;
 
+            let delete_message =
+                x11::xlib::XInternAtom(display, b"WM_DELETE_WINDOW\0".as_ptr() as *const c_char, 0);
+            x11::xlib::XSetWMProtocols(display, window, &delete_message as *const _ as *mut _, 1);
+
+            let stop_signal = Arc::new(AtomicBool::new(false));
+
+            let signal_stop = stop_signal.clone();
+            let display_ptr = display.addr();
+            let events_thread = thread::Builder::new()
+                .name("X11Events".to_string())
+                .spawn(move || {
+                    debug!("Starting X11 events thread");
+                    let display = &mut *(display_ptr as *mut Display);
+                    while !signal_stop.load(Ordering::Relaxed) {
+                        match process_events_sync(display, delete_message) {
+                            Ok(should_continue) => {
+                                if !should_continue {
+                                    debug!("Stopping X11 events thread");
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                debug!("Error processing X11 events: {:?}", e);
+                                return Err(e);
+                            }
+                        }
+                    }
+
+                    debug!("X11 events thread exiting");
+                    Ok(())
+                })
+                .map_err(|e| {
+                    debug!("Failed to spawn X11 events thread: {:?}", e);
+                    X11Error::SpawnEventsThreadError
+                })?;
+
             info!("X11 Window with Vulkan graphics created successfully");
             Ok(X11Window {
                 display,
                 window,
                 graphics,
+                delete_message,
+                stop_signal: stop_signal.clone(),
+                events_thread: Some(events_thread),
             })
+        }
+    }
+}
+
+impl Drop for X11Window {
+    fn drop(&mut self) {
+        debug!("Dropping X11Window");
+        unsafe {
+            debug!("Destroying X11 window");
+            x11::xlib::XDestroyWindow(self.display, self.window);
+
+            if !self.display.is_null() {
+                debug!("Closing X11 display");
+                XCloseDisplay(self.display);
+            }
         }
     }
 }
 
 impl Window<X11Error, VulkanGraphics> for X11Window {
     fn tick(&mut self) -> Result<bool, X11Error> {
-        let event = unsafe {
-            let mut event: x11::xlib::XEvent = std::mem::zeroed();
-            x11::xlib::XNextEvent(self.display, &mut event);
-            event
-        };
-
-        match event.get_type() {
-            x11::xlib::Expose => {
-                debug!("Expose event received");
-                // Handle expose event (e.g., redraw the window)
-            }
-            x11::xlib::KeyPress => {
-                debug!("Key press event received");
-                // Handle key press event
-            }
-            _ => {
-                debug!("Unhandled event type: {}", event.get_type());
+        /* if the events thread is dead, we need to stop as well */
+        if let Some(ref thread) = self.events_thread {
+            if thread.is_finished() {
+                debug!("X11 events thread is dead, stopping window tick");
+                return Ok(false);
             }
         }
 
-        /* Return true to indicate the window is still active */
         Ok(true)
+    }
+
+    fn kill(&mut self) -> Result<(), X11Error> {
+        /* If the events thread is running,
+         * signal it to stop */
+        if let Some(thread) = self.events_thread.take() {
+            self.stop_signal.store(true, Ordering::Relaxed);
+
+            /* Send event to stop the event handling thread */
+            let event: XEvent = unsafe {
+                let mut event: XEvent = std::mem::zeroed();
+                event.type_ = x11::xlib::ClientMessage;
+                event.client_message.window = self.window;
+                event.client_message.message_type = x11::xlib::XInternAtom(
+                    self.display,
+                    b"WM_PROTOCOLS\0".as_ptr() as *const c_char,
+                    1,
+                );
+                event.client_message.format = 32;
+                event
+                    .client_message
+                    .data
+                    .set_long(0, self.delete_message as i64); // Use the delete message atom
+                event.client_message.data.set_long(1, CurrentTime as i64); // Use CurrentTime to indicate the time of the event
+                event
+            };
+
+            unsafe {
+                XSendEvent(
+                    self.display,
+                    self.window,
+                    0, // False for no propagation
+                    x11::xlib::NoEventMask,
+                    &event as *const XEvent as *mut XEvent,
+                );
+                XSync(self.display, 0);
+                XFlush(self.display);
+            }
+
+            /* Wait for the events thread to finish */
+            debug!("Waiting for X11 events thread to finish");
+            thread.join().map_err(|_| X11Error::JoinEventsThreadError)??;
+        }
+
+        Ok(())
     }
 
     fn get_graphics(&mut self) -> &mut VulkanGraphics {
         &mut self.graphics
-    }
-}
-
-impl Drop for X11Window {
-    fn drop(&mut self) {
-        unsafe {
-            if !self.display.is_null() {
-                debug!("Closing X11 display");
-                x11::xlib::XCloseDisplay(self.display);
-            }
-        }
     }
 }
