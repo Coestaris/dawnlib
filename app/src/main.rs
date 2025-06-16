@@ -27,10 +27,10 @@ impl log::Log for SimpleLogger {
             let formatted_date = format_now().unwrap_or("unknown".to_string());
 
             println!(
-                "[{}][{}][{}]: {} [{}:{}]",
+                "[{}][{:>17}][{:>14}]: {} [{}:{}]",
                 Cyan.paint(formatted_date),
-                Yellow.paint(std::thread::current().name().unwrap_or("main")),
-                colored_level(record.level()).paint(record.level().to_string()),
+                Yellow.paint(std::thread::current().name().unwrap_or("main")).to_string(),
+                colored_level(record.level()).paint(record.level().to_string()).to_string(),
                 record.args(),
                 Green.paint(record.file().unwrap_or("unknown")),
                 Green.paint(record.line().unwrap_or(0).to_string())

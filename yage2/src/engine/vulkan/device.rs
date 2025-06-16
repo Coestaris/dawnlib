@@ -1,6 +1,6 @@
 use crate::engine::vulkan::VulkanGraphicsError;
 use ash::{vk, Instance};
-use log::{info, trace};
+use log::{debug, info, trace};
 use std::ffi::CStr;
 
 pub unsafe fn get_physical_device(
@@ -44,7 +44,7 @@ pub unsafe fn get_physical_device(
 
     /* TODO: Implement device selection logic */
     let device = devices[0];
-    info!("Using physical device: {:?}", device);
+    debug!("Using physical device: {:?}", device);
 
     Ok(device)
 }

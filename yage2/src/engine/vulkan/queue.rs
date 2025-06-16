@@ -91,7 +91,7 @@ pub unsafe fn get_queue_family_index(
 
     /* TODO: Implement queue family selection logic */
     let family_index = 0;
-    info!("Using queue family index: {}", family_index);
+    debug!("Using queue family index: {}", family_index);
 
     Ok(family_index)
 }

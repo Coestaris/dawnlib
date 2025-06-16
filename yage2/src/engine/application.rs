@@ -231,7 +231,7 @@ impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> 
         let stop_signal = self.stop_signal.clone();
 
         let handle = thread::Builder::new()
-            .name("RendererThread".into())
+            .name("Renderer".into())
             .spawn(move || {
                 let mut window = factory
                     .create_window()
@@ -349,7 +349,7 @@ impl LogicThread {
         let stop_signal = self.stop_signal.clone();
 
         let handle = thread::Builder::new()
-            .name("LogicThread".into())
+            .name("Logic".into())
             .spawn(move || {
                 info!("Logic thread started");
 

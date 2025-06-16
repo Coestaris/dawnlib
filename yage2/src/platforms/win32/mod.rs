@@ -59,7 +59,7 @@ impl Application<Win32Error, VulkanGraphics, Win32Window> for Win32Application {
     where
         Self: Sized,
     {
-        info!("Creating Win32 application with config: {:?}", config);
+        debug!("Creating Win32 application with config: {:?}", config);
         let window_factory =
             Win32WindowFactory::new(config.window_config).map_err(ApplicationError::InitError)?;
         Ok(Win32Application { window_factory })
@@ -82,7 +82,7 @@ impl WindowFactory<Win32Window, Win32Error, VulkanGraphics> for Win32WindowFacto
     where
         Self: Sized,
     {
-        info!("Creating Win32 window factory with config: {:?}", config);
+        debug!("Creating Win32 window factory with config: {:?}", config);
         Ok(Win32WindowFactory { config })
     }
 
