@@ -199,9 +199,10 @@ fn winbutton_to_code(button: u32) -> MouseButton {
 
 impl Window<Win32Error, VulkanGraphics> for Win32Window {
     fn tick(&mut self) -> Result<bool, Win32Error> {
-        let mut msg = MSG::default();
+        let res = !DESTROYED.load(std::sync::atomic::Ordering::Relaxed);
 
-        if unsafe { GetMessageA(&mut msg, None, 0, 0).as_bool() } {
+        let mut msg = MSG::default();
+        while unsafe { GetMessageA(&mut msg, Some(self.hwnd), 0, 0).0 != 0 } {
             unsafe {
                 DispatchMessageA(&msg);
             }
@@ -247,7 +248,7 @@ impl Window<Win32Error, VulkanGraphics> for Win32Window {
                     event = InputEvent::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
                 }
                 _ => {
-                    return Ok(true);
+                    return Ok(res);
                 }
             }
 
@@ -256,7 +257,7 @@ impl Window<Win32Error, VulkanGraphics> for Win32Window {
             }
         }
 
-        Ok(!DESTROYED.load(std::sync::atomic::Ordering::Relaxed))
+        Ok(res)
     }
 
     fn kill(&mut self) -> Result<(), Win32Error> {
