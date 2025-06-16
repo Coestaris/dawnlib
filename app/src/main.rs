@@ -1,9 +1,12 @@
+mod objects;
+
 extern crate core;
 
 use ansi_term::Colour::{Blue, Cyan, Green, Red, Yellow};
 use log::{info, Level, LevelFilter, Metadata, Record};
 use yage2::core::utils::format_now;
 use yage2::engine::application::Application;
+use yage2::engine::object::Object;
 
 struct SimpleLogger;
 
@@ -29,8 +32,12 @@ impl log::Log for SimpleLogger {
             println!(
                 "[{}][{:>17}][{:>14}]: {} [{}:{}]",
                 Cyan.paint(formatted_date),
-                Yellow.paint(std::thread::current().name().unwrap_or("main")).to_string(),
-                colored_level(record.level()).paint(record.level().to_string()).to_string(),
+                Yellow
+                    .paint(std::thread::current().name().unwrap_or("main"))
+                    .to_string(),
+                colored_level(record.level())
+                    .paint(record.level().to_string())
+                    .to_string(),
                 record.args(),
                 Green.paint(record.file().unwrap_or("unknown")),
                 Green.paint(record.line().unwrap_or(0).to_string())
@@ -55,7 +62,8 @@ fn main() {
         },
     };
     let app = yage2::create_app!(application_config).unwrap();
-    app.run().unwrap();
+    let objects = vec![Box::new(objects::EventListener) as Box<dyn Object + Send + Sync>];
+    app.run(objects).unwrap();
 
     info!("Yage2 Engine finished");
 }

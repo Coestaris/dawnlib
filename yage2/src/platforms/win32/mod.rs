@@ -1,22 +1,26 @@
 use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
 use crate::engine::graphics::Graphics;
+use crate::engine::input::{InputEvent, KeyCode, MouseButton};
 use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
 use ash::vk;
 use ash::vk::Win32SurfaceCreateInfoKHR;
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::ffi::c_char;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 use windows::core::{HSTRING, PCWSTR};
 use windows::Win32::Foundation::{
     GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WIN32_ERROR, WPARAM,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcA, DispatchMessageA, GetMessageA, PostQuitMessage,
+    CreateWindowExW, DefWindowProcA, DestroyWindow, DispatchMessageA, GetMessageA, PostQuitMessage,
     RegisterClassW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, WINDOW_EX_STYLE, WM_DESTROY,
-    WM_PAINT, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE,
+    WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_OVERLAPPEDWINDOW,
+    WS_VISIBLE,
 };
 
 #[derive(Debug)]
@@ -42,6 +46,7 @@ pub struct Win32Window {
     hwnd: HWND,
     hinstance: HINSTANCE,
     graphics: VulkanGraphics,
+    events_sender: Sender<InputEvent>,
 }
 
 const CLASS_NAME: &str = "Yage2 Window Class";
@@ -86,7 +91,7 @@ impl WindowFactory<Win32Window, Win32Error, VulkanGraphics> for Win32WindowFacto
         Ok(Win32WindowFactory { config })
     }
 
-    fn create_window(&self) -> Result<Win32Window, Win32Error> {
+    fn create_window(&self, events_sender: Sender<InputEvent>) -> Result<Win32Window, Win32Error> {
         unsafe {
             debug!("Retrieving the instance handle");
             let hinstance = match GetModuleHandleW(None) {
@@ -157,6 +162,7 @@ impl WindowFactory<Win32Window, Win32Error, VulkanGraphics> for Win32WindowFacto
                 hwnd,
                 hinstance,
                 graphics,
+                events_sender,
             })
         }
     }
@@ -167,23 +173,99 @@ fn get_last_error() -> WIN32_ERROR {
 }
 
 /* Global atomic flag to signal the application to stop.
- * This is used to handle the WM_DESTROY message and gracefully exit 
- * the application. 
+ * This is used to handle the WM_DESTROY message and gracefully exit
+ * the application.
  * TODO: Consider using a more sophisticated event loop or message handling system.
  */
 static DESTROYED: AtomicBool = AtomicBool::new(false);
+
+fn winkey_to_code(key: u32) -> KeyCode {
+    match key {
+        0x41 => KeyCode::A,
+        0x42 => KeyCode::B,
+        0x43 => KeyCode::C,
+        _ => KeyCode::A, // Default to A for unsupported keys
+    }
+}
+
+fn winbutton_to_code(button: u32) -> MouseButton {
+    match button {
+        0x01 => MouseButton::Left,
+        0x02 => MouseButton::Right,
+        0x04 => MouseButton::Middle,
+        _ => MouseButton::Left, // Default to Left for unsupported buttons
+    }
+}
 
 impl Window<Win32Error, VulkanGraphics> for Win32Window {
     fn tick(&mut self) -> Result<bool, Win32Error> {
         let mut msg = MSG::default();
 
-        unsafe {
-            if GetMessageA(&mut msg, None, 0, 0).as_bool() {
+        if unsafe { GetMessageA(&mut msg, None, 0, 0).as_bool() } {
+            unsafe {
                 DispatchMessageA(&msg);
+            }
+
+            /* Process the message synchronously
+             * to make things simpler */
+            let mut event: InputEvent;
+            match msg.message {
+                WM_KEYDOWN => {
+                    event = InputEvent::KeyPress(winkey_to_code(msg.wParam.0 as u32));
+                }
+                WM_KEYUP => {
+                    event = InputEvent::KeyRelease(winkey_to_code(msg.wParam.0 as u32));
+                }
+                WM_LBUTTONDOWN => {
+                    event = InputEvent::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
+                }
+                WM_LBUTTONUP => {
+                    event = InputEvent::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
+                }
+                WM_MBUTTONDOWN => {
+                    event = InputEvent::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
+                }
+                WM_MBUTTONUP => {
+                    event = InputEvent::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
+                }
+                WM_MOUSEMOVE => {
+                    let x = (msg.lParam.0 as i32 & 0xFFFF) as f32;
+                    let y = (msg.lParam.0 >> 16) as i32 as f32;
+                    event = InputEvent::MouseMove { x, y };
+                }
+                WM_MOUSEWHEEL => {
+                    let delta = (msg.wParam.0 as i32 >> 16) as f32 / 120.0; // Convert to standard scroll units
+                    event = InputEvent::MouseScroll {
+                        delta_x: 0.0,
+                        delta_y: delta,
+                    };
+                }
+                WM_RBUTTONDOWN => {
+                    event = InputEvent::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
+                }
+                WM_RBUTTONUP => {
+                    event = InputEvent::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
+                }
+                _ => {
+                    return Ok(true);
+                }
+            }
+
+            if let Err(e) = self.events_sender.send(event) {
+                warn!("Failed to send event: {:?}", e);
             }
         }
 
         Ok(!DESTROYED.load(std::sync::atomic::Ordering::Relaxed))
+    }
+
+    fn kill(&mut self) -> Result<(), Win32Error> {
+        unsafe {
+            if !self.hwnd.is_invalid() {
+                DestroyWindow(self.hwnd);
+            }
+        }
+        Ok(())
     }
 
     fn get_graphics(&mut self) -> &mut VulkanGraphics {

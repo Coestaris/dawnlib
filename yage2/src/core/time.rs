@@ -1,6 +1,6 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::{AtomicU32, AtomicU64};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 fn current_ms() -> u64 {
@@ -24,16 +24,17 @@ pub struct TickCounter {
     min_average_us: Arc<AtomicU64>,
     average_us: Arc<AtomicU64>,
     max_average_us: Arc<AtomicU64>,
+    smooth_factor: f32,
 }
 
 impl Default for TickCounter {
     fn default() -> Self {
-        Self::new()
+        Self::new(0.5)
     }
 }
 
 impl TickCounter {
-    pub fn new() -> Self {
+    pub fn new(smooth_factor: f32) -> Self {
         Self {
             start: Arc::new(AtomicU64::new(current_us())),
             ticks: Arc::new(AtomicU32::new(0)),
@@ -41,6 +42,7 @@ impl TickCounter {
             min_average_us: Arc::new(AtomicU64::new(u64::MAX)),
             average_us: Arc::new(Default::default()),
             max_average_us: Arc::new(Default::default()),
+            smooth_factor,
         }
     }
 
@@ -49,10 +51,12 @@ impl TickCounter {
     }
 
     pub fn reset(&self) {
-        self.start.store(current_us(), SeqCst);
-        self.ticks.store(0, SeqCst);
-        self.min_average_us.store(self.average_us.load(SeqCst), SeqCst);
-        self.max_average_us.store(self.average_us.load(SeqCst), SeqCst);
+        // self.start.store(current_us(), SeqCst);
+        // self.ticks.store(0, SeqCst);
+        self.min_average_us
+            .store(self.average_us.load(SeqCst), SeqCst);
+        self.max_average_us
+            .store(self.average_us.load(SeqCst), SeqCst);
     }
 
     pub fn update(&self) {
@@ -64,14 +68,20 @@ impl TickCounter {
         let elapsed_ticks = ticks.saturating_sub(start_ticks);
 
         /* Update the average time per tick */
-        let average = end_us.saturating_sub(start_us) / elapsed_ticks.max(1) as u64;
+        let average = if  elapsed_ticks == 0 {
+            u64::MAX
+        } else {
+            end_us.saturating_sub(start_us) / elapsed_ticks as u64
+        };
 
         /* Smooth the average */
         let mut min_average = self.min_average_us.load(SeqCst);
         let mut average_us = self.average_us.load(SeqCst);
         let mut max_average = self.max_average_us.load(SeqCst);
 
-        average_us = (average + average_us) / 2;
+        average_us = (average as f32 * self.smooth_factor
+            + average_us as f32 * (1.0 - self.smooth_factor)) as u64;
+        
         if average < min_average {
             min_average = average;
         }
@@ -82,6 +92,8 @@ impl TickCounter {
         self.min_average_us.store(min_average, SeqCst);
         self.average_us.store(average_us, SeqCst);
         self.max_average_us.store(max_average, SeqCst);
+        self.start_ticks.store(ticks, SeqCst);
+        self.start.store(end_us, SeqCst);
     }
 
     /* In milliseconds */

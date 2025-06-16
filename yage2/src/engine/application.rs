@@ -1,10 +1,14 @@
 use crate::core::sync::Rendezvous;
 use crate::core::time::{PeriodCounter, TickCounter};
+use crate::engine::app_ctx::ApplicationCtx;
+use crate::engine::input::{InputEvent, InputManager};
+use crate::engine::object::{Object, Renderable};
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
 use log::{debug, info, warn};
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use std::thread;
 use std::thread::JoinHandle;
@@ -78,6 +82,13 @@ struct LogicProfiler {
     after_frame_sync: PeriodCounter,
 }
 
+/* This struct is used to store data that is shared between the
+ * logic and renderer threads. */
+pub struct SharedData {
+    renderer_objects: Mutex<Vec<Renderable>>,
+    logic_objects: Mutex<Vec<Box<dyn Object + Send + Sync>>>,
+}
+
 pub trait Application<PlatformError, Graphics, Win> {
     fn new(config: ApplicationConfig) -> Result<Self, ApplicationError<PlatformError>>
     where
@@ -87,7 +98,10 @@ pub trait Application<PlatformError, Graphics, Win> {
         &self,
     ) -> Arc<dyn WindowFactory<Win, PlatformError, Graphics> + Send + Sync>;
 
-    fn run(&self) -> Result<(), ApplicationError<PlatformError>>
+    fn run(
+        &self,
+        objects: Vec<Box<dyn Object + Send + Sync>>,
+    ) -> Result<(), ApplicationError<PlatformError>>
     where
         Win: Window<PlatformError, Graphics> + 'static,
         PlatformError: std::fmt::Debug + Send + 'static,
@@ -113,10 +127,23 @@ pub trait Application<PlatformError, Graphics, Win> {
 
         /* Create the renderer profiler */
         let renderer_profiler = Arc::new(RendererProfiler {
+            fps: TickCounter::new(0.3),
             ..Default::default()
         });
         let logic_profiler = Arc::new(LogicProfiler {
+            ups: TickCounter::new(0.3),
             ..Default::default()
+        });
+        let eps = Arc::new(TickCounter::new(1.0));
+
+        /* Create the application context */
+        let (sender, receiver): (Sender<InputEvent>, Receiver<InputEvent>) =
+            std::sync::mpsc::channel();
+
+        /* Create the shared data */
+        let shared_data = Arc::new(SharedData {
+            renderer_objects: Mutex::new(Vec::new()),
+            logic_objects: Mutex::new(objects),
         });
 
         info!("Starting renderer thread");
@@ -124,6 +151,9 @@ pub trait Application<PlatformError, Graphics, Win> {
             .start(
                 Arc::clone(&before_frame),
                 Arc::clone(&after_frame),
+                receiver,
+                Arc::clone(&shared_data),
+                Arc::clone(&eps),
                 Arc::clone(&logic_profiler),
             )
             .map_err(ApplicationError::LogicThreadStartError)?;
@@ -132,6 +162,8 @@ pub trait Application<PlatformError, Graphics, Win> {
             .start(
                 Arc::clone(&before_frame),
                 Arc::clone(&after_frame),
+                sender,
+                Arc::clone(&shared_data),
                 Arc::clone(&renderer_profiler),
             )
             .map_err(ApplicationError::RendererThreadStartError)?;
@@ -139,7 +171,12 @@ pub trait Application<PlatformError, Graphics, Win> {
         {
             info!("Starting statistics thread");
             statistics_thread
-                .start(Arc::clone(&renderer_profiler), Arc::clone(&logic_profiler))
+                .start(
+                    Arc::clone(&renderer_profiler),
+                    Arc::clone(&logic_profiler),
+                    Arc::clone(&eps),
+                    Arc::clone(&shared_data),
+                )
                 .map_err(ApplicationError::StatisticsThreadStartError)?;
         }
 
@@ -216,6 +253,8 @@ impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> 
         &mut self,
         before_frame: Arc<Rendezvous>,
         after_frame: Arc<Rendezvous>,
+        events_sender: Sender<InputEvent>,
+        shared_data: Arc<SharedData>,
         profiler: Arc<RendererProfiler>,
     ) -> Result<(), RendererThreadError<PlatformError>>
     where
@@ -234,7 +273,7 @@ impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> 
             .name("Renderer".into())
             .spawn(move || {
                 let mut window = factory
-                    .create_window()
+                    .create_window(events_sender)
                     .map_err(RendererThreadError::WindowCreationError)?;
 
                 info!("Renderer thread started");
@@ -288,8 +327,16 @@ impl<Win, PlatformError, Graphics> RendererThread<Win, PlatformError, Graphics> 
 
                     /* 5. Copy renderable objects data */
                     profile!(profiler.copy_objects.start());
-                    /* TODO: Implement object copying logic here */
-                    thread::sleep(std::time::Duration::from_millis(2));
+                    let mut renderables = shared_data.renderer_objects.lock().unwrap();
+                    let mut objects = shared_data.logic_objects.lock().unwrap();
+                    renderables.clear();
+                    for object in objects.iter_mut() {
+                        if let Some(renderable) = object.renderable() {
+                            renderables.push(renderable.clone());
+                        }
+                    }
+                    drop(objects);
+                    drop(renderables);
                     profile!(profiler.copy_objects.end());
                 }
 
@@ -340,6 +387,9 @@ impl LogicThread {
         &mut self,
         before_frame: Arc<Rendezvous>,
         after_frame: Arc<Rendezvous>,
+        events_receiver: Receiver<InputEvent>,
+        shared_data: Arc<SharedData>,
+        eps: Arc<TickCounter>,
         profiler: Arc<LogicProfiler>,
     ) -> Result<(), LogicThreadError> {
         if self.thread.is_some() {
@@ -352,6 +402,10 @@ impl LogicThread {
             .name("Logic".into())
             .spawn(move || {
                 info!("Logic thread started");
+
+                let mut ctx = ApplicationCtx {
+                    input_manager: InputManager::new(events_receiver, eps),
+                };
 
                 while !stop_signal.load(Ordering::Relaxed) {
                     profile!(profiler.ups.tick());
@@ -366,8 +420,21 @@ impl LogicThread {
 
                     /* 2. Process input, update game logic, etc. */
                     profile!(profiler.logic_processing.start());
-                    /* TODO: Implement logic processing here */
-                    thread::sleep(std::time::Duration::from_millis(2));
+                    let mut objects = shared_data.logic_objects.lock().unwrap();
+
+                    /* Process input events */
+                    ctx.input_manager.poll_events();
+                    ctx.input_manager.update();
+                    ctx.input_manager.dispatch_events(&ctx, &mut objects);
+
+                    /* Call on_tick for each game object */
+                    for object in objects.iter_mut() {
+                        object.on_tick(&ctx);
+                    }
+
+                    /* Make sure that mutex is unlocked
+                     * before the next synchronization point */
+                    drop(objects);
                     profile!(profiler.logic_processing.end());
 
                     /* 3. Synchronize with the renderer thread */
@@ -421,6 +488,8 @@ impl StatisticsThread {
         &mut self,
         renderer_profiler: Arc<RendererProfiler>,
         logic_profiler: Arc<LogicProfiler>,
+        eps: Arc<TickCounter>,
+        shared_data: Arc<SharedData>,
     ) -> Result<(), StatisticsThreadError> {
         if self.thread.is_some() {
             return Err(StatisticsThreadError::AlreadyRunning);
@@ -429,21 +498,24 @@ impl StatisticsThread {
         let stop_signal = self.stop_signal.clone();
 
         let handle = thread::Builder::new()
-            .name("Statistics".into())
+            .name("Stat".into())
             .spawn(move || {
                 info!("Statistics thread started");
 
                 logic_profiler.ups.reset();
                 renderer_profiler.fps.reset();
+                eps.reset();
 
                 let mut reset_counter = 0;
                 while !stop_signal.load(Ordering::Relaxed) {
                     renderer_profiler.fps.update();
                     logic_profiler.ups.update();
+                    eps.update();
 
                     if reset_counter % 10 == 0 {
                         logic_profiler.ups.reset();
                         renderer_profiler.fps.reset();
+                        eps.reset();
                     }
                     reset_counter += 1;
 
@@ -464,19 +536,27 @@ impl StatisticsThread {
                     let (_, l_af_avg, _) =
                         logic_profiler.after_frame_sync.get_stat();
 
+                    let (_, eps_avg, _) = eps.get_stat();
+
+                    let objects = shared_data.logic_objects.lock().unwrap();
+                    let num_objects = objects.len();
+                    drop(objects);
+
                     info!(
-                        "FPS: {:.1}/{:.1}/{:.1}, UPS: {:.1}/{:.1}/{:.1} [{:.1} {:.1} {:.1} {:.1} {:.1}][{:.1} {:.1} {:.1}]",
+                        "Obj: {:}, Ev: {:2.0}, FPS: {:.1}/{:.1}/{:.1} [{:.1} {:.1} {:.1} {:.1} {:.1}], UPS: {:.1}/{:.1}/{:.1} [{:.1} {:.1} {:.1}]",
+                        num_objects,
+                        1000.0 / eps_avg,
                         1000.0 / min_fps,
                         1000.0 / fps,
                         1000.0 / max_fps,
-                        1000.0 / min_ups,
-                        1000.0 / ups,
-                        1000.0 / max_ups,
                         r_bf_avg,
                         r_wt_avg,
                         r_gt_avg,
                         r_af_avg,
                         r_co_avg,
+                        1000.0 / min_ups,
+                        1000.0 / ups,
+                        1000.0 / max_ups,
                         l_bf_avg,
                         l_lp_avg,
                         l_af_avg,
