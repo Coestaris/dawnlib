@@ -10,7 +10,7 @@ fn current_ms() -> u64 {
         .as_millis() as u64
 }
 
-fn current_us() -> u64 {
+pub(crate) fn current_us() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()

@@ -1,4 +1,4 @@
-use crate::engine::input::InputEvent;
+use crate::engine::input::Event;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
@@ -20,7 +20,7 @@ pub trait WindowFactory<Win, PlatformError, Graphics>: Send + Sync {
     where
         Self: Sized;
 
-    fn create_window(&self, events_sender: Sender<InputEvent>) -> Result<Win, PlatformError>
+    fn create_window(&self, events_sender: Sender<Event>) -> Result<Win, PlatformError>
     where
         Win: Window<PlatformError, Graphics> + Sized;
 }

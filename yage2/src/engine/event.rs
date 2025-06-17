@@ -1,9 +1,9 @@
 use bitflags::bitflags;
-use std::os::raw::c_uint;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct InputEventKind: u32 {
+    pub struct EventKind: u32 {
+        const UPDATE                = 0b00000000; // No events, just an update tick
         const KEY_PRESS             = 0b00000001;
         const KEY_RELEASE           = 0b00000010;
         const MOUSE_MOVE            = 0b00000100;
@@ -20,7 +20,7 @@ pub enum MouseButton {
     Left,
     Right,
     Middle,
-    Special(u8)
+    Special(u8),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -150,7 +150,8 @@ pub enum KeyCode {
 }
 
 #[derive(Debug, Clone)]
-pub enum InputEvent {
+pub enum Event {
+    Update(f32), // Delta time in milliseconds
     KeyPress(KeyCode),
     KeyRelease(KeyCode),
     MouseMove { x: f32, y: f32 },
@@ -159,15 +160,16 @@ pub enum InputEvent {
     MouseButtonRelease(MouseButton),
 }
 
-impl InputEvent {
-    pub fn kind(&self) -> InputEventKind {
+impl Event {
+    pub fn kind(&self) -> EventKind {
         match self {
-            InputEvent::KeyPress(_) => InputEventKind::KEY_PRESS,
-            InputEvent::KeyRelease(_) => InputEventKind::KEY_RELEASE,
-            InputEvent::MouseMove { .. } => InputEventKind::MOUSE_MOVE,
-            InputEvent::MouseScroll { .. } => InputEventKind::MOUSE_SCROLL,
-            InputEvent::MouseButtonPress(_) => InputEventKind::MOUSE_BUTTON_PRESS,
-            InputEvent::MouseButtonRelease(_) => InputEventKind::MOUSE_BUTTON_RELEASE,
+            Event::Update(_) => EventKind::UPDATE,
+            Event::KeyPress(_) => EventKind::KEY_PRESS,
+            Event::KeyRelease(_) => EventKind::KEY_RELEASE,
+            Event::MouseMove { .. } => EventKind::MOUSE_MOVE,
+            Event::MouseScroll { .. } => EventKind::MOUSE_SCROLL,
+            Event::MouseButtonPress(_) => EventKind::MOUSE_BUTTON_PRESS,
+            Event::MouseButtonRelease(_) => EventKind::MOUSE_BUTTON_RELEASE,
         }
     }
 }

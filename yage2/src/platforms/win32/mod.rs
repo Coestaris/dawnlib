@@ -1,6 +1,6 @@
 use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
 use crate::engine::graphics::Graphics;
-use crate::engine::input::{InputEvent, KeyCode, MouseButton};
+use crate::engine::input::{Event, KeyCode, MouseButton};
 use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
 use ash::vk;
@@ -46,7 +46,7 @@ pub struct Win32Window {
     hwnd: HWND,
     hinstance: HINSTANCE,
     graphics: VulkanGraphics,
-    events_sender: Sender<InputEvent>,
+    events_sender: Sender<Event>,
 }
 
 const CLASS_NAME: &str = "Yage2 Window Class";
@@ -91,7 +91,7 @@ impl WindowFactory<Win32Window, Win32Error, VulkanGraphics> for Win32WindowFacto
         Ok(Win32WindowFactory { config })
     }
 
-    fn create_window(&self, events_sender: Sender<InputEvent>) -> Result<Win32Window, Win32Error> {
+    fn create_window(&self, events_sender: Sender<Event>) -> Result<Win32Window, Win32Error> {
         unsafe {
             debug!("Retrieving the instance handle");
             let hinstance = match GetModuleHandleW(None) {
@@ -209,43 +209,43 @@ impl Window<Win32Error, VulkanGraphics> for Win32Window {
 
             /* Process the message synchronously
              * to make things simpler */
-            let mut event: InputEvent;
+            let mut event: Event;
             match msg.message {
                 WM_KEYDOWN => {
-                    event = InputEvent::KeyPress(winkey_to_code(msg.wParam.0 as u32));
+                    event = Event::KeyPress(winkey_to_code(msg.wParam.0 as u32));
                 }
                 WM_KEYUP => {
-                    event = InputEvent::KeyRelease(winkey_to_code(msg.wParam.0 as u32));
+                    event = Event::KeyRelease(winkey_to_code(msg.wParam.0 as u32));
                 }
                 WM_LBUTTONDOWN => {
-                    event = InputEvent::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
                 }
                 WM_LBUTTONUP => {
-                    event = InputEvent::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
                 }
                 WM_MBUTTONDOWN => {
-                    event = InputEvent::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
                 }
                 WM_MBUTTONUP => {
-                    event = InputEvent::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
                 }
                 WM_MOUSEMOVE => {
                     let x = (msg.lParam.0 as i32 & 0xFFFF) as f32;
                     let y = (msg.lParam.0 >> 16) as i32 as f32;
-                    event = InputEvent::MouseMove { x, y };
+                    event = Event::MouseMove { x, y };
                 }
                 WM_MOUSEWHEEL => {
                     let delta = (msg.wParam.0 as i32 >> 16) as f32 / 120.0; // Convert to standard scroll units
-                    event = InputEvent::MouseScroll {
+                    event = Event::MouseScroll {
                         delta_x: 0.0,
                         delta_y: delta,
                     };
                 }
                 WM_RBUTTONDOWN => {
-                    event = InputEvent::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
                 }
                 WM_RBUTTONUP => {
-                    event = InputEvent::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
                 }
                 _ => {
                     return Ok(res);

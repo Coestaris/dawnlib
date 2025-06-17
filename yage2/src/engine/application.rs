@@ -1,8 +1,7 @@
 use crate::core::sync::Rendezvous;
-use crate::core::time::{PeriodCounter, TickCounter};
-use crate::engine::app_ctx::ApplicationCtx;
-use crate::engine::input::{InputEvent, InputManager};
-use crate::engine::object::{Object, Renderable};
+use crate::core::time::{current_us, PeriodCounter, TickCounter};
+use crate::engine::input::{Event, InputManager};
+use crate::engine::object::{Object, ObjectCtx, ObjectEvent, Renderable};
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
 use log::{debug, info, warn};
 use std::sync::mpsc::{Receiver, Sender};
@@ -53,6 +52,7 @@ enum RendererThreadError<PlatformError> {
 enum LogicThreadError {
     AlreadyRunning,
     ThreadSpawnFailed,
+    TheadPanic,
     ThreadJoinError,
 }
 
@@ -110,7 +110,7 @@ fn start_renderer_thread<Win, PlatformError, Graphics>(
     window_factory: Arc<dyn WindowFactory<Win, PlatformError, Graphics>>,
     before_frame: Arc<Rendezvous>,
     after_frame: Arc<Rendezvous>,
-    events_sender: Sender<InputEvent>,
+    events_sender: Sender<Event>,
     shared_data: Arc<SharedData>,
     profiler: Arc<RendererProfiler>,
 ) -> Result<
@@ -210,7 +210,7 @@ where
 fn start_logic_thread(
     before_frame: Arc<Rendezvous>,
     after_frame: Arc<Rendezvous>,
-    events_receiver: Receiver<InputEvent>,
+    events_receiver: Receiver<Event>,
     shared_data: Arc<SharedData>,
     eps: Arc<TickCounter>,
     profiler: Arc<LogicProfiler>,
@@ -218,53 +218,89 @@ fn start_logic_thread(
     Ok(thread::Builder::new()
         .name("Logic".into())
         .spawn(move || {
-            info!("Logic thread started");
+            std::panic::catch_unwind(|| {
+                info!("Logic thread started");
 
-            let mut ctx = ApplicationCtx {
-                input_manager: InputManager::new(events_receiver, eps),
-            };
+                let mut input_manager = InputManager::new(events_receiver, eps);
+                let mut prev_tick = current_us() as f32 / 1000.0;
+                while !shared_data.stop_signal.load(Ordering::Relaxed) {
+                    profile!(profiler.ups.tick());
 
-            while !shared_data.stop_signal.load(Ordering::Relaxed) {
-                profile!(profiler.ups.tick());
+                    /* 1. Synchronize with the renderer thread */
+                    profile!(profiler.before_frame_sync.start());
+                    if !before_frame.wait() {
+                        warn!("Thread pre-frame synchronization failed, stopping logic thread");
+                        break;
+                    }
+                    profile!(profiler.before_frame_sync.end());
 
-                /* 1. Synchronize with the renderer thread */
-                profile!(profiler.before_frame_sync.start());
-                if !before_frame.wait() {
-                    warn!("Thread pre-frame synchronization failed, stopping logic thread");
-                    break;
+                    /* 2. Process input, update game logic, etc. */
+                    profile!(profiler.logic_processing.start());
+                    let mut objects = shared_data.logic_objects.lock().unwrap();
+
+                    /* Process input events */
+                    let mut events = input_manager.poll_events();
+                    let time_delta = current_us() as f32 / 1000.0 - prev_tick;
+                    events.push(Event::Update(time_delta)); // Add an update event to the end of the queue
+                    let object_ctx = ObjectCtx {
+                        input_manager: &input_manager,
+                    };
+                    let mut new_objects: Vec<usize> = Vec::new();
+                    let mut dead_objects = Vec::new();
+                    for event in events.iter() {
+                        input_manager.on_event(event);
+                        let mut index = 0;
+                        for object in objects.iter_mut() {
+                            if let Some(object_event) = object.on_event(&object_ctx, event) {
+                                match object_event {
+                                    ObjectEvent::Die => {
+                                        dead_objects.push(index);
+                                    }
+                                    ObjectEvent::SpawnObjects(mut objs) => {}
+                                    ObjectEvent::SpawnObject(obj) => {}
+                                    ObjectEvent::QuitApplication => {
+                                        info!("Received quit application event, stopping logic thread");
+                                        shared_data.stop_signal.store(true, Ordering::Relaxed);
+                                        break;
+                                    }
+                                }
+                            }
+
+                            index += 1;
+                        }
+
+                        /* Process dead and new objects */
+                        for index in dead_objects.iter().rev() {
+                            objects.remove(*index);
+                        }
+                        dead_objects.clear();
+                    }
+
+                    /* Make sure that mutex is unlocked
+                     * before the next synchronization point */
+                    drop(objects);
+                    profile!(profiler.logic_processing.end());
+
+                    /* 3. Synchronize with the renderer thread */
+                    profile!(profiler.after_frame_sync.start());
+                    if !after_frame.wait() {
+                        warn!("Thread post-frame synchronization failed, stopping logic thread");
+                        break;
+                    }
+                    profile!(profiler.after_frame_sync.end());
                 }
-                profile!(profiler.before_frame_sync.end());
 
-                /* 2. Process input, update game logic, etc. */
-                profile!(profiler.logic_processing.start());
-                let mut objects = shared_data.logic_objects.lock().unwrap();
-
-                /* Process input events */
-                ctx.input_manager.poll_events();
-                ctx.input_manager.update();
-                ctx.input_manager.dispatch_events(&ctx, &mut objects);
-
-                /* Call on_tick for each game object */
-                for object in objects.iter_mut() {
-                    object.on_tick(&ctx);
+                info!("Logic thread stopping gracefully");
+                Ok(())
+            }).map_err(
+                |_| {
+                    warn!("Logic thread panicked, stopping thread");
+                    shared_data.stop_signal.store(true, Ordering::Relaxed);
+                    before_frame.unlock();
+                    after_frame.unlock();
+                    LogicThreadError::TheadPanic
                 }
-
-                /* Make sure that mutex is unlocked
-                 * before the next synchronization point */
-                drop(objects);
-                profile!(profiler.logic_processing.end());
-
-                /* 3. Synchronize with the renderer thread */
-                profile!(profiler.after_frame_sync.start());
-                if !after_frame.wait() {
-                    warn!("Thread post-frame synchronization failed, stopping logic thread");
-                    break;
-                }
-                profile!(profiler.after_frame_sync.end());
-            }
-
-            info!("Logic thread stopping gracefully");
-            Ok(())
+            )?
         })
         .map_err(|_| LogicThreadError::ThreadSpawnFailed)?)
 }
@@ -394,8 +430,7 @@ pub trait Application<PlatformError, Graphics, Win> {
         let eps = Arc::new(TickCounter::new(1.0));
 
         /* Create the application context */
-        let (sender, receiver): (Sender<InputEvent>, Receiver<InputEvent>) =
-            std::sync::mpsc::channel();
+        let (sender, receiver): (Sender<Event>, Receiver<Event>) = std::sync::mpsc::channel();
 
         /* Create the shared data */
         let shared_data = Arc::new(SharedData {

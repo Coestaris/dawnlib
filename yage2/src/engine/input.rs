@@ -1,13 +1,10 @@
 use crate::core::time::TickCounter;
-use crate::engine::app_ctx::ApplicationCtx;
-pub(crate) use crate::engine::event::{InputEvent, KeyCode, MouseButton};
-use crate::engine::object::Object;
-use std::ops::Deref;
+pub(crate) use crate::engine::event::{Event, KeyCode, MouseButton};
+use std::sync::mpsc::Receiver;
 use std::sync::Arc;
-use std::sync::mpsc::{channel, Receiver};
 
 pub struct InputManager {
-    receiver: Receiver<InputEvent>,
+    receiver: Receiver<Event>,
     eps: Arc<TickCounter>,
 
     /* Cache for the current input state.
@@ -16,63 +13,42 @@ pub struct InputManager {
     buttons_state: [bool; 3], // Assuming 3 mouse buttons: left, right, middle
     keys_state: [bool; 256],  // Assuming 256 keys for simplicity
     mouse_position: (f32, f32), // Current mouse position
-    events: Vec<InputEvent>,  // Store events for processing
 }
 
 impl InputManager {
-    pub(crate) fn new(receiver: Receiver<InputEvent>, eps: Arc<TickCounter>) -> Self {
+    pub(crate) fn new(receiver: Receiver<Event>, eps: Arc<TickCounter>) -> Self {
         InputManager {
             receiver,
             eps,
             buttons_state: [false; 3], // Initialize all mouse buttons to not pressed
             keys_state: [false; 256],  // Initialize all keys to not pressed
             mouse_position: (0.0, 0.0), // Initialize mouse position to (0, 0)
-            events: Vec::new(),        // Initialize the event storage
         }
     }
 
-    pub(crate) fn poll_events(&mut self) {
-        self.events.clear();
+    pub(crate) fn poll_events(&mut self) -> Vec<Event> {
+        let mut events: Vec<Event> = Vec::new();
 
         /* Poll the receiver for new events and return them.
          * This method can be called to retrieve events without blocking. */
         while let Ok(event) = self.receiver.try_recv() {
-            self.events.push(event);
+            events.push(event);
 
             #[cfg(debug_assertions)]
             self.eps.tick();
         }
+
+        events
     }
 
-    pub(crate) fn dispatch_events(
-        &self,
-        ctx: &ApplicationCtx,
-        game_objects: &mut [Box<dyn Object + Send + Sync>],
-    ) {
-        /* Get all input events from the receiver and process them.  */
-        for event in self.events.iter() {
-            /* Dispatch the event to all game objects
-             * that are interested in it.
-             * TODO: Iterate over game objects in a more efficient way */
-            for game_object in game_objects.iter_mut() {
-                if game_object.events_mask(ctx).contains(event.kind()) {
-                    game_object.on_event(ctx, &event);
-                }
-            }
-        }
-    }
-
-    /* Update the input state based on the event */
-    pub(crate) fn update(&mut self) {
-        for event in self.events.iter() {
-            match event {
-                InputEvent::KeyPress(key) => {}
-                InputEvent::KeyRelease(key) => {}
-                InputEvent::MouseMove { x, y } => {}
-                InputEvent::MouseButtonPress(button) => {}
-                InputEvent::MouseButtonRelease(button) => {}
-                _ => {}
-            }
+    pub(crate) fn on_event(&self, event: &Event) {
+        match event {
+            Event::KeyPress(key) => {}
+            Event::KeyRelease(key) => {}
+            Event::MouseMove { x, y } => {}
+            Event::MouseButtonPress(button) => {}
+            Event::MouseButtonRelease(button) => {}
+            _ => {}
         }
     }
 

@@ -1,5 +1,5 @@
 use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
-use crate::engine::event::{InputEvent, KeyCode, MouseButton};
+use crate::engine::event::{Event, KeyCode, MouseButton};
 use crate::engine::graphics::Graphics;
 use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
@@ -71,7 +71,7 @@ struct X11WindowFactory {
 fn process_events_sync(
     display: *mut Display,
     close_atom: Atom,
-    events_sender: &Sender<InputEvent>,
+    events_sender: &Sender<Event>,
 ) -> Result<bool, X11Error> {
     let event = unsafe {
         let mut event: XEvent = std::mem::zeroed();
@@ -99,7 +99,7 @@ fn process_events_sync(
             let keycode = unsafe { event.key.keycode };
             let keystate = unsafe { event.key.state };
             let key = input::convert_key(display, keycode, keystate);
-            if let Err(e) = events_sender.send(InputEvent::KeyPress(key)) {
+            if let Err(e) = events_sender.send(Event::KeyPress(key)) {
                 debug!("Failed to send KeyPress event: {:?}", e);
             }
         }
@@ -108,7 +108,7 @@ fn process_events_sync(
             let keycode = unsafe { event.key.keycode };
             let keystate = unsafe { event.key.state };
             let key = input::convert_key(display, keycode, keystate);
-            if let Err(e) = events_sender.send(InputEvent::KeyRelease(key)) {
+            if let Err(e) = events_sender.send(Event::KeyRelease(key)) {
                 debug!("Failed to send KeyRelease event: {:?}", e);
             }
         }
@@ -116,7 +116,7 @@ fn process_events_sync(
         ButtonPress => {
             let button = unsafe { event.button.button };
             let mouse_button = input::convert_mouse(button);
-            if let Err(e) = events_sender.send(InputEvent::MouseButtonPress(mouse_button)) {
+            if let Err(e) = events_sender.send(Event::MouseButtonPress(mouse_button)) {
                 debug!("Failed to send MouseButtonPress event: {:?}", e);
             }
         }
@@ -124,7 +124,7 @@ fn process_events_sync(
         ButtonRelease => {
             let button = unsafe { event.button.button };
             let mouse_button = input::convert_mouse(button);
-            if let Err(e) = events_sender.send(InputEvent::MouseButtonRelease(mouse_button)) {
+            if let Err(e) = events_sender.send(Event::MouseButtonRelease(mouse_button)) {
                 debug!("Failed to send MouseButtonRelease event: {:?}", e);
             }
         }
@@ -132,7 +132,7 @@ fn process_events_sync(
         MotionNotify => {
             let x = unsafe { event.motion.x };
             let y = unsafe { event.motion.y };
-            if let Err(e) = events_sender.send(InputEvent::MouseMove {
+            if let Err(e) = events_sender.send(Event::MouseMove {
                 x: x as f32,
                 y: y as f32,
             }) {
@@ -157,7 +157,7 @@ impl WindowFactory<X11Window, X11Error, VulkanGraphics> for X11WindowFactory {
         Ok(X11WindowFactory { config })
     }
 
-    fn create_window(&self, events_sender: Sender<InputEvent>) -> Result<X11Window, X11Error> {
+    fn create_window(&self, events_sender: Sender<Event>) -> Result<X11Window, X11Error> {
         unsafe {
             debug!("Opening X11 display");
             let display = XOpenDisplay(std::ptr::null());
