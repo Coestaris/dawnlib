@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use crate::engine::input::InputManager;
 
 pub struct ApplicationCtx {
@@ -12,7 +11,7 @@ impl ApplicationCtx {
         // For now, we will just print a message.
         println!("Closing Application Context");
     }
-    
+
     fn add_object<T: 'static + Send + Sync>(&mut self, object: T) {
         // Logic to add an object to the application context
         // This could involve storing the object in a collection for later use

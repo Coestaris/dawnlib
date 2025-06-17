@@ -1,4 +1,4 @@
-use std::sync::atomic::Ordering::SeqCst;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -47,41 +47,37 @@ impl TickCounter {
     }
 
     pub fn tick(&self) {
-        self.ticks.fetch_add(1, SeqCst);
+        self.ticks.fetch_add(1, Relaxed);
     }
 
     pub fn reset(&self) {
-        // self.start.store(current_us(), SeqCst);
-        // self.ticks.store(0, SeqCst);
+        // self.start.store(current_us(), Relaxed);
+        // self.ticks.store(0, Relaxed);
         self.min_average_us
-            .store(self.average_us.load(SeqCst), SeqCst);
+            .store(self.average_us.load(Relaxed), Relaxed);
         self.max_average_us
-            .store(self.average_us.load(SeqCst), SeqCst);
+            .store(self.average_us.load(Relaxed), Relaxed);
     }
 
     pub fn update(&self) {
-        let start_us = self.start.load(SeqCst);
+        let start_us = self.start.load(Relaxed);
         let end_us = current_us();
-        let ticks = self.ticks.load(SeqCst);
-        let start_ticks = self.start_ticks.load(SeqCst);
+        let ticks = self.ticks.load(Relaxed);
+        let start_ticks = self.start_ticks.load(Relaxed);
 
         let elapsed_ticks = ticks.saturating_sub(start_ticks);
 
         /* Update the average time per tick */
-        let average = if  elapsed_ticks == 0 {
-            u64::MAX
-        } else {
-            end_us.saturating_sub(start_us) / elapsed_ticks as u64
-        };
+        let average = (1_000_000_000 * elapsed_ticks as u64) / end_us.saturating_sub(start_us);
 
         /* Smooth the average */
-        let mut min_average = self.min_average_us.load(SeqCst);
-        let mut average_us = self.average_us.load(SeqCst);
-        let mut max_average = self.max_average_us.load(SeqCst);
+        let mut min_average = self.min_average_us.load(Relaxed);
+        let mut average_us = self.average_us.load(Relaxed);
+        let mut max_average = self.max_average_us.load(Relaxed);
 
         average_us = (average as f32 * self.smooth_factor
             + average_us as f32 * (1.0 - self.smooth_factor)) as u64;
-        
+
         if average < min_average {
             min_average = average;
         }
@@ -89,19 +85,19 @@ impl TickCounter {
             max_average = average;
         }
 
-        self.min_average_us.store(min_average, SeqCst);
-        self.average_us.store(average_us, SeqCst);
-        self.max_average_us.store(max_average, SeqCst);
-        self.start_ticks.store(ticks, SeqCst);
-        self.start.store(end_us, SeqCst);
+        self.min_average_us.store(min_average, Relaxed);
+        self.average_us.store(average_us, Relaxed);
+        self.max_average_us.store(max_average, Relaxed);
+        self.start_ticks.store(ticks, Relaxed);
+        self.start.store(end_us, Relaxed);
     }
 
     /* In milliseconds */
     pub fn get_stat(&self) -> (f32, f32, f32) {
         let (min_average, average, max_average) = (
-            self.min_average_us.load(SeqCst),
-            self.average_us.load(SeqCst),
-            self.max_average_us.load(SeqCst),
+            self.min_average_us.load(Relaxed),
+            self.average_us.load(Relaxed),
+            self.max_average_us.load(Relaxed),
         );
 
         (
@@ -136,18 +132,18 @@ impl PeriodCounter {
     }
 
     pub fn start(&self) {
-        self.start_us.store(current_us(), SeqCst);
+        self.start_us.store(current_us(), Relaxed);
     }
 
     pub fn end(&self) {
-        let start_us = self.start_us.load(SeqCst);
+        let start_us = self.start_us.load(Relaxed);
         let end_us = current_us();
         let elapsed_us = end_us.saturating_sub(start_us);
 
         let (mut min, mut current, mut max) = (
-            self.min_us.load(SeqCst),
-            self.current_us.load(SeqCst),
-            self.max_us.load(SeqCst),
+            self.min_us.load(Relaxed),
+            self.current_us.load(Relaxed),
+            self.max_us.load(Relaxed),
         );
 
         // Update the min, average, and max averages
@@ -159,22 +155,22 @@ impl PeriodCounter {
             max = elapsed_us;
         }
 
-        self.min_us.store(min, SeqCst);
-        self.current_us.store(current, SeqCst);
-        self.max_us.store(max, SeqCst);
+        self.min_us.store(min, Relaxed);
+        self.current_us.store(current, Relaxed);
+        self.max_us.store(max, Relaxed);
     }
 
     pub fn reset(&self) {
-        self.start_us.store(self.current_us.load(SeqCst), SeqCst);
-        self.min_us.store(self.current_us.load(SeqCst), SeqCst);
+        self.start_us.store(self.current_us.load(Relaxed), Relaxed);
+        self.min_us.store(self.current_us.load(Relaxed), Relaxed);
     }
 
     /* In milliseconds */
     pub fn get_stat(&self) -> (f32, f32, f32) {
         // Return the statistics for the period counter
-        let min = self.min_us.load(SeqCst);
-        let current = self.current_us.load(SeqCst);
-        let max = self.max_us.load(SeqCst);
+        let min = self.min_us.load(Relaxed);
+        let current = self.current_us.load(Relaxed);
+        let max = self.max_us.load(Relaxed);
 
         (
             min as f32 / 1000.0,

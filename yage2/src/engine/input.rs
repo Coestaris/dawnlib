@@ -82,10 +82,12 @@ impl InputManager {
     }
 
     pub fn key_pressed(&self, key: KeyCode) -> bool {
-        self.keys_state[key as usize]
+        // self.keys_state[key as usize]
+        false
     }
 
     pub fn mouse_button_pressed(&self, button: MouseButton) -> bool {
-        self.buttons_state[button as usize]
+        // self.buttons_state[button as usize]
+        false
     }
 }

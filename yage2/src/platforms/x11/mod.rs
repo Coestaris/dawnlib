@@ -1,18 +1,21 @@
 use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
+use crate::engine::event::{InputEvent, KeyCode, MouseButton};
 use crate::engine::graphics::Graphics;
 use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
 use ash::vk;
 use log::{debug, info};
 use std::ffi::c_char;
+use std::os::raw::{c_uchar, c_uint};
 use std::ptr::addr_of_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread;
-use x11::xlib::{
-    CurrentTime, Display, XAutoRepeatOff, XClearWindow, XCloseDisplay, XDefaultScreen, XEvent,
-    XFlush, XMapRaised, XOpenDisplay, XSendEvent, XStoreName, XSync,
-};
+use x11::xlib;
+use x11::xlib::{Atom, ButtonPress, ButtonPressMask, ButtonRelease, ButtonReleaseMask, CWEventMask, ClientMessage, CopyFromParent, CurrentTime, Display, Expose, ExposureMask, InputOutput, KeyPress, KeyPressMask, KeyRelease, KeyReleaseMask, MotionNotify, NoEventMask, PointerMotionMask, ShiftMask, XAutoRepeatOff, XClearWindow, XCloseDisplay, XCreateWindow, XDefaultScreen, XDestroyWindow, XEvent, XFlush, XInternAtom, XKeycodeToKeysym, XMapRaised, XNextEvent, XOpenDisplay, XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes, XStoreName, XSync, XkbKeycodeToKeysym};
+
+mod input;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -28,10 +31,10 @@ pub enum X11Error {
 
 pub struct X11Window {
     display: *mut Display,
-    window: x11::xlib::Window,
+    window: xlib::Window,
     graphics: VulkanGraphics,
 
-    delete_message: x11::xlib::Atom,
+    delete_message: Atom,
 
     /* A signal to stop the event handling thread */
     stop_signal: Arc<AtomicBool>,
@@ -67,16 +70,17 @@ struct X11WindowFactory {
 
 fn process_events_sync(
     display: *mut Display,
-    close_atom: x11::xlib::Atom,
+    close_atom: Atom,
+    events_sender: &Sender<InputEvent>,
 ) -> Result<bool, X11Error> {
     let event = unsafe {
-        let mut event: x11::xlib::XEvent = std::mem::zeroed();
-        x11::xlib::XNextEvent(display, &mut event);
+        let mut event: XEvent = std::mem::zeroed();
+        XNextEvent(display, &mut event);
         event
     };
 
     match event.get_type() {
-        x11::xlib::ClientMessage => unsafe {
+        ClientMessage => unsafe {
             debug!("Client message event received");
             let ptr = event.client_message.data.as_longs()[0];
             if ptr == close_atom as i64 {
@@ -87,14 +91,55 @@ fn process_events_sync(
             }
         },
 
-        x11::xlib::Expose => {
-            debug!("Expose event received");
+        Expose => {
             // Handle expose event (e.g., redraw the window)
         }
-        x11::xlib::KeyPress => {
-            debug!("Key press event received");
-            // Handle key press event
+
+        KeyPress => {
+            let keycode = unsafe { event.key.keycode };
+            let keystate = unsafe { event.key.state };
+            let key = input::convert_key(display, keycode, keystate);
+            if let Err(e) = events_sender.send(InputEvent::KeyPress(key)) {
+                debug!("Failed to send KeyPress event: {:?}", e);
+            }
         }
+
+        KeyRelease => {
+            let keycode = unsafe { event.key.keycode };
+            let keystate = unsafe { event.key.state };
+            let key = input::convert_key(display, keycode, keystate);
+            if let Err(e) = events_sender.send(InputEvent::KeyRelease(key)) {
+                debug!("Failed to send KeyRelease event: {:?}", e);
+            }
+        }
+
+        ButtonPress => {
+            let button = unsafe { event.button.button };
+            let mouse_button = input::convert_mouse(button);
+            if let Err(e) = events_sender.send(InputEvent::MouseButtonPress(mouse_button)) {
+                debug!("Failed to send MouseButtonPress event: {:?}", e);
+            }
+        }
+
+        ButtonRelease => {
+            let button = unsafe { event.button.button };
+            let mouse_button = input::convert_mouse(button);
+            if let Err(e) = events_sender.send(InputEvent::MouseButtonRelease(mouse_button)) {
+                debug!("Failed to send MouseButtonRelease event: {:?}", e);
+            }
+        }
+
+        MotionNotify => {
+            let x = unsafe { event.motion.x };
+            let y = unsafe { event.motion.y };
+            if let Err(e) = events_sender.send(InputEvent::MouseMove {
+                x: x as f32,
+                y: y as f32,
+            }) {
+                debug!("Failed to send MouseMove event: {:?}", e);
+            }
+        }
+
         _ => {
             debug!("Unhandled event type: {}", event.get_type());
         }
@@ -112,7 +157,7 @@ impl WindowFactory<X11Window, X11Error, VulkanGraphics> for X11WindowFactory {
         Ok(X11WindowFactory { config })
     }
 
-    fn create_window(&self) -> Result<X11Window, X11Error> {
+    fn create_window(&self, events_sender: Sender<InputEvent>) -> Result<X11Window, X11Error> {
         unsafe {
             debug!("Opening X11 display");
             let display = XOpenDisplay(std::ptr::null());
@@ -122,7 +167,7 @@ impl WindowFactory<X11Window, X11Error, VulkanGraphics> for X11WindowFactory {
 
             debug!("Creating X11 window");
             let screen_id = XDefaultScreen(display);
-            let mut window_attributes = x11::xlib::XSetWindowAttributes {
+            let mut window_attributes = XSetWindowAttributes {
                 background_pixmap: 0,
                 background_pixel: 0,
                 border_pixmap: 0,
@@ -133,24 +178,29 @@ impl WindowFactory<X11Window, X11Error, VulkanGraphics> for X11WindowFactory {
                 backing_planes: 0,
                 backing_pixel: 0,
                 save_under: 0,
-                event_mask: x11::xlib::ExposureMask | x11::xlib::KeyPressMask,
+                event_mask: ExposureMask
+                    | KeyPressMask
+                    | KeyReleaseMask
+                    | ButtonPressMask
+                    | ButtonReleaseMask
+                    | PointerMotionMask,
                 do_not_propagate_mask: 0,
                 override_redirect: 0,
                 colormap: 0,
                 cursor: 0,
             };
-            let window = x11::xlib::XCreateWindow(
+            let window = XCreateWindow(
                 display,
-                x11::xlib::XRootWindow(display, screen_id),
+                XRootWindow(display, screen_id),
                 0,
                 0,
                 self.config.width,
                 self.config.height,
                 0,
-                x11::xlib::CopyFromParent as i32,
-                x11::xlib::InputOutput as u32,
-                x11::xlib::CopyFromParent as *mut _,
-                x11::xlib::CWEventMask,
+                CopyFromParent as i32,
+                InputOutput as u32,
+                CopyFromParent as *mut _,
+                CWEventMask,
                 addr_of_mut!(window_attributes),
             );
             if window == 0 {
@@ -186,8 +236,8 @@ impl WindowFactory<X11Window, X11Error, VulkanGraphics> for X11WindowFactory {
             .map_err(X11Error::GraphicsCreateError)?;
 
             let delete_message =
-                x11::xlib::XInternAtom(display, b"WM_DELETE_WINDOW\0".as_ptr() as *const c_char, 0);
-            x11::xlib::XSetWMProtocols(display, window, &delete_message as *const _ as *mut _, 1);
+                XInternAtom(display, b"WM_DELETE_WINDOW\0".as_ptr() as *const c_char, 0);
+            XSetWMProtocols(display, window, &delete_message as *const _ as *mut _, 1);
 
             let stop_signal = Arc::new(AtomicBool::new(false));
 
@@ -198,8 +248,9 @@ impl WindowFactory<X11Window, X11Error, VulkanGraphics> for X11WindowFactory {
                 .spawn(move || {
                     debug!("Starting X11 events thread");
                     let display = &mut *(display_ptr as *mut Display);
+                    let queue = events_sender.clone();
                     while !signal_stop.load(Ordering::Relaxed) {
-                        match process_events_sync(display, delete_message) {
+                        match process_events_sync(display, delete_message, &queue) {
                             Ok(should_continue) => {
                                 if !should_continue {
                                     debug!("Stopping X11 events thread");
@@ -239,7 +290,7 @@ impl Drop for X11Window {
         debug!("Dropping X11Window");
         unsafe {
             debug!("Destroying X11 window");
-            x11::xlib::XDestroyWindow(self.display, self.window);
+            XDestroyWindow(self.display, self.window);
 
             if !self.display.is_null() {
                 debug!("Closing X11 display");
@@ -271,13 +322,10 @@ impl Window<X11Error, VulkanGraphics> for X11Window {
             /* Send event to stop the event handling thread */
             let event: XEvent = unsafe {
                 let mut event: XEvent = std::mem::zeroed();
-                event.type_ = x11::xlib::ClientMessage;
+                event.type_ = ClientMessage;
                 event.client_message.window = self.window;
-                event.client_message.message_type = x11::xlib::XInternAtom(
-                    self.display,
-                    b"WM_PROTOCOLS\0".as_ptr() as *const c_char,
-                    1,
-                );
+                event.client_message.message_type =
+                    XInternAtom(self.display, b"WM_PROTOCOLS\0".as_ptr() as *const c_char, 1);
                 event.client_message.format = 32;
                 event
                     .client_message
@@ -292,7 +340,7 @@ impl Window<X11Error, VulkanGraphics> for X11Window {
                     self.display,
                     self.window,
                     0, // False for no propagation
-                    x11::xlib::NoEventMask,
+                    NoEventMask,
                     &event as *const XEvent as *mut XEvent,
                 );
                 XSync(self.display, 0);
@@ -301,7 +349,9 @@ impl Window<X11Error, VulkanGraphics> for X11Window {
 
             /* Wait for the events thread to finish */
             debug!("Waiting for X11 events thread to finish");
-            thread.join().map_err(|_| X11Error::JoinEventsThreadError)??;
+            thread
+                .join()
+                .map_err(|_| X11Error::JoinEventsThreadError)??;
         }
 
         Ok(())

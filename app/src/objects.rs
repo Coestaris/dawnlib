@@ -12,6 +12,6 @@ impl Object for EventListener
     }
 
     fn on_event(&mut self, _: &ApplicationCtx, event: &InputEvent) {
-        // info!("EventListener received event: {:?}", event);
+        info!("EventListener received event: {:?}", event);
     }
 }
