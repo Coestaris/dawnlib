@@ -1,6 +1,6 @@
 use crate::engine::vulkan::VulkanGraphicsError;
 use ash::{vk, Instance};
-use log::{debug, info, trace};
+use log::{debug, trace};
 use std::ffi::CStr;
 
 pub unsafe fn get_physical_device(

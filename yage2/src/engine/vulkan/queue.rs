@@ -1,7 +1,7 @@
 use crate::engine::vulkan::cfg::{get_required_device_extensions, get_wanted_device_extensions};
 use crate::engine::vulkan::{VulkanGraphicsError, VulkanGraphicsInitArgs};
 use ash::{vk, Instance};
-use log::{debug, info, trace, warn};
+use log::{debug, trace, warn};
 use std::ffi::{c_char, CStr};
 
 unsafe fn get_supported_device_extensions(

@@ -3,14 +3,16 @@ use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-fn current_ms() -> u64 {
+#[allow(dead_code)]
+pub fn current_ms() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
 }
 
-pub(crate) fn current_us() -> u64 {
+#[allow(dead_code)]
+pub fn current_us() -> u64 {
     SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default()
@@ -46,8 +48,8 @@ impl TickCounter {
         }
     }
 
-    pub fn tick(&self) {
-        self.ticks.fetch_add(1, Relaxed);
+    pub fn tick(&self, amount: u32) {
+        self.ticks.fetch_add(amount, Relaxed);
     }
 
     pub fn reset(&self) {
@@ -158,11 +160,6 @@ impl PeriodCounter {
         self.min_us.store(min, Relaxed);
         self.current_us.store(current, Relaxed);
         self.max_us.store(max, Relaxed);
-    }
-
-    pub fn reset(&self) {
-        self.start_us.store(self.current_us.load(Relaxed), Relaxed);
-        self.min_us.store(self.current_us.load(Relaxed), Relaxed);
     }
 
     /* In milliseconds */

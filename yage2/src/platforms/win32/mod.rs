@@ -1,6 +1,8 @@
+mod input;
+
 use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
 use crate::engine::graphics::Graphics;
-use crate::engine::input::{Event, KeyCode, MouseButton};
+use crate::engine::input::{Event};
 use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
 use ash::vk;
@@ -15,6 +17,7 @@ use windows::Win32::Foundation::{
     GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WIN32_ERROR, WPARAM,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcA, DestroyWindow, DispatchMessageA, GetMessageA, PostQuitMessage,
     RegisterClassW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, WINDOW_EX_STYLE, WM_DESTROY,
@@ -22,6 +25,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     WS_VISIBLE,
 };
+use crate::platforms::win32::input::{convert_key, convert_mouse_button};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -42,6 +46,7 @@ pub enum Win32Error {
     VulkanUpdateSurfaceError(VulkanGraphicsError),
 }
 
+#[allow(dead_code)]
 pub struct Win32Window {
     hwnd: HWND,
     hinstance: HINSTANCE,
@@ -53,10 +58,6 @@ const CLASS_NAME: &str = "Yage2 Window Class";
 
 pub struct Win32Application {
     window_factory: Win32WindowFactory,
-}
-
-enum Message {
-    DestroyWindow,
 }
 
 impl Application<Win32Error, VulkanGraphics, Win32Window> for Win32Application {
@@ -179,24 +180,6 @@ fn get_last_error() -> WIN32_ERROR {
  */
 static DESTROYED: AtomicBool = AtomicBool::new(false);
 
-fn winkey_to_code(key: u32) -> KeyCode {
-    match key {
-        0x41 => KeyCode::A,
-        0x42 => KeyCode::B,
-        0x43 => KeyCode::C,
-        _ => KeyCode::A, // Default to A for unsupported keys
-    }
-}
-
-fn winbutton_to_code(button: u32) -> MouseButton {
-    match button {
-        0x01 => MouseButton::Left,
-        0x02 => MouseButton::Right,
-        0x04 => MouseButton::Middle,
-        _ => MouseButton::Left, // Default to Left for unsupported buttons
-    }
-}
-
 impl Window<Win32Error, VulkanGraphics> for Win32Window {
     fn tick(&mut self) -> Result<bool, Win32Error> {
         let res = !DESTROYED.load(std::sync::atomic::Ordering::Relaxed);
@@ -209,25 +192,25 @@ impl Window<Win32Error, VulkanGraphics> for Win32Window {
 
             /* Process the message synchronously
              * to make things simpler */
-            let mut event: Event;
+            let event: Event;
             match msg.message {
                 WM_KEYDOWN => {
-                    event = Event::KeyPress(winkey_to_code(msg.wParam.0 as u32));
+                    event = Event::KeyPress(convert_key(VIRTUAL_KEY(msg.wParam.0 as u16)));
                 }
                 WM_KEYUP => {
-                    event = Event::KeyRelease(winkey_to_code(msg.wParam.0 as u32));
+                    event = Event::KeyRelease(convert_key(VIRTUAL_KEY(msg.wParam.0 as u16)));
                 }
                 WM_LBUTTONDOWN => {
-                    event = Event::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 WM_LBUTTONUP => {
-                    event = Event::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 WM_MBUTTONDOWN => {
-                    event = Event::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 WM_MBUTTONUP => {
-                    event = Event::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 WM_MOUSEMOVE => {
                     let x = (msg.lParam.0 as i32 & 0xFFFF) as f32;
@@ -242,10 +225,10 @@ impl Window<Win32Error, VulkanGraphics> for Win32Window {
                     };
                 }
                 WM_RBUTTONDOWN => {
-                    event = Event::MouseButtonPress(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 WM_RBUTTONUP => {
-                    event = Event::MouseButtonRelease(winbutton_to_code(msg.wParam.0 as u32));
+                    event = Event::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 _ => {
                     return Ok(res);
@@ -263,7 +246,8 @@ impl Window<Win32Error, VulkanGraphics> for Win32Window {
     fn kill(&mut self) -> Result<(), Win32Error> {
         unsafe {
             if !self.hwnd.is_invalid() {
-                DestroyWindow(self.hwnd);
+                // Ignore the result, as we are just cleaning up
+                let _ = DestroyWindow(self.hwnd);
             }
         }
         Ok(())

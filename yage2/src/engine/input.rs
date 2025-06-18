@@ -1,5 +1,6 @@
 use crate::core::time::TickCounter;
 pub(crate) use crate::engine::event::{Event, KeyCode, MouseButton};
+use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
@@ -7,12 +8,12 @@ pub struct InputManager {
     receiver: Receiver<Event>,
     eps: Arc<TickCounter>,
 
-    /* Cache for the current input state.
-     * This is a simple representation; in a real application, you might want to
-     * use more sophisticated structures or libraries for input handling. */
-    buttons_state: [bool; 3], // Assuming 3 mouse buttons: left, right, middle
-    keys_state: [bool; 256],  // Assuming 256 keys for simplicity
-    mouse_position: (f32, f32), // Current mouse position
+    // Maps mouse buttons to their pressed state
+    buttons_state: HashMap<MouseButton, bool>,
+    // Maps keys to their pressed state
+    keys_state: HashMap<KeyCode, bool>,
+    // Current mouse position
+    mouse_position: (f32, f32),
 }
 
 impl InputManager {
@@ -20,8 +21,8 @@ impl InputManager {
         InputManager {
             receiver,
             eps,
-            buttons_state: [false; 3], // Initialize all mouse buttons to not pressed
-            keys_state: [false; 256],  // Initialize all keys to not pressed
+            buttons_state: HashMap::new(),
+            keys_state: HashMap::new(),
             mouse_position: (0.0, 0.0), // Initialize mouse position to (0, 0)
         }
     }
@@ -33,21 +34,30 @@ impl InputManager {
          * This method can be called to retrieve events without blocking. */
         while let Ok(event) = self.receiver.try_recv() {
             events.push(event);
-
-            #[cfg(debug_assertions)]
-            self.eps.tick();
         }
 
+        #[cfg(debug_assertions)]
+        self.eps.tick(events.len() as u32);
         events
     }
 
-    pub(crate) fn on_event(&self, event: &Event) {
+    pub(crate) fn on_event(&mut self, event: &Event) {
         match event {
-            Event::KeyPress(key) => {}
-            Event::KeyRelease(key) => {}
-            Event::MouseMove { x, y } => {}
-            Event::MouseButtonPress(button) => {}
-            Event::MouseButtonRelease(button) => {}
+            Event::KeyPress(key) => {
+                self.keys_state.insert(*key, true);
+            }
+            Event::KeyRelease(key) => {
+                self.keys_state.insert(*key, false);
+            }
+            Event::MouseMove { x, y } => {
+                self.mouse_position = (*x, *y);
+            }
+            Event::MouseButtonPress(button) => {
+                self.buttons_state.insert(*button, true);
+            }
+            Event::MouseButtonRelease(button) => {
+                self.buttons_state.insert(*button, false);
+            }
             _ => {}
         }
     }
@@ -58,12 +68,16 @@ impl InputManager {
     }
 
     pub fn key_pressed(&self, key: KeyCode) -> bool {
-        // self.keys_state[key as usize]
-        false
+        match self.keys_state.get(&key) {
+            Some(&pressed) => pressed,
+            None => false,
+        }
     }
 
     pub fn mouse_button_pressed(&self, button: MouseButton) -> bool {
-        // self.buttons_state[button as usize]
-        false
+        match self.buttons_state.get(&button) {
+            Some(&pressed) => pressed,
+            None => false,
+        }
     }
 }

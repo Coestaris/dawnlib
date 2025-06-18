@@ -1,6 +1,5 @@
 use crate::engine::input::Event;
 use std::sync::mpsc::Sender;
-use std::sync::Arc;
 
 pub trait Window<PlatformError, Graphics> {
     fn tick(&mut self) -> Result<bool, PlatformError>;

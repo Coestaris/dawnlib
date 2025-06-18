@@ -5,8 +5,9 @@ extern crate core;
 use ansi_term::Colour::{Blue, Cyan, Green, Red, Yellow};
 use log::{info, Level, LevelFilter, Metadata, Record};
 use yage2::core::utils::format_now;
+use yage2::create_object;
 use yage2::engine::application::Application;
-use yage2::engine::object::Object;
+use crate::objects::Point;
 
 struct SimpleLogger;
 
@@ -61,8 +62,14 @@ fn main() {
             height: 720,
         },
     };
+
     let app = yage2::create_app!(application_config).unwrap();
-    let objects = vec![Box::new(objects::EventListener) as Box<dyn Object + Send + Sync>];
+    let objects = vec![
+        create_object!(objects::EventListener),
+        create_object!(objects::SimpleObject::new(Point::new(10.0, 200.0))),
+        create_object!(objects::SimpleObject::new(Point::new(100.0, 200.0))),
+        create_object!(objects::SimpleObject::new(Point::new(200.0, 200.0))),
+    ];
     app.run(objects).unwrap();
 
     info!("Yage2 Engine finished");

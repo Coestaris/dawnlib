@@ -3,13 +3,14 @@ mod device;
 mod instance;
 mod queue;
 
-use crate::engine::graphics::Graphics;
+use crate::engine::graphics::{Graphics, TickResult};
 use crate::engine::vulkan::device::get_physical_device;
 use crate::engine::vulkan::instance::{get_instance_extensions, get_layers, setup_debug};
 use crate::engine::vulkan::queue::{get_device_extensions, get_queue_family_index};
 use ash::{vk, Instance};
 use log::{debug, info};
 use std::ffi::c_char;
+use crate::engine::object::Renderable;
 
 pub struct VulkanGraphicsInitArgs<'a> {
     pub(crate) instance_extensions: Vec<*const c_char>,
@@ -94,10 +95,10 @@ impl Drop for VulkanGraphics {
                 self.vk
                     .device
                     .destroy_command_pool(frame.command_pool, None);
-                
+
                 debug!("Destroying Vulkan semaphore: {:?}", frame.semaphore);
                 self.vk.device.destroy_semaphore(frame.semaphore, None);
-                
+
                 debug!("Destroying Vulkan fence: {:?}", frame.fence);
                 self.vk.device.destroy_fence(frame.fence, None);
             }
@@ -327,50 +328,52 @@ impl Graphics for VulkanGraphics {
         }
     }
 
-    fn tick(&mut self) -> Result<(), Self::Error> {
+    fn tick(&mut self, renderables: &[Renderable]) -> Result<TickResult, Self::Error> {
         unsafe {
             let frame = self.get_current_frame();
 
             /*
-            let fences = [frame.fence];
-            self.vk
-                .device
-                .wait_for_fences(&fences, true, u64::MAX)
-                .unwrap();
-            self.vk.device.reset_fences(&fences).unwrap();
+                        let fences = [frame.fence];
+                        self.vk
+                            .device
+                            .wait_for_fences(&fences, true, u64::MAX)
+                            .unwrap();
+                        self.vk.device.reset_fences(&fences).unwrap();
 
-            let image_index = self
-                .vk
-                .swapchain_loader
-                .acquire_next_image(
-                    self.vk.swapchain,
-                    u64::MAX,
-                    frame.semaphore,
-                    vk::Fence::null(),
-                )
-                .unwrap();
+                        let image_index = self
+                            .vk
+                            .swapchain_loader
+                            .acquire_next_image(
+                                self.vk.swapchain,
+                                u64::MAX,
+                                frame.semaphore,
+                                vk::Fence::null(),
+                            )
+                            .unwrap();
 
-            self.vk
-                .device
-                .reset_command_buffer(
-                    frame.command_buffer,
-                    vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-                )
-                .unwrap();
+                        self.vk
+                            .device
+                            .reset_command_buffer(
+                                frame.command_buffer,
+                                vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+                            )
+                            .unwrap();
 
-            let command_buffer_begin_info = vk::CommandBufferBeginInfo::default()
-                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-            self.vk
-                .device
-                .begin_command_buffer(frame.command_buffer, &command_buffer_begin_info)
-                .unwrap();
+                        let command_buffer_begin_info = vk::CommandBufferBeginInfo::default()
+                            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+                        self.vk
+                            .device
+                            .begin_command_buffer(frame.command_buffer, &command_buffer_begin_info)
+                            .unwrap();
 
-            let clear_value = vk::ClearColorValue {
-                float32: [0.0, 1.0, 0.0, 1.0],
-            };
-            let clear_values = [vk::ClearValue { color: clear_value }];
-*/
-            Ok(())
+                        let clear_value = vk::ClearColorValue {
+                            float32: [0.0, 1.0, 0.0, 1.0],
+                        };
+                        let clear_values = [vk::ClearValue { color: clear_value }];
+            */
+            Ok(TickResult {
+                drawn_triangles: 0, // Placeholder, actual rendering logic would go here
+            })
         }
     }
 }

@@ -2,14 +2,15 @@ use bitflags::bitflags;
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct EventKind: u32 {
-        const UPDATE                = 0b00000000; // No events, just an update tick
-        const KEY_PRESS             = 0b00000001;
-        const KEY_RELEASE           = 0b00000010;
-        const MOUSE_MOVE            = 0b00000100;
-        const MOUSE_SCROLL          = 0b00001000;
-        const MOUSE_BUTTON_PRESS    = 0b00010000;
-        const MOUSE_BUTTON_RELEASE  = 0b00100000;
+    pub struct EventMask: u32 {
+        const CREATE                = 0b00000001; // Object creation event
+        const UPDATE                = 0b00000010; // No events, just an update tick
+        const KEY_PRESS             = 0b00000100;
+        const KEY_RELEASE           = 0b00001000;
+        const MOUSE_MOVE            = 0b00010000; 
+        const MOUSE_SCROLL          = 0b00100000;
+        const MOUSE_BUTTON_PRESS    = 0b01000000; 
+        const MOUSE_BUTTON_RELEASE  = 0b10000000; 
     }
 }
 
@@ -152,6 +153,7 @@ pub enum KeyCode {
 #[derive(Debug, Clone)]
 pub enum Event {
     Update(f32), // Delta time in milliseconds
+    Create, // Object creation event
     KeyPress(KeyCode),
     KeyRelease(KeyCode),
     MouseMove { x: f32, y: f32 },
@@ -161,15 +163,16 @@ pub enum Event {
 }
 
 impl Event {
-    pub fn kind(&self) -> EventKind {
+    pub fn kind(&self) -> EventMask {
         match self {
-            Event::Update(_) => EventKind::UPDATE,
-            Event::KeyPress(_) => EventKind::KEY_PRESS,
-            Event::KeyRelease(_) => EventKind::KEY_RELEASE,
-            Event::MouseMove { .. } => EventKind::MOUSE_MOVE,
-            Event::MouseScroll { .. } => EventKind::MOUSE_SCROLL,
-            Event::MouseButtonPress(_) => EventKind::MOUSE_BUTTON_PRESS,
-            Event::MouseButtonRelease(_) => EventKind::MOUSE_BUTTON_RELEASE,
+            Event::Update(_) => EventMask::UPDATE,
+            Event::Create => EventMask::CREATE,
+            Event::KeyPress(_) => EventMask::KEY_PRESS,
+            Event::KeyRelease(_) => EventMask::KEY_RELEASE,
+            Event::MouseMove { .. } => EventMask::MOUSE_MOVE,
+            Event::MouseScroll { .. } => EventMask::MOUSE_SCROLL,
+            Event::MouseButtonPress(_) => EventMask::MOUSE_BUTTON_PRESS,
+            Event::MouseButtonRelease(_) => EventMask::MOUSE_BUTTON_RELEASE,
         }
     }
 }
