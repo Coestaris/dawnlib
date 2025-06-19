@@ -1,19 +1,26 @@
 use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
-use crate::engine::event::{Event, KeyCode, MouseButton};
+use crate::engine::event::Event;
 use crate::engine::graphics::Graphics;
 use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
 use ash::vk;
 use log::{debug, info};
 use std::ffi::c_char;
-use std::os::raw::{c_uchar, c_uint};
 use std::ptr::addr_of_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread;
 use x11::xlib;
-use x11::xlib::{Atom, ButtonPress, ButtonPressMask, ButtonRelease, ButtonReleaseMask, CWEventMask, ClientMessage, CopyFromParent, CurrentTime, Display, Expose, ExposureMask, InputOutput, KeyPress, KeyPressMask, KeyRelease, KeyReleaseMask, MotionNotify, NoEventMask, PointerMotionMask, ShiftMask, XAutoRepeatOff, XClearWindow, XCloseDisplay, XCreateWindow, XDefaultScreen, XDestroyWindow, XEvent, XFlush, XInternAtom, XKeycodeToKeysym, XMapRaised, XNextEvent, XOpenDisplay, XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes, XStoreName, XSync, XkbKeycodeToKeysym};
+use x11::xlib::{
+    Atom, ButtonPress, ButtonPressMask, ButtonRelease, ButtonReleaseMask, CWEventMask,
+    ClientMessage, CopyFromParent, CurrentTime, Display, Expose, ExposureMask, InputOutput,
+    KeyPress, KeyPressMask, KeyRelease, KeyReleaseMask, MotionNotify, NoEventMask,
+    PointerMotionMask, XAutoRepeatOff, XClearWindow, XCloseDisplay, XCreateWindow,
+    XDefaultScreen, XDestroyWindow, XEvent, XFlush, XInternAtom, XMapRaised,
+    XNextEvent, XOpenDisplay, XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes,
+    XStoreName, XSync,
+};
 
 mod input;
 
@@ -80,7 +87,7 @@ fn process_events_sync(
     };
 
     match event.get_type() {
-        ClientMessage => unsafe {
+        xlib::ClientMessage => unsafe {
             debug!("Client message event received");
             let ptr = event.client_message.data.as_longs()[0];
             if ptr == close_atom as i64 {
@@ -91,11 +98,11 @@ fn process_events_sync(
             }
         },
 
-        Expose => {
+        xlib::Expose => {
             // Handle expose event (e.g., redraw the window)
         }
 
-        KeyPress => {
+        xlib::KeyPress => {
             let keycode = unsafe { event.key.keycode };
             let keystate = unsafe { event.key.state };
             let key = input::convert_key(display, keycode, keystate);
@@ -104,7 +111,7 @@ fn process_events_sync(
             }
         }
 
-        KeyRelease => {
+        xlib::KeyRelease => {
             let keycode = unsafe { event.key.keycode };
             let keystate = unsafe { event.key.state };
             let key = input::convert_key(display, keycode, keystate);
@@ -113,7 +120,7 @@ fn process_events_sync(
             }
         }
 
-        ButtonPress => {
+        xlib::ButtonPress => {
             let button = unsafe { event.button.button };
             let mouse_button = input::convert_mouse(button);
             if let Err(e) = events_sender.send(Event::MouseButtonPress(mouse_button)) {
@@ -121,7 +128,7 @@ fn process_events_sync(
             }
         }
 
-        ButtonRelease => {
+        xlib::ButtonRelease => {
             let button = unsafe { event.button.button };
             let mouse_button = input::convert_mouse(button);
             if let Err(e) = events_sender.send(Event::MouseButtonRelease(mouse_button)) {
@@ -129,7 +136,7 @@ fn process_events_sync(
             }
         }
 
-        MotionNotify => {
+        xlib::MotionNotify => {
             let x = unsafe { event.motion.x };
             let y = unsafe { event.motion.y };
             if let Err(e) = events_sender.send(Event::MouseMove {

@@ -241,8 +241,8 @@ fn start_logic_thread(
         .spawn(move || {
             std::panic::catch_unwind(|| {
                 info!("Logic thread started");
-
                 let mut input_manager = InputManager::new(events_receiver, eps);
+                let mut first_tick = true;
                 let mut prev_tick = 0;
                 while !shared_data.stop_signal.load(Ordering::Relaxed) {
                     profile!(profiler.ups.tick(1));
@@ -272,17 +272,28 @@ fn start_logic_thread(
                     let object_ctx = ObjectCtx {
                         input_manager: &input_manager,
                     };
+                    if first_tick {
+                        // On the first tick, we need to initialize the objects
+                        // and dispatch the Create event to them.
+                        events.push(Event::Create);
+                        first_tick = false;
+                    }
                     events.push(Event::Update(time_delta));
-                    for event in events.iter() {
-                        match objects_collection.dispatch_event(&object_ctx, event) {
-                            DispatchAction::QuitApplication => {
-                                info!("Quit application event received, stopping logic thread");
-                                shared_data.stop_signal.store(true, Ordering::Relaxed);
-                                break;
-                            }
-                            _ => {
+                    for event in events {
+                        let actions = objects_collection.dispatch_event(&object_ctx, &event);
+                        for action in actions.iter() {
+                            match action {
+                                DispatchAction::QuitApplication => {
+                                    info!("Quit application event received, stopping logic thread");
+                                    shared_data.stop_signal.store(true, Ordering::Relaxed);
+                                    break;
+                                }
+
                                 // The majority of actions are handled in the object collection
                                 // and do not require any special handling here.
+                                _ => {
+                                    // No special handling needed for other actions
+                                }
                             }
                         }
                     }
@@ -443,7 +454,10 @@ fn log_prelude() {
         debug!(" - Rust version: Unknown");
     }
     debug!(" - Build: {} ({})", build_timestamp, git_sha);
-    debug!(" - Target: {}. OS: {}, {}", target_triple, os_name, os_version);
+    debug!(
+        " - Target: {}. OS: {}, {}",
+        target_triple, os_name, os_version
+    );
     debug!(" - Profile: {}", profile);
     if !cargo_features.is_empty() {
         debug!(" - Features: {}", cargo_features);

@@ -12,6 +12,10 @@ impl Object for EventListener {
 
     fn dispatch(&mut self, _: &ObjectCtx, event: &Event) -> DispatchAction {
         match event {
+            Event::Create => {
+                info!("EventListener created");
+                DispatchAction::Empty
+            }
             Event::KeyPress(KeyCode::Escape) => DispatchAction::QuitApplication,
             Event::KeyPress(KeyCode::BackSpace) => DispatchAction::Die,
             Event::KeyPress(KeyCode::Latin('r' | 'R')) => DispatchAction::SpawnObject(
@@ -53,11 +57,18 @@ impl SimpleObject {
 
 impl Object for SimpleObject {
     fn event_mask(&self) -> EventMask {
-        EventMask::MOUSE_BUTTON_RELEASE | EventMask::CREATE | EventMask::KEY_RELEASE
+        EventMask::MOUSE_BUTTON_RELEASE
+            | EventMask::CREATE
+            | EventMask::KEY_RELEASE
+            | EventMask::CREATE
     }
 
     fn dispatch(&mut self, ctx: &ObjectCtx, event: &Event) -> DispatchAction {
         match event {
+            Event::Create => {
+                info!("SimpleObject created");
+                DispatchAction::Empty
+            }
             Event::KeyRelease(KeyCode::Latin('s' | 'S')) => {
                 DispatchAction::UpdateRenderable(Renderable {
                     sample_data: 4.0,

@@ -3,14 +3,15 @@ use bitflags::bitflags;
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct EventMask: u32 {
-        const CREATE                = 0b00000001; // Object creation event
-        const UPDATE                = 0b00000010; // No events, just an update tick
-        const KEY_PRESS             = 0b00000100;
-        const KEY_RELEASE           = 0b00001000;
-        const MOUSE_MOVE            = 0b00010000; 
-        const MOUSE_SCROLL          = 0b00100000;
-        const MOUSE_BUTTON_PRESS    = 0b01000000; 
-        const MOUSE_BUTTON_RELEASE  = 0b10000000; 
+        const CREATE                = 0b000000001;
+        const UPDATE                = 0b000000010;
+        const KEY_PRESS             = 0b000000100;
+        const KEY_RELEASE           = 0b000001000;
+        const CHAR_INPUT            = 0b000010000;
+        const MOUSE_MOVE            = 0b000100000;
+        const MOUSE_SCROLL          = 0b001000000;
+        const MOUSE_BUTTON_PRESS    = 0b010000000;
+        const MOUSE_BUTTON_RELEASE  = 0b100000000;
     }
 }
 
@@ -28,11 +29,12 @@ pub enum MouseButton {
 pub enum KeyCode {
     Unknown(u32, u32),
 
+    // A-Z keys. Always uppercase.
     Latin(char),
     Cyrillic(char),
     Digit(u8),
 
-    /* Function keys */
+    // Function keys
     BackSpace,
     Tab,
     Linefeed,
@@ -48,9 +50,7 @@ pub enum KeyCode {
     Up,
     Right,
     Down,
-    Prior,
     PageUp,
-    Next,
     PageDown,
     End,
     Begin,
@@ -69,7 +69,6 @@ pub enum KeyCode {
     Help,
     Break,
     ModeSwitch,
-    ScriptSwitch,
     NumLock,
     Function(u8),
     ShiftL,
@@ -96,7 +95,6 @@ pub enum KeyCode {
     Percent,
     Ampersand,
     Apostrophe,
-    QuoteRight,
     ParenLeft,
     ParenRight,
     Asterisk,
@@ -132,9 +130,7 @@ pub enum KeyCode {
     KPUp,
     KPRight,
     KPDown,
-    KPPrior,
     KPPageUp,
-    KPNext,
     KPPageDown,
     KPEnd,
     KPBegin,
@@ -152,10 +148,11 @@ pub enum KeyCode {
 
 #[derive(Debug, Clone)]
 pub enum Event {
-    Update(f32), // Delta time in milliseconds
     Create, // Object creation event
+    Update(f32), // Delta time in milliseconds
     KeyPress(KeyCode),
     KeyRelease(KeyCode),
+    CharInput(char),
     MouseMove { x: f32, y: f32 },
     MouseScroll { delta_x: f32, delta_y: f32 },
     MouseButtonPress(MouseButton),
@@ -165,11 +162,12 @@ pub enum Event {
 impl Event {
     pub fn kind(&self) -> EventMask {
         match self {
-            Event::Update(_) => EventMask::UPDATE,
             Event::Create => EventMask::CREATE,
+            Event::Update(_) => EventMask::UPDATE,
             Event::KeyPress(_) => EventMask::KEY_PRESS,
             Event::KeyRelease(_) => EventMask::KEY_RELEASE,
             Event::MouseMove { .. } => EventMask::MOUSE_MOVE,
+            Event::CharInput(_) => EventMask::CHAR_INPUT,
             Event::MouseScroll { .. } => EventMask::MOUSE_SCROLL,
             Event::MouseButtonPress(_) => EventMask::MOUSE_BUTTON_PRESS,
             Event::MouseButtonRelease(_) => EventMask::MOUSE_BUTTON_RELEASE,
