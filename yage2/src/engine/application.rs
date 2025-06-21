@@ -20,16 +20,16 @@ pub struct ApplicationConfig {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub enum ApplicationError<PlatformError> {
+pub enum ApplicationError<PlatformError, GraphicsError> {
     InitError(PlatformError),
 
     LogicThreadStartError(LogicThreadError),
     LogicThreadStopError(LogicThreadError),
     LogicThreadJoinError(LogicThreadError),
 
-    RendererThreadStartError(RendererThreadError<PlatformError>),
-    RendererThreadStopError(RendererThreadError<PlatformError>),
-    RendererThreadJoinError(RendererThreadError<PlatformError>),
+    RendererThreadStartError(RendererThreadError<PlatformError, GraphicsError>),
+    RendererThreadStopError(RendererThreadError<PlatformError, GraphicsError>),
+    RendererThreadJoinError(RendererThreadError<PlatformError, GraphicsError>),
 
     StatisticsThreadStartError(StatisticsThreadError),
     StatisticsThreadStopError(StatisticsThreadError),
@@ -38,14 +38,14 @@ pub enum ApplicationError<PlatformError> {
 
 #[derive(Debug)]
 #[allow(dead_code)]
-pub enum RendererThreadError<PlatformError> {
+pub enum RendererThreadError<PlatformError, GraphicsError> {
     AlreadyRunning,
     ThreadSpawnFailed,
     ThreadJoinError,
 
     WindowCreationError(PlatformError),
     WindowTickError(PlatformError),
-    GraphicsTickError,
+    GraphicsTickError(GraphicsError),
 }
 
 #[derive(Debug)]
@@ -114,7 +114,7 @@ macro_rules! profile {
 /// It synchronizes with the logic thread using the provided rendezvous points.
 /// It processes window events, renders the scene, and updates the renderable objects.
 /// It returns a `JoinHandle` that can be used to join the thread later.
-fn start_renderer_thread<Win, PlatformError, Graphics>(
+fn start_renderer_thread<Win, PlatformError, Graphics, GraphicsError>(
     window_factory: Arc<dyn WindowFactory<Win, PlatformError, Graphics>>,
     before_frame: Arc<Rendezvous>,
     after_frame: Arc<Rendezvous>,
@@ -122,13 +122,14 @@ fn start_renderer_thread<Win, PlatformError, Graphics>(
     shared_data: Arc<SharedData>,
     profiler: Arc<RendererProfiler>,
 ) -> Result<
-    JoinHandle<Result<(), RendererThreadError<PlatformError>>>,
-    RendererThreadError<PlatformError>,
+    JoinHandle<Result<(), RendererThreadError<PlatformError, GraphicsError>>>,
+    RendererThreadError<PlatformError, GraphicsError>,
 >
 where
     Win: Window<PlatformError, Graphics> + 'static,
     PlatformError: std::fmt::Debug + Send + 'static,
-    Graphics: crate::engine::graphics::Graphics + 'static,
+    Graphics: crate::engine::graphics::Graphics<GraphicsError> + 'static,
+    GraphicsError: std::fmt::Debug + Send + 'static,
 {
     let factory = window_factory.clone();
     let shared_data = Arc::clone(&shared_data);
@@ -140,6 +141,7 @@ where
                 .map_err(RendererThreadError::WindowCreationError)?;
 
             info!("Renderer thread started");
+            let mut result: Result<(), RendererThreadError<PlatformError, GraphicsError>> = Ok(());
             while !shared_data.stop_signal.load(Ordering::Relaxed) {
                 profile!(profiler.fps.tick(1));
 
@@ -153,32 +155,41 @@ where
 
                 // Stage 2: Process window events and OS-specific stuff
                 profile!(profiler.window_tick.start());
-                let win_res = window.tick();
-                if cfg!(debug_assertions) {
-                    if !win_res.map_err(RendererThreadError::WindowTickError)? {
-                        warn!("Window tick returned false, stopping renderer thread");
+                match window.tick() {
+                    Ok(true) => {
+                        // Window tick was successful, continue processing
+                    }
+                    Ok(false) => {
+                        // Window tick returned false, which means the window was closed
+                        info!("Window closed, stopping renderer thread");
                         break;
                     }
-                } else {
-                    // Ignore error and hope for the best
-                    if let Ok(false) = win_res {
-                        warn!("Window tick returned false, stopping renderer thread");
+                    Err(e) => {
+                        // An error occurred during the window tick
+                        warn!("Window tick error: {:?}", e);
+                        result = Err(RendererThreadError::WindowTickError(e));
                         break;
                     }
                 }
+
                 profile!(profiler.window_tick.end());
 
                 // Stage 3: Render the scene
                 profile!(profiler.graphics_tick.start());
                 let renderables = shared_data.renderer_objects.lock().unwrap();
-                let tick_result = window
-                    .get_graphics()
-                    .tick(renderables.as_slice())
-                    .map_err(|_| RendererThreadError::GraphicsTickError)?;
+                match window.get_graphics().tick(renderables.as_slice()) {
+                    Ok(result) => {
+                        // Rendering was successful, update the profiler
+                        profile!(profiler.drawn_triangles.tick(result.drawn_triangles as u32));
+                    }
+                    Err(e) => {
+                        // An error occurred during rendering
+                        warn!("Graphics tick error: {:?}", e);
+                        result = Err(RendererThreadError::GraphicsTickError(e));
+                        break;
+                    }
+                }
                 drop(renderables);
-                profile!(profiler
-                    .drawn_triangles
-                    .tick(tick_result.drawn_triangles as u32));
 
                 thread::sleep(std::time::Duration::from_millis(16)); /* 60 FPS */
                 profile!(profiler.graphics_tick.end());
@@ -219,7 +230,8 @@ where
                 warn!("Failed to close window: {:?}", e);
             }
 
-            Ok(())
+            shared_data.stop_signal.store(true, Ordering::Relaxed);
+            result
         })
         .map_err(|_| RendererThreadError::ThreadSpawnFailed)?)
 }
@@ -277,7 +289,6 @@ fn start_logic_thread(
                         match objects_collection.dispatch_event(&object_ctx, event) {
                             DispatchAction::QuitApplication => {
                                 info!("Quit application event received, stopping logic thread");
-                                shared_data.stop_signal.store(true, Ordering::Relaxed);
                                 break;
                             }
                             _ => {
@@ -300,6 +311,7 @@ fn start_logic_thread(
                 }
 
                 info!("Logic thread stopping gracefully");
+                shared_data.stop_signal.store(true, Ordering::Relaxed);
                 Ok(())
             })
             .map_err(|_| {
@@ -407,6 +419,7 @@ fn start_statistics_thread(
                 }
 
                 info!("Statistics thread stopping gracefully");
+                shared_data.stop_signal.store(true, Ordering::Relaxed);
                 Ok(())
             }).map_err(|_| {
                 warn!("Statistics thread panicked, stopping thread");
@@ -443,7 +456,10 @@ fn log_prelude() {
         debug!(" - Rust version: Unknown");
     }
     debug!(" - Build: {} ({})", build_timestamp, git_sha);
-    debug!(" - Target: {}. OS: {}, {}", target_triple, os_name, os_version);
+    debug!(
+        " - Target: {}. OS: {}, {}",
+        target_triple, os_name, os_version
+    );
     debug!(" - Profile: {}", profile);
     if !cargo_features.is_empty() {
         debug!(" - Features: {}", cargo_features);
@@ -452,8 +468,10 @@ fn log_prelude() {
     }
 }
 
-pub trait Application<PlatformError, Graphics, Win> {
-    fn new(config: ApplicationConfig) -> Result<Self, ApplicationError<PlatformError>>
+pub trait Application<Win, PlatformError, Graphics, GraphicsError> {
+    fn new(
+        config: ApplicationConfig,
+    ) -> Result<Self, ApplicationError<PlatformError, GraphicsError>>
     where
         Self: Sized;
 
@@ -461,11 +479,15 @@ pub trait Application<PlatformError, Graphics, Win> {
         &self,
     ) -> Arc<dyn WindowFactory<Win, PlatformError, Graphics> + Send + Sync>;
 
-    fn run(&self, objects: Vec<ObjectPtr>) -> Result<(), ApplicationError<PlatformError>>
+    fn run(
+        &self,
+        objects: Vec<ObjectPtr>,
+    ) -> Result<(), ApplicationError<PlatformError, GraphicsError>>
     where
         Win: Window<PlatformError, Graphics> + 'static,
         PlatformError: std::fmt::Debug + Send + 'static,
-        Graphics: crate::engine::graphics::Graphics + 'static,
+        Graphics: crate::engine::graphics::Graphics<GraphicsError> + 'static,
+        GraphicsError: std::fmt::Debug + Send + 'static,
     {
         log_prelude();
 

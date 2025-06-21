@@ -2,11 +2,12 @@ mod input;
 
 use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
 use crate::engine::graphics::Graphics;
-use crate::engine::input::{Event};
-use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
+use crate::engine::input::Event;
+use crate::engine::vulkan::{VulkanGraphicsError};
+use crate::engine::vulkan::graphics::{VulkanGraphics, VulkanGraphicsInitArgs};
+use crate::engine::vulkan::objects::surface::Surface;
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
-use ash::vk;
-use ash::vk::Win32SurfaceCreateInfoKHR;
+use crate::platforms::win32::input::{convert_key, convert_mouse_button};
 use log::{debug, info, warn};
 use std::ffi::c_char;
 use std::sync::atomic::AtomicBool;
@@ -25,7 +26,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     WS_VISIBLE,
 };
-use crate::platforms::win32::input::{convert_key, convert_mouse_button};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -42,7 +42,7 @@ pub enum Win32Error {
     UpdateWindowError(WIN32_ERROR),
 
     GraphicsCreateError(VulkanGraphicsError),
-    VulkanCreateSurfaceError(vk::Result),
+    VulkanCreateSurfaceError(ash::vk::Result),
     VulkanUpdateSurfaceError(VulkanGraphicsError),
 }
 
@@ -60,8 +60,12 @@ pub struct Win32Application {
     window_factory: Win32WindowFactory,
 }
 
-impl Application<Win32Error, VulkanGraphics, Win32Window> for Win32Application {
-    fn new(config: ApplicationConfig) -> Result<Win32Application, ApplicationError<Win32Error>>
+impl Application<Win32Window, Win32Error, VulkanGraphics, VulkanGraphicsError>
+    for Win32Application
+{
+    fn new(
+        config: ApplicationConfig,
+    ) -> Result<Win32Application, ApplicationError<Win32Error, VulkanGraphicsError>>
     where
         Self: Sized,
     {
@@ -143,17 +147,13 @@ impl WindowFactory<Win32Window, Win32Error, VulkanGraphics> for Win32WindowFacto
                 layers: vec![],
                 surface_constructor: Box::new(|entry, instance| {
                     debug!("Creating Win32 Vulkan surface");
-                    let surface_loader = ash::khr::win32_surface::Instance::new(entry, instance);
-                    let create_info = Win32SurfaceCreateInfoKHR {
-                        hinstance: hinstance.0.addr() as _,
-                        hwnd: hwnd.0.addr() as _,
-                        ..Default::default()
-                    };
-                    let surface = surface_loader
-                        .create_win32_surface(&create_info, None)
-                        .map_err(VulkanGraphicsError::SurfaceCreateError)?;
-
-                    Ok(surface)
+                    Surface::new(
+                        entry,
+                        instance,
+                        hinstance.0 as ash::vk::HINSTANCE,
+                        hwnd.0 as ash::vk::HWND,
+                        Some("win32_surface".to_string())
+                    )
                 }),
             })
             .map_err(Win32Error::GraphicsCreateError)?;
@@ -244,11 +244,9 @@ impl Window<Win32Error, VulkanGraphics> for Win32Window {
     }
 
     fn kill(&mut self) -> Result<(), Win32Error> {
-        unsafe {
-            if !self.hwnd.is_invalid() {
-                // Ignore the result, as we are just cleaning up
-                let _ = DestroyWindow(self.hwnd);
-            }
+        if !self.hwnd.is_invalid() {
+            // Ignore the result, as we are just cleaning up
+            let _ = unsafe { DestroyWindow(self.hwnd) };
         }
         Ok(())
     }
@@ -264,18 +262,18 @@ unsafe extern "system" fn default_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    unsafe {
-        match message {
-            WM_PAINT => LRESULT(0),
+    match message {
+        WM_PAINT => LRESULT(0),
 
-            WM_DESTROY => {
-                debug!("WM_DESTROY received, destroying window");
-                DESTROYED.store(true, std::sync::atomic::Ordering::Relaxed);
+        WM_DESTROY => {
+            debug!("WM_DESTROY received, destroying window");
+            DESTROYED.store(true, std::sync::atomic::Ordering::Relaxed);
+            unsafe {
                 PostQuitMessage(0);
-                LRESULT(0)
             }
-
-            _ => DefWindowProcA(window, message, wparam, lparam),
+            LRESULT(0)
         }
+
+        _ => unsafe { DefWindowProcA(window, message, wparam, lparam) },
     }
 }

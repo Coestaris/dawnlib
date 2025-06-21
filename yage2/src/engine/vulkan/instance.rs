@@ -1,12 +1,10 @@
-use crate::engine::vulkan::cfg::{
-    get_required_instance_extensions, get_required_layers, get_wanted_instance_extensions,
-    get_wanted_layers, DEBUG_REPORT_EXTENSION_NAME, DEBUG_UTILS_EXTENSION_NAME,
-};
-use crate::engine::vulkan::{VulkanGraphicsError, VulkanGraphicsInitArgs};
+use crate::engine::vulkan::{VulkanGraphicsError, DEBUG_REPORT_EXTENSION_NAME, DEBUG_UTILS_EXTENSION_NAME};
 use crate::core::utils::contains;
 use ash::vk;
 use log::{debug, error, info, trace, warn};
 use std::ffi::{c_char, c_void, CStr};
+use crate::engine::vulkan::graphics::VulkanGraphicsInitArgs;
+use crate::engine::vulkan::objects::{get_required_instance_extensions, get_required_layers, get_wanted_instance_extensions, get_wanted_layers};
 
 unsafe fn get_supported_instance_extensions(
     entry: &ash::Entry,

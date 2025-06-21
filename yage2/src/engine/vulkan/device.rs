@@ -1,7 +1,74 @@
-use crate::engine::vulkan::VulkanGraphicsError;
+use crate::engine::vulkan::{VulkanGraphicsError, objects};
 use ash::{vk, Instance};
-use log::{debug, trace};
-use std::ffi::CStr;
+use log::{debug, trace, warn};
+use std::ffi::{c_char, CStr};
+use crate::engine::object_collection::ObjectsCollection;
+use crate::engine::vulkan::graphics::VulkanGraphicsInitArgs;
+use crate::engine::vulkan::objects::{get_required_device_extensions, get_wanted_device_extensions};
+
+fn get_supported_device_extensions(
+    instance: &Instance,
+    physical_device: vk::PhysicalDevice,
+) -> Result<Vec<*const c_char>, VulkanGraphicsError> {
+    let extensions = unsafe {
+        instance
+            .enumerate_device_extension_properties(physical_device)
+            .map_err(VulkanGraphicsError::EnumerateExtensionsError)?
+    };
+
+    /* Log the available extensions */
+    if !extensions.is_empty() {
+        trace!("Available Vulkan device extensions:");
+        for ext in &extensions {
+            trace!(
+                " - {} [ver={}.{}.{} ({})]",
+                unsafe { CStr::from_ptr(ext.extension_name.as_ptr()).to_string_lossy() },
+                vk::api_version_major(ext.spec_version),
+                vk::api_version_minor(ext.spec_version),
+                vk::api_version_patch(ext.spec_version),
+                ext.spec_version,
+            );
+        }
+    }
+
+    Ok(extensions
+        .iter()
+        .map(|ext| ext.extension_name.as_ptr() as *const c_char)
+        .collect())
+}
+
+pub fn get_device_extensions(
+    instance: &Instance,
+    physical_device: vk::PhysicalDevice,
+    init: &VulkanGraphicsInitArgs,
+) -> Result<Vec<*const c_char>, VulkanGraphicsError> {
+    let mut required = get_required_device_extensions()
+        .into_iter()
+        .chain(init.device_extensions.iter().copied())
+        .collect::<Vec<_>>();
+
+    /* If the wanted extension is supported */
+    let supported = get_supported_device_extensions(instance, physical_device)?;
+    for wanted in get_wanted_device_extensions() {
+        if supported.contains(&wanted) {
+            required.push(wanted);
+        } else {
+            warn!(
+                "Vulkan device extension {} is not supported, skipping it",
+                unsafe { CStr::from_ptr(wanted).to_string_lossy() }
+            );
+        }
+    }
+
+    if !required.is_empty() {
+        debug!("Required Vulkan device extensions:");
+        for ext in &required {
+            debug!(" - {}", unsafe { CStr::from_ptr(*ext).to_string_lossy() });
+        }
+    }
+
+    Ok(required)
+}
 
 pub unsafe fn get_physical_device(
     instance: &Instance,

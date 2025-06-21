@@ -14,12 +14,14 @@ pub struct WindowConfig {
     pub height: u32,
 }
 
-pub trait WindowFactory<Win, PlatformError, Graphics>: Send + Sync {
+pub trait WindowFactory<Win, PlatformError, Graphics>: Send + Sync 
+where
+    Win: Window<PlatformError, Graphics> + Sized,
+{
+    
     fn new(config: WindowConfig) -> Result<Self, PlatformError>
     where
         Self: Sized;
 
-    fn create_window(&self, events_sender: Sender<Event>) -> Result<Win, PlatformError>
-    where
-        Win: Window<PlatformError, Graphics> + Sized;
+    fn create_window(&self, events_sender: Sender<Event>) -> Result<Win, PlatformError>;
 }
