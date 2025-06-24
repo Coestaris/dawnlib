@@ -3,13 +3,12 @@ use log::debug;
 use crate::engine::vulkan::{VkObject, VulkanGraphicsError};
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum ShaderType {
     Vertex,
     Fragment,
     Compute,
     Geometry,
-    TessellationControl,
-    TessellationEvaluation,
 }
 
 pub(crate) struct Shader {
@@ -61,22 +60,6 @@ impl Shader {
             shader_type,
             name,
         })
-    }
-
-    pub fn stage_info(&self) -> vk::PipelineShaderStageCreateInfo {
-        vk::PipelineShaderStageCreateInfo {
-            stage: match self.shader_type {
-                ShaderType::Vertex => vk::ShaderStageFlags::VERTEX,
-                ShaderType::Fragment => vk::ShaderStageFlags::FRAGMENT,
-                ShaderType::Compute => vk::ShaderStageFlags::COMPUTE,
-                ShaderType::Geometry => vk::ShaderStageFlags::GEOMETRY,
-                ShaderType::TessellationControl => vk::ShaderStageFlags::TESSELLATION_CONTROL,
-                ShaderType::TessellationEvaluation => vk::ShaderStageFlags::TESSELLATION_EVALUATION,
-            },
-            module: self.vk_shader_module,
-            p_name: std::ffi::CString::new("main").unwrap().as_ptr(),
-            ..Default::default()
-        }
     }
 
     #[inline]

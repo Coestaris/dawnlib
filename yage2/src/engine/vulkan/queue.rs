@@ -1,7 +1,6 @@
 use crate::engine::vulkan::{VulkanGraphicsError};
 use ash::{vk, Instance};
-use log::{debug, trace, warn};
-use std::ffi::{c_char, CStr};
+use log::{debug, trace};
 
 pub unsafe fn get_queue_family_index(
     instance: &Instance,

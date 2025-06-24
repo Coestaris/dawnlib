@@ -1,5 +1,8 @@
-use crate::engine::vulkan::{VkObject, VulkanGraphicsError, SURFACE_EXTENSION_NAME, WIN32_SURFACE_EXTENSION_NAME, XLIB_SURFACE_EXTENSION_NAME};
-use ash::vk::{SurfaceKHR, Win32SurfaceCreateInfoKHR, HINSTANCE, HWND};
+use crate::engine::vulkan::{
+    VkObject, VulkanGraphicsError, SURFACE_EXTENSION_NAME,
+    XLIB_SURFACE_EXTENSION_NAME,
+};
+use ash::vk::{SurfaceKHR};
 use ash::{vk, Device, Instance};
 use log::debug;
 use std::ffi::c_char;
@@ -45,18 +48,16 @@ impl Surface {
     pub fn new(
         entry: &ash::Entry,
         instance: &Instance,
-        xlib_display: *mut std::ffi::c_void,
-        xlib_window: u64,
+        xlib_display: *mut vk::Display,
+        xlib_window: vk::Window,
         name: Option<String>,
     ) -> Result<Self, VulkanGraphicsError> {
         debug!("Creating surface with name: {:?}", name);
 
         let surface_loader = ash::khr::xlib_surface::Instance::new(entry, instance);
-        let create_info = ash::khr::xlib_surface::XlibSurfaceCreateInfoKHR {
-            dpy: xlib_display,
-            window: xlib_window,
-            ..Default::default()
-        };
+        let create_info = vk::XlibSurfaceCreateInfoKHR::default()
+            .dpy(xlib_display)
+            .window(xlib_window);
 
         let vk_surface = unsafe {
             surface_loader
@@ -130,7 +131,7 @@ impl VkObject for Surface {
         Ok(())
     }
 
-    fn required_device_extensions() -> Vec<*const c_char> {
+    fn required_instance_extensions() -> Vec<*const c_char> {
         vec![
             SURFACE_EXTENSION_NAME,
             #[cfg(target_os = "windows")]

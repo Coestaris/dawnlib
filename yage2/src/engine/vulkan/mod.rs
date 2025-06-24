@@ -19,6 +19,7 @@ pub enum VulkanGraphicsError {
     EnumerateExtensionsError(vk::Result),
     EnumeratePhysicalDevicesError(vk::Result),
     EnumerateQueueFamiliesError(vk::Result),
+    CreateDeviceFailed(vk::Result),
     CreateDebugMessengerFailed(vk::Result),
     CreateDebugReportFailed(vk::Result),
     CreateSwapchainFailed(vk::Result),

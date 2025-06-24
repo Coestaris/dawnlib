@@ -6,3 +6,4 @@ pub mod object;
 pub(crate) mod object_collection;
 pub(crate) mod vulkan;
 pub mod window;
+mod resources;

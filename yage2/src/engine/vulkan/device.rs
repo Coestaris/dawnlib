@@ -1,8 +1,7 @@
-use crate::engine::vulkan::{VulkanGraphicsError, objects};
+use crate::engine::vulkan::{VulkanGraphicsError};
 use ash::{vk, Instance};
 use log::{debug, trace, warn};
 use std::ffi::{c_char, CStr};
-use crate::engine::object_collection::ObjectsCollection;
 use crate::engine::vulkan::graphics::VulkanGraphicsInitArgs;
 use crate::engine::vulkan::objects::{get_required_device_extensions, get_wanted_device_extensions};
 

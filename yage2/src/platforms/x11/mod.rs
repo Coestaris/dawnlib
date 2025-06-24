@@ -1,7 +1,9 @@
 use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
 use crate::engine::event::Event;
 use crate::engine::graphics::Graphics;
-use crate::engine::vulkan::{VulkanGraphics, VulkanGraphicsError, VulkanGraphicsInitArgs};
+use crate::engine::vulkan::graphics::{VulkanGraphics, VulkanGraphicsInitArgs};
+use crate::engine::vulkan::objects::surface::Surface;
+use crate::engine::vulkan::VulkanGraphicsError;
 use crate::engine::window::{Window, WindowConfig, WindowFactory};
 use ash::vk;
 use log::{debug, info};
@@ -13,11 +15,9 @@ use std::sync::Arc;
 use std::thread;
 use x11::xlib;
 use x11::xlib::{
-    Atom, ButtonPress, ButtonPressMask, ButtonRelease, ButtonReleaseMask, CWEventMask,
-    ClientMessage, CopyFromParent, CurrentTime, Display, Expose, ExposureMask, InputOutput,
-    KeyPress, KeyPressMask, KeyRelease, KeyReleaseMask, MotionNotify, NoEventMask,
-    PointerMotionMask, XAutoRepeatOff, XClearWindow, XCloseDisplay, XCreateWindow,
-    XDefaultScreen, XDestroyWindow, XEvent, XFlush, XInternAtom, XMapRaised,
+    Atom, ButtonPressMask, ButtonReleaseMask, CWEventMask, ClientMessage, CopyFromParent,
+    CurrentTime, Display, ExposureMask, InputOutput, KeyPressMask, KeyReleaseMask, NoEventMask, PointerMotionMask, XAutoRepeatOff, XClearWindow, XCloseDisplay,
+    XCreateWindow, XDefaultScreen, XDestroyWindow, XEvent, XFlush, XInternAtom, XMapRaised,
     XNextEvent, XOpenDisplay, XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes,
     XStoreName, XSync,
 };
@@ -52,8 +52,10 @@ pub struct X11Application {
     window_factory: X11WindowFactory,
 }
 
-impl Application<X11Error, VulkanGraphics, X11Window> for X11Application {
-    fn new(config: ApplicationConfig) -> Result<X11Application, ApplicationError<X11Error>>
+impl Application<X11Window, X11Error, VulkanGraphics, VulkanGraphicsError> for X11Application {
+    fn new(
+        config: ApplicationConfig,
+    ) -> Result<X11Application, ApplicationError<X11Error, VulkanGraphicsError>>
     where
         Self: Sized,
     {
@@ -228,16 +230,13 @@ impl WindowFactory<X11Window, X11Error, VulkanGraphics> for X11WindowFactory {
                 layers: vec![],
                 surface_constructor: Box::new(|entry, instance| {
                     debug!("Creating X11 Vulkan surface");
-                    let surface_loader = ash::khr::xlib_surface::Instance::new(entry, instance);
-                    let create_info = vk::XlibSurfaceCreateInfoKHR {
-                        dpy: display as *mut _,
-                        window,
-                        ..Default::default()
-                    };
-                    let surface = surface_loader
-                        .create_xlib_surface(&create_info, None)
-                        .map_err(VulkanGraphicsError::SurfaceCreateError)?;
-                    Ok(surface)
+                    Surface::new(
+                        entry,
+                        instance,
+                        display as *mut vk::Display,
+                        window as vk::Window,
+                        Some("x11_surface".to_string()),
+                    )
                 }),
             })
             .map_err(X11Error::GraphicsCreateError)?;

@@ -1,9 +1,9 @@
-use std::ffi::c_char;
-use ash::{vk, Device, Instance};
-use log::debug;
-use crate::engine::vulkan::{VkObject, VulkanGraphicsError, SWAPCHAIN_EXTENSION_NAME};
 use crate::engine::vulkan::objects::surface::Surface;
 use crate::engine::vulkan::objects::sync::Semaphore;
+use crate::engine::vulkan::{VkObject, VulkanGraphicsError, SWAPCHAIN_EXTENSION_NAME};
+use ash::{vk, Device, Instance};
+use log::debug;
+use std::ffi::c_char;
 
 pub(crate) struct Swapchain {
     // Objects that are created by the swapchain
@@ -23,14 +23,14 @@ pub(crate) struct Swapchain {
 
 impl Swapchain {
     pub fn new(
-        entry: &ash::Entry,
+        _: &ash::Entry,
         instance: &Instance,
         device: &Device,
         physical_device: vk::PhysicalDevice,
         render_pass: vk::RenderPass,
         name: Option<String>,
     ) -> Result<Self, VulkanGraphicsError> {
-        debug!("Creating swapchain with extent {:?}", name);
+        debug!("Creating swapchain {:?}", name);
 
         Ok(Swapchain {
             vk_swapchain: Default::default(),
@@ -57,13 +57,12 @@ impl Swapchain {
 
         // Create a new swapchain
         const DEFAULT_FORMAT: vk::Format = vk::Format::B8G8R8A8_SRGB;
+        let images_count = surface
+            .get_min_images_count(self.vk_physical_device)?
+            .max(2);
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
             .surface(surface.vk_surface)
-            .min_image_count(
-                surface
-                    .get_min_images_count(self.vk_physical_device)?
-                    .max(2),
-            )
+            .min_image_count(images_count)
             .image_format(DEFAULT_FORMAT)
             .image_color_space(vk::ColorSpaceKHR::SRGB_NONLINEAR)
             .image_extent(extent)
@@ -86,9 +85,11 @@ impl Swapchain {
         };
 
         let mut vk_image_views = Vec::new();
-        for image in &vk_images {
+        for i in 0..images_count - 1 {
+            debug!("Creating image view for image index: {}", i);
+
             let image_view_create_info = vk::ImageViewCreateInfo::default()
-                .image(*image)
+                .image(vk_images[i as usize])
                 .view_type(vk::ImageViewType::TYPE_2D)
                 .format(DEFAULT_FORMAT)
                 .components(vk::ComponentMapping {
@@ -146,7 +147,7 @@ impl Swapchain {
 
     pub fn acquire_next_image(
         &self,
-        device: &Device,
+        _: &Device,
         semaphore: &Semaphore,
     ) -> Result<u32, VulkanGraphicsError> {
         let acquire_info = vk::AcquireNextImageInfoKHR::default()
@@ -164,21 +165,17 @@ impl Swapchain {
 
     pub fn queue_present(
         &self,
-        device: &Device,
+        _: &Device,
         queue: vk::Queue,
         image_index: u32,
-        semaphore: Option<&Semaphore>,
+        _: Option<&Semaphore>,
     ) -> Result<(), VulkanGraphicsError> {
         let indices = [image_index];
         let swapchains = [self.vk_swapchain];
-        let mut present_info = vk::PresentInfoKHR::default()
+        let present_info = vk::PresentInfoKHR::default()
             .swapchains(&swapchains)
             .image_indices(&indices);
-        if let Some(sem) = semaphore {
-            // let wait_semaphores = [sem.vk_semaphore];
-            // present_info = present_info.wait_semaphores(&wait_semaphores);
-        }
-
+        // TODO: Implement semaphore support
         match unsafe { self.swapchain_loader.queue_present(queue, &present_info) } {
             Ok(false) => Ok(()),
             Ok(true) => Err(VulkanGraphicsError::SwapchainSuboptimal),
@@ -215,6 +212,7 @@ impl VkObject for Swapchain {
             for image_view in &self.vk_image_views {
                 device.destroy_image_view(*image_view, None);
             }
+            #[cfg(not(target_os = "linux"))]
             if self.vk_swapchain != vk::SwapchainKHR::null() {
                 self.swapchain_loader
                     .destroy_swapchain(self.vk_swapchain, None);
@@ -225,9 +223,6 @@ impl VkObject for Swapchain {
     }
 
     fn required_device_extensions() -> Vec<*const c_char> {
-        vec![
-            SWAPCHAIN_EXTENSION_NAME
-        ]
+        vec![SWAPCHAIN_EXTENSION_NAME]
     }
 }
-

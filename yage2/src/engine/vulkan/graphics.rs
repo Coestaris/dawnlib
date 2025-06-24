@@ -4,7 +4,7 @@ use ash::vk::{CommandBufferResetFlags, CommandPoolCreateFlags};
 use log::{debug, info};
 use crate::engine::graphics::{Graphics, TickResult};
 use crate::engine::object::Renderable;
-use crate::engine::vulkan::{objects, VulkanGraphicsError, VkObject};
+use crate::engine::vulkan::{VulkanGraphicsError, VkObject};
 use crate::engine::vulkan::device::{get_device_extensions, get_physical_device};
 use crate::engine::vulkan::instance::{get_instance_extensions, get_layers, setup_debug};
 use crate::engine::vulkan::objects::command_buffer::CommandBuffer;
@@ -34,7 +34,6 @@ struct VulkanObjects {
     entry: ash::Entry,
     instance: Instance,
     device: ash::Device,
-    physical_device: vk::PhysicalDevice,
     debug_messenger: vk::DebugUtilsMessengerEXT,
     debug_report_callback: vk::DebugReportCallbackEXT,
     pipeline: vk::Pipeline, // This should be the actual pipeline, not layout
@@ -136,7 +135,7 @@ impl VulkanGraphics {
     fn process_buffer(
         &self,
         frame: &Frame,
-        renderables: &[Renderable],
+        _: &[Renderable],
     ) -> Result<TickResult, VulkanGraphicsError> {
         frame
             .command_buffer
@@ -295,20 +294,20 @@ impl Graphics<VulkanGraphicsError> for VulkanGraphics {
                 .queue_create_infos(std::slice::from_ref(&queue_create_info));
             let device = instance
                 .create_device(physical_device, &device_create_info, None)
-                .map_err(VulkanGraphicsError::EnumerateQueueFamiliesError)?;
+                .map_err(VulkanGraphicsError::CreateDeviceFailed)?;
             let surface = (init.surface_constructor)(&entry, &instance)?;
 
             info!("Vulkan device created successfully");
             let shader1 = Shader::new_from_file(
                 ShaderType::Vertex,
                 &device,
-                "D:\\Coding\\yage2\\app\\resources\\shaders\\triangle.vert.spv",
+                "/home/taris/work/yage2/app/resources/shaders/triangle.vert.spv",
                 Some("triangle_vert".to_string()),
             )?;
             let shader2 = Shader::new_from_file(
                 ShaderType::Vertex,
                 &device,
-                "D:\\Coding\\yage2\\app\\resources\\shaders\\triangle.frag.spv",
+                "/home/taris/work/yage2/app/resources/shaders/triangle.frag.spv",
                 Some("triangle_frag".to_string()),
             )?;
 
@@ -398,7 +397,7 @@ impl Graphics<VulkanGraphicsError> for VulkanGraphics {
             )?;
 
             let mut frames = vec![];
-            for i in 0..swapchain.get_images_count() {
+            for _ in 0..swapchain.get_images_count().max(2) {
                 frames.push(Frame {
                     index: frames.len(),
                     command_buffer: CommandBuffer::new(
@@ -460,7 +459,6 @@ impl Graphics<VulkanGraphicsError> for VulkanGraphics {
                     instance,
                     device,
                     surface,
-                    physical_device,
                     debug_messenger,
                     debug_report_callback,
                     pipeline_layout,

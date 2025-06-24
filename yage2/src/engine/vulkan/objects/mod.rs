@@ -1,17 +1,20 @@
-use std::ffi::c_char;
-use ash::{Device, Instance};
-use crate::engine::vulkan::{VkObject, VulkanGraphicsError, DEBUG_REPORT_EXTENSION_NAME, DEBUG_UTILS_EXTENSION_NAME, DYNAMIC_RENDERING_EXTENSION_NAME, SYNCHRONIZATION_2_EXTENSION_NAME, VALIDATION_LAYER_NAME};
 use crate::engine::vulkan::objects::command_buffer::CommandBuffer;
 use crate::engine::vulkan::objects::shader::Shader;
 use crate::engine::vulkan::objects::surface::Surface;
 use crate::engine::vulkan::objects::swapchain::Swapchain;
 use crate::engine::vulkan::objects::sync::{Fence, Semaphore};
+use crate::engine::vulkan::{
+    VkObject, VulkanGraphicsError, DEBUG_REPORT_EXTENSION_NAME, DEBUG_UTILS_EXTENSION_NAME,
+    DYNAMIC_RENDERING_EXTENSION_NAME, SYNCHRONIZATION_2_EXTENSION_NAME, VALIDATION_LAYER_NAME,
+};
+use ash::{Device, Instance};
+use std::ffi::c_char;
 
-pub(crate) mod sync;
-pub(crate) mod swapchain;
-pub(crate) mod surface;
 pub(crate) mod command_buffer;
 pub(crate) mod shader;
+pub(crate) mod surface;
+pub(crate) mod swapchain;
+pub(crate) mod sync;
 
 struct Placeholder;
 impl VkObject for Placeholder {
@@ -19,33 +22,25 @@ impl VkObject for Placeholder {
         todo!()
     }
 
-    fn destroy(&self, instance: &Instance, device: &Device) -> Result<(), VulkanGraphicsError> {
+    fn destroy(&self, _: &Instance, _: &Device) -> Result<(), VulkanGraphicsError> {
         todo!()
-    }
-
-    fn desired_layers() -> Vec<*const c_char> {
-        vec![
-            VALIDATION_LAYER_NAME
-        ]
     }
 
     fn required_device_extensions() -> Vec<*const c_char> {
         vec![
             DYNAMIC_RENDERING_EXTENSION_NAME,
-            SYNCHRONIZATION_2_EXTENSION_NAME
+            SYNCHRONIZATION_2_EXTENSION_NAME,
         ]
     }
-    
+
     fn desired_instance_extensions() -> Vec<*const c_char> {
-        vec![
-            DEBUG_UTILS_EXTENSION_NAME,
-            DEBUG_REPORT_EXTENSION_NAME
-        ]
+        vec![DEBUG_UTILS_EXTENSION_NAME, DEBUG_REPORT_EXTENSION_NAME]
     }
-}   
 
-
-
+    fn desired_layers() -> Vec<*const c_char> {
+        vec![VALIDATION_LAYER_NAME]
+    }
+}
 
 /// Defines a functions that calls:
 /// * required_device_extensions
@@ -54,7 +49,7 @@ impl VkObject for Placeholder {
 ///  * desired_instance_extensions
 ///  * required_layers
 //   * desired_layers
-/// on each of the provided types and concatenates 
+/// on each of the provided types and concatenates
 /// the results into a single vector.
 macro_rules! some_magic_macro {
     ($($type:ident),+) => {
@@ -89,7 +84,7 @@ macro_rules! some_magic_macro {
             )+
             extensions
         }
-        
+
         pub (crate) fn get_required_layers() -> Vec<*const c_char> {
             let mut layers = vec![];
             $(
@@ -97,7 +92,7 @@ macro_rules! some_magic_macro {
             )+
             layers
         }
-        
+
         pub (crate) fn get_wanted_layers() -> Vec<*const c_char> {
             let mut layers = vec![];
             $(
@@ -109,6 +104,7 @@ macro_rules! some_magic_macro {
 }
 
 some_magic_macro!(
+    Placeholder,
     Semaphore,
     Shader,
     Fence,
