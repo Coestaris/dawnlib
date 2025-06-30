@@ -1,0 +1,41 @@
+#[cfg(feature = "cpal")]
+mod cpal;
+pub mod device;
+pub mod dsp;
+mod error;
+mod ringbuf;
+mod sample;
+
+#[cfg(feature = "cpal")]
+pub mod platform_impl {
+    pub type BackendSpecificConfig = crate::cpal::DeviceConfig;
+    pub(crate) type BackendDevice<S> = crate::cpal::Device<S>;
+    pub type BackendSpecificError = crate::cpal::Error;
+}
+
+pub use platform_impl::*;
+
+/// Hardcoded sample type of the data transferred between the audio
+/// processing thread and the audio device.
+/// All the processing is done in f32 format and cannot be changed.
+pub type SampleType = f32;
+
+/// Hardcoded number of channels.
+/// This is a stereo sound device, so it has 2 channels.
+const CHANNELS_COUNT: u8 = 2;
+
+/// Size of the audio device (hardware) buffer.
+/// The bigger buffer, the more latency there is, but less CPU usage.
+/// The Unit is an interleaved sample.
+const DEVICE_BUFFER_SIZE: usize = 1024;
+
+/// Size of the ring buffer used for transferring audio data from the audio
+/// processing thread to the audio device. The bigger buffer, the more latency
+/// there is, but the less likely it is to drop samples.
+/// Size should be bigger or equal to `DEVICE_BUFFER_SIZE`.
+/// The Unit is an interleaved sample.
+const RING_BUFFER_SIZE: usize = DEVICE_BUFFER_SIZE * 2;
+
+/// Minimal operation block size for audio processing.
+/// The Unit is an interleaved sample.
+const BLOCK_SIZE: usize = 128;

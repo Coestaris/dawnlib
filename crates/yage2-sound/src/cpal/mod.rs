@@ -1,0 +1,201 @@
+use crate::device::{BackendDeviceTrait, CreateBackendConfig, InterleavedSampleBuffer};
+use crate::sample::Sample;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::SizedSample;
+use log::{debug, info, warn};
+use std::fmt::{Debug, Display, Formatter};
+use std::marker::PhantomData;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Error {
+    NotSupportedStreamParameters(u32, u8, usize, cpal::SampleFormat),
+    FetchConfigFailed(cpal::SupportedStreamConfigsError),
+    BuildStreamError(cpal::BuildStreamError),
+    StartStreamError(cpal::PlayStreamError),
+    AlreadyOpened,
+    AlreadyClosed,
+    PausedStreamError(cpal::PauseStreamError),
+    DefaultHostNotFound,
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::NotSupportedStreamParameters(
+                sample_rate,
+                channels,
+                buffer_size,
+                sample_format,
+            ) => {
+                write!(
+                    f,
+                    "Stream parameters not supported: sample_rate: {}, channels: {}, buffer_size: {}, sample_format: {:?}",
+                    sample_rate, channels, buffer_size, sample_format
+                )
+            }
+            Error::StartStreamError(err) => write!(f, "Failed to start stream: {}", err),
+            Error::PausedStreamError(err) => write!(f, "Failed to pause stream: {}", err),
+            Error::AlreadyOpened => write!(f, "Stream is already opened"),
+            Error::AlreadyClosed => write!(f, "Stream is already closed"),
+            Error::BuildStreamError(err) => write!(f, "Failed to build stream: {}", err),
+            Error::DefaultHostNotFound => write!(f, "Default host not found"),
+            Error::FetchConfigFailed(err) => write!(f, "Failed to fetch config: {}", err),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+#[derive(Debug)]
+pub struct DeviceConfig {}
+
+pub(crate) struct Device<S> {
+    device: cpal::Device,
+    stream_config: cpal::StreamConfig,
+    stream: Option<cpal::Stream>,
+    keep_s: PhantomData<S>,
+}
+
+fn sample_code_to_cpal_format<S>() -> cpal::SampleFormat
+where
+    S: Sample,
+{
+    match S::code() {
+        crate::sample::SampleCode::I16 => cpal::SampleFormat::I16,
+        crate::sample::SampleCode::I32 => cpal::SampleFormat::I32,
+        crate::sample::SampleCode::F32 => cpal::SampleFormat::F32,
+        crate::sample::SampleCode::F64 => cpal::SampleFormat::F64,
+        _ => panic!("Unsupported sample type for cpal: {:?}", S::code()),
+    }
+}
+
+impl<S> BackendDeviceTrait<S> for Device<S>
+where
+    S: Sample + SizedSample,
+{
+    fn new(cfg: CreateBackendConfig) -> Result<Self, Error>
+    where
+        Self: Sized,
+    {
+        let host = cpal::default_host();
+        let device = host
+            .default_output_device()
+            .ok_or(Error::DefaultHostNotFound)?;
+
+        let supported_configs = device
+            .supported_output_configs()
+            .map_err(Error::FetchConfigFailed)?;
+
+        let mut selected_config: Option<cpal::StreamConfig> = None;
+        let required_sample_format = sample_code_to_cpal_format::<S>();
+        for config in supported_configs {
+            // Log the supported config details
+            debug!(
+                "Supported config: sample_format: {:?}, sample_rate: {}-{}, channels: {}, buffer_size: {:?}",
+                config.sample_format(),
+                config.min_sample_rate().0,
+                config.max_sample_rate().0,
+                config.channels(),
+                config.buffer_size());
+
+            let sample_format_ok = config.sample_format() == required_sample_format;
+            let sample_rate_ok = config.min_sample_rate() <= cpal::SampleRate(cfg.sample_rate)
+                && cpal::SampleRate(cfg.sample_rate) <= config.max_sample_rate();
+            let channels_ok = config.channels() == cfg.channels as u16;
+            let buffer_size_ok = match config.buffer_size() {
+                cpal::SupportedBufferSize::Range { min, max } => {
+                    cfg.buffer_size >= *min as usize && cfg.buffer_size <= *max as usize
+                }
+                cpal::SupportedBufferSize::Unknown => continue,
+            };
+
+            debug!(
+                "Checking config: sample_format_ok: {}, sample_rate_ok: {}, channels_ok: {}, buffer_size_ok: {}",
+                sample_format_ok, sample_rate_ok, channels_ok, buffer_size_ok
+            );
+
+            if sample_format_ok && sample_rate_ok && channels_ok && buffer_size_ok {
+                selected_config = Some(cpal::StreamConfig {
+                    channels: config.channels(),
+                    sample_rate: cpal::SampleRate(cfg.sample_rate),
+                    buffer_size: cpal::BufferSize::Fixed(cfg.buffer_size as u32),
+                });
+                break;
+            }
+        }
+
+        Ok(Device::<S> {
+            device,
+            stream_config: selected_config.ok_or(Error::NotSupportedStreamParameters(
+                cfg.sample_rate,
+                cfg.channels,
+                cfg.buffer_size,
+                required_sample_format,
+            ))?,
+            stream: None,
+
+            keep_s: Default::default(),
+        })
+    }
+
+    fn open<F>(&mut self, mut raw_fn: F) -> Result<(), Error>
+    where
+        F: FnMut(&mut InterleavedSampleBuffer<S>) + Send + 'static,
+    {
+        if self.stream.is_some() {
+            return Err(Error::AlreadyOpened);
+        }
+
+        info!("Opening stream");
+        let err_fn = |err| eprintln!("Error building output sound stream: {}", err);
+        let interleaved_samples_count = match self.stream_config.buffer_size {
+            cpal::BufferSize::Fixed(size) => size as usize,
+            cpal::BufferSize::Default => {
+                panic!("Default buffer size is not supported in this context")
+            }
+        };
+        let samples_count = interleaved_samples_count * self.stream_config.channels as usize;
+
+        let stream = self
+            .device
+            .build_output_stream(
+                &self.stream_config,
+                move |data: &mut [S], _: &cpal::OutputCallbackInfo| {
+                    // Warp raw buffer into interleaved sample buffer
+                    match InterleavedSampleBuffer::<S>::new(data) {
+                        Some(mut interleaved_buffer) => {
+                            // Call the user-provided function with the interleaved sample buffer
+                            raw_fn(&mut interleaved_buffer);
+                        }
+
+                        None => {
+                            warn!(
+                                "Failed to create interleaved sample buffer: expected {} samples, got {}",
+                                samples_count,
+                                data.len()
+                            );
+                        }
+                    }
+                },
+                err_fn,
+                None,
+            )
+            .map_err(Error::BuildStreamError)?;
+
+        stream.play().map_err(Error::StartStreamError)?;
+        self.stream = Some(stream);
+
+        Ok(())
+    }
+
+    fn close(&mut self) -> Result<(), Error> {
+        match self.stream {
+            Some(ref stream) => {
+                stream.pause().map_err(Error::PausedStreamError)?;
+                self.stream = None;
+                Ok(())
+            }
+            None => Err(Error::AlreadyClosed),
+        }
+    }
+}
