@@ -1,6 +1,6 @@
-use crate::dsp::{BlockInfo, Control, Generator};
+use crate::dsp::{BlockInfo, EventDispatcher, Generator};
+use crate::control::{new_control, ControlReceiver, Controller};
 use crate::sample::PlanarBlock;
-use std::sync::mpsc::{channel, Receiver, Sender};
 
 pub enum GroupMessage {}
 
@@ -8,27 +8,27 @@ pub enum GroupMessage {}
 /// for example, mixing multiple audio clips or generators.
 pub struct GroupSource {
     pub busses: Vec<crate::dsp::bus::Bus>,
-    receiver: Receiver<GroupMessage>,
+    receiver: ControlReceiver<GroupMessage>,
 }
 
 impl GroupSource {
-    pub fn new(busses: Vec<crate::dsp::bus::Bus>) -> (Self, Sender<GroupMessage>) {
-        let (sender, receiver) = channel();
+    pub fn new(busses: Vec<crate::dsp::bus::Bus>) -> (Self, Controller<GroupMessage>) {
+        let (controller, receiver) = new_control();
         let source = Self { busses, receiver };
-        (source, sender)
+        (source, controller)
     }
 }
 
-impl Control for GroupSource {
-    fn process_events(&mut self) {
-        while let Ok(_message) = self.receiver.try_recv() {
+impl EventDispatcher for GroupSource {
+    fn dispatch_events(&mut self) {
+        while let Some(_) = self.receiver.receive() {
             // Process messages if needed
             // Currently, no specific messages are defined for GroupSource
         }
 
         // Process events for all nested busses
         for bus in &mut self.busses {
-            bus.process_events();
+            bus.dispatch_events();
         }
     }
 }

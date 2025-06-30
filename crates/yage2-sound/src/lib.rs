@@ -1,3 +1,5 @@
+pub mod backend;
+pub mod control;
 #[cfg(feature = "cpal")]
 mod cpal;
 pub mod device;
@@ -5,15 +7,6 @@ pub mod dsp;
 mod error;
 mod ringbuf;
 mod sample;
-
-#[cfg(feature = "cpal")]
-pub mod platform_impl {
-    pub type BackendSpecificConfig = crate::cpal::DeviceConfig;
-    pub(crate) type BackendDevice<S> = crate::cpal::Device<S>;
-    pub type BackendSpecificError = crate::cpal::Error;
-}
-
-pub use platform_impl::*;
 
 /// Hardcoded sample type of the data transferred between the audio
 /// processing thread and the audio device.

@@ -1,6 +1,6 @@
-use crate::dsp::{BlockInfo, Control, Generator, Processor, ProcessorType, SourceType};
+use crate::dsp::{BlockInfo, EventDispatcher, Generator, Processor, ProcessorType, SourceType};
+use crate::control::{new_control, ControlReceiver, Controller};
 use crate::sample::PlanarBlock;
-use std::sync::mpsc::{Receiver, Sender};
 
 #[derive(Debug)]
 pub enum BusMessage {
@@ -19,7 +19,7 @@ pub struct BusControllable {
 
 pub struct Bus {
     controllable: BusControllable,
-    receiver: Receiver<BusMessage>,
+    receiver: ControlReceiver<BusMessage>,
 }
 
 impl Bus {
@@ -35,13 +35,13 @@ impl Bus {
 }
 
 impl BusControllable {
-    pub fn build(self) -> (Bus, Sender<BusMessage>) {
-        let (sender, receiver) = std::sync::mpsc::channel();
+    pub fn build(self) -> (Bus, Controller<BusMessage>) {
+        let (controller, receiver) = new_control();
         let bus = Bus {
             controllable: self,
             receiver,
         };
-        (bus, sender)
+        (bus, controller)
     }
 
     pub fn set_pan(mut self, pan: f32) -> Self {
@@ -82,9 +82,9 @@ impl BusControllable {
     }
 }
 
-impl Control for Bus {
-    fn process_events(&mut self) {
-        while let Ok(message) = self.receiver.try_recv() {
+impl EventDispatcher for Bus {
+    fn dispatch_events(&mut self) {
+        while let Some(message) = self.receiver.receive() {
             match message {
                 BusMessage::SetPan(pan) => {
                     BusControllable::set_pan_inner(&mut self.controllable, pan)
@@ -99,11 +99,11 @@ impl Control for Bus {
         }
 
         // Process events for the source
-        self.controllable.source.process_events();
+        self.controllable.source.dispatch_events();
 
         // Process events for each processor
         for processor in &mut self.controllable.processors {
-            processor.process_events();
+            processor.dispatch_events();
         }
     }
 }

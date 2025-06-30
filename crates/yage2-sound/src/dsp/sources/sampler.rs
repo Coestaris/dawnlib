@@ -1,6 +1,6 @@
-use crate::dsp::{BlockInfo, Control, Generator};
+use crate::dsp::{BlockInfo, EventDispatcher, Generator};
+use crate::control::{new_control, ControlReceiver, Controller};
 use crate::sample::PlanarBlock;
-use std::sync::mpsc::{channel, Receiver, Sender};
 
 pub enum SamplerMessage {
     Play { clip_id: usize, volume: f32 },
@@ -10,20 +10,20 @@ pub enum SamplerMessage {
 /// Allows playing multiple audio clips in parallel,
 /// without controlling the playback position.
 pub struct SamplerSource {
-    receiver: Receiver<SamplerMessage>,
+    receiver: ControlReceiver<SamplerMessage>,
 }
 
 impl SamplerSource {
-    pub fn new() -> (Self, Sender<SamplerMessage>) {
-        let (sender, receiver) = channel();
+    pub fn new() -> (Self, Controller<SamplerMessage>) {
+        let (controller, receiver) = new_control();
         let source = Self { receiver };
-        (source, sender)
+        (source, controller)
     }
 }
 
-impl Control for SamplerSource {
-    fn process_events(&mut self) {
-        while let Ok(message) = self.receiver.try_recv() {
+impl EventDispatcher for SamplerSource {
+    fn dispatch_events(&mut self) {
+        while let Some(message) = self.receiver.receive() {
             match message {
                 SamplerMessage::Play { clip_id, volume } => {
                     // Handle playing a clip with the given ID and volume

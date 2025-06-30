@@ -1,7 +1,8 @@
-use crate::dsp::{BlockInfo, Control, Processor};
+use crate::dsp::{BlockInfo, EventDispatcher, Processor};
+use crate::control::{new_control, ControlReceiver, Controller};
 use crate::sample::PlanarBlock;
 
-enum HPFMessage {
+pub enum HPFMessage {
     SetCutoff(f32),    // Set the cutoff frequency
     SetResonance(f32), // Set the resonance amount
 }
@@ -10,25 +11,25 @@ pub struct HPF {
     pub cutoff: f32,    // Cutoff frequency
     pub resonance: f32, // Resonance amount
 
-    receiver: std::sync::mpsc::Receiver<HPFMessage>,
+    receiver: ControlReceiver<HPFMessage>,
 }
 
 impl HPF {
-    pub fn new() -> (Self, std::sync::mpsc::Sender<HPFMessage>) {
-        let (sender, receiver) = std::sync::mpsc::channel();
+    pub fn new() -> (Self, Controller<HPFMessage>) {
+        let (controller, receiver) = new_control();
         let hpf = Self {
             cutoff: 0.5,    // Default value
             resonance: 0.5, // Default value
             receiver,
         };
-        (hpf, sender)
+        (hpf, controller)
     }
 }
 
-impl Control for HPF {
-    fn process_events(&mut self) {
+impl EventDispatcher for HPF {
+    fn dispatch_events(&mut self) {
         // Process messages from the channel
-        while let Ok(message) = self.receiver.try_recv() {
+        while let Some(message) = self.receiver.receive() {
             match message {
                 HPFMessage::SetCutoff(cutoff) => {
                     self.cutoff = cutoff.clamp(0.0, 1.0); // Limit to [0.0, 1.0]

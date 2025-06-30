@@ -1,7 +1,8 @@
-use crate::dsp::{BlockInfo, Control, Processor};
+use crate::dsp::{BlockInfo, EventDispatcher, Processor};
+use crate::control::{new_control, ControlReceiver, Controller};
 use crate::sample::PlanarBlock;
 
-enum DelayMessage {
+pub enum DelayMessage {
     SetDelay(usize),  // Set the delay in samples
     SetFeedback(f32), // Set the feedback amount
 }
@@ -10,25 +11,25 @@ pub struct Delay {
     pub delay: usize,  // Delay in samples
     pub feedback: f32, // Feedback amount
 
-    receiver: std::sync::mpsc::Receiver<DelayMessage>,
+    receiver: ControlReceiver<DelayMessage>,
 }
 
 impl Delay {
-    pub fn new() -> (Self, std::sync::mpsc::Sender<DelayMessage>) {
-        let (sender, receiver) = std::sync::mpsc::channel();
+    pub fn new() -> (Self, Controller<DelayMessage>) {
+        let (controller, receiver) = new_control();
         let delay = Self {
             delay: 0,      // Default value
             feedback: 0.0, // Default value
             receiver,
         };
-        (delay, sender)
+        (delay, controller)
     }
 }
 
-impl Control for Delay {
-    fn process_events(&mut self) {
+impl EventDispatcher for Delay {
+    fn dispatch_events(&mut self) {
         // Process messages from the channel
-        while let Ok(message) = self.receiver.try_recv() {
+        while let Some(message) = self.receiver.receive() {
             match message {
                 DelayMessage::SetDelay(samples) => {
                     self.delay = samples.max(0); // Ensure non-negative delay

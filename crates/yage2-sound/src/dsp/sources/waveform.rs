@@ -1,8 +1,8 @@
-use crate::dsp::{BlockInfo, Control, Generator};
+use crate::dsp::{BlockInfo, EventDispatcher, Generator};
+use crate::control::{new_control, ControlReceiver, Controller};
 use crate::sample::PlanarBlock;
 use crate::BLOCK_SIZE;
 use log::debug;
-use std::sync::mpsc::{channel, Receiver, Sender};
 
 pub enum WaveformMessage {
     SetWaveformType(WaveformType),
@@ -27,7 +27,7 @@ pub enum WaveformType {
 /// for example, a sine wave generator.
 pub struct WaveformSource {
     controllable: WaveformControllable,
-    receiver: Receiver<WaveformMessage>,
+    receiver: ControlReceiver<WaveformMessage>,
 }
 
 impl WaveformSource {
@@ -41,13 +41,13 @@ impl WaveformSource {
 }
 
 impl WaveformControllable {
-    pub fn build(self) -> (WaveformSource, Sender<WaveformMessage>) {
-        let (sender, receiver) = channel();
+    pub fn build(self) -> (WaveformSource, Controller<WaveformMessage>) {
+        let (controller, receiver) = new_control();
         let source = WaveformSource {
             controllable: self,
             receiver,
         };
-        (source, sender)
+        (source, controller)
     }
 
     pub fn set_waveform_type(mut self, waveform_type: WaveformType) -> Self {
@@ -78,9 +78,9 @@ impl WaveformControllable {
     }
 }
 
-impl Control for WaveformSource {
-    fn process_events(&mut self) {
-        while let Ok(message) = self.receiver.try_recv() {
+impl EventDispatcher for WaveformSource {
+    fn dispatch_events(&mut self) {
+        while let Some(message) = self.receiver.receive() {
             match message {
                 WaveformMessage::SetWaveformType(waveform_type) => {
                     self.controllable.set_waveform_type_inner(waveform_type);

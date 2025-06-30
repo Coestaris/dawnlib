@@ -130,3 +130,40 @@ where
         }
     }
 }
+
+/// This struct represents a buffer of interleaved samples.
+/// It is used to store audio samples in a format where
+/// each sample contains data for all channels interleaved together.
+/// For example: r.0, l.0, r.1, l.1, r.2, l.2, ...
+/// Used for endpoint audio processing - passing data to the audio device.
+/// The Amount of samples in the buffer is equal to `DEVICE_BUFFER_SIZE`.
+#[repr(C)]
+#[derive(Debug, Default)]
+pub(crate) struct InterleavedSampleBuffer<'a, S>
+where
+    S: Sample,
+{
+    pub(crate) samples: &'a mut [InterleavedSample<S>],
+    pub(crate) len: usize,
+}
+
+impl<'a, S> InterleavedSampleBuffer<'a, S>
+where
+    S: Sample,
+{
+    pub fn new(raw: &'a mut [S]) -> Option<Self> {
+        // Check that the length of the raw slice is a multiple of CHANNELS_COUNT
+        if raw.len() % CHANNELS_COUNT as usize != 0 {
+            return None; // Invalid length for interleaved samples
+        }
+
+        let ptr = raw.as_mut_ptr() as *mut InterleavedSample<S>;
+        let len = raw.len() / CHANNELS_COUNT as usize;
+
+        let casted = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+        Some(Self {
+            samples: casted,
+            len,
+        })
+    }
+}

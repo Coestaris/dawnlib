@@ -1,6 +1,6 @@
-use crate::dsp::{BlockInfo, Control, Generator};
+use crate::dsp::{BlockInfo, EventDispatcher, Generator};
+use crate::control::{new_control, ControlReceiver, Controller};
 use crate::sample::PlanarBlock;
-use std::sync::mpsc::{Receiver, Sender};
 
 pub enum ClipMessage {
     Play,
@@ -11,20 +11,20 @@ pub enum ClipMessage {
 /// Allows playing a single audio clip,
 /// controlling the playback position.
 pub struct ClipSource {
-    receiver: Receiver<ClipMessage>,
+    receiver: ControlReceiver<ClipMessage>,
 }
 
 impl ClipSource {
-    pub fn new() -> (Self, Sender<ClipMessage>) {
-        let (sender, receiver) = std::sync::mpsc::channel();
+    pub fn new() -> (Self, Controller<ClipMessage>) {
+        let (controller, receiver) = new_control();
         let source = Self { receiver };
-        (source, sender)
+        (source, controller)
     }
 }
 
-impl Control for ClipSource {
-    fn process_events(&mut self) {
-        while let Ok(message) = self.receiver.try_recv() {
+impl EventDispatcher for ClipSource {
+    fn dispatch_events(&mut self) {
+        while let Some(message) = self.receiver.receive() {
             match message {
                 ClipMessage::Play => {
                     // Handle play logic

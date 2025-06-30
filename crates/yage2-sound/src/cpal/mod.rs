@@ -1,10 +1,10 @@
-use crate::device::{BackendDeviceTrait, CreateBackendConfig, InterleavedSampleBuffer};
-use crate::sample::Sample;
+use crate::sample::{InterleavedSampleBuffer, Sample};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SizedSample;
 use log::{debug, info, warn};
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
+use crate::backend::{BackendDeviceTrait, CreateBackendConfig};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {

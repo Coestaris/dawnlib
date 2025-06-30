@@ -1,113 +1,122 @@
-use crate::dsp::bus::Bus;
-use crate::dsp::{Control, Generator};
-use crate::{
-    dsp::BlockInfo,
-    error::{DeviceCloseError, DeviceCreationError, DeviceOpenError},
-    ringbuf::RingBuffer,
-    sample::{InterleavedSample, PlanarBlock, Sample},
-    BackendDevice, BackendSpecificConfig, BackendSpecificError, SampleType, BLOCK_SIZE,
-    CHANNELS_COUNT, DEVICE_BUFFER_SIZE, RING_BUFFER_SIZE,
+use crate::backend::{
+    BackendDevice, BackendDeviceTrait, BackendSpecificConfig, CreateBackendConfig,
 };
+use crate::control::DeviceController;
+use crate::dsp::bus::Bus;
+use crate::dsp::{BlockInfo, EventDispatcher, Generator};
+use crate::error::{DeviceCloseError, DeviceCreationError, DeviceOpenError};
+use crate::ringbuf::RingBuffer;
+use crate::sample::{InterleavedSample, InterleavedSampleBuffer, PlanarBlock, Sample};
+use crate::{SampleType, BLOCK_SIZE, CHANNELS_COUNT, DEVICE_BUFFER_SIZE, RING_BUFFER_SIZE};
 use log::{debug, info, warn};
-use std::sync::{atomic::AtomicBool, Arc, Condvar, Mutex};
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use std::thread::Builder;
 use yage2_core::profile::{MinMaxProfiler, PeriodProfiler, TickProfiler};
 
 const WATERMARK_THRESHOLD: usize = RING_BUFFER_SIZE / 4;
 
-#[allow(dead_code)]
-pub(crate) struct CreateBackendConfig {
-    pub backend_specific: BackendSpecificConfig,
-    pub sample_rate: u32,
-    pub channels: u8,
-    pub buffer_size: usize,
-}
-
-/// This struct represents a buffer of interleaved samples.
-/// It is used to store audio samples in a format where
-/// each sample contains data for all channels interleaved together.
-/// For example: r.0, l.0, r.1, l.1, r.2, l.2, ...
-/// Used for endpoint audio processing - passing data to the audio device.
-/// The Amount of samples in the buffer is equal to `DEVICE_BUFFER_SIZE`.
-#[repr(C)]
-#[derive(Debug, Default)]
-pub(crate) struct InterleavedSampleBuffer<'a, S>
-where
-    S: Sample,
-{
-    pub(crate) samples: &'a mut [InterleavedSample<S>],
-    pub(crate) len: usize,
-}
-
-impl<'a, S> InterleavedSampleBuffer<'a, S>
-where
-    S: Sample,
-{
-    pub fn new(raw: &'a mut [S]) -> Option<Self> {
-        // Check that the length of the raw slice is a multiple of CHANNELS_COUNT
-        if raw.len() % CHANNELS_COUNT as usize != 0 {
-            return None; // Invalid length for interleaved samples
-        }
-
-        let ptr = raw.as_mut_ptr() as *mut InterleavedSample<S>;
-        let len = raw.len() / CHANNELS_COUNT as usize;
-
-        let casted = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
-        Some(Self {
-            samples: casted,
-            len,
-        })
-    }
-}
-
-pub(crate) trait BackendDeviceTrait<S>
-where
-    S: Sample,
-{
-    fn new(cfg: CreateBackendConfig) -> Result<Self, BackendSpecificError>
-    where
-        Self: Sized;
-
-    fn open<F>(&mut self, raw_fn: F) -> Result<(), BackendSpecificError>
-    where
-        F: FnMut(&mut InterleavedSampleBuffer<S>) + Send + 'static;
-
-    fn close(&mut self) -> Result<(), BackendSpecificError>;
-}
-
 pub struct DeviceConfig {
     pub backend_specific: BackendSpecificConfig,
-    pub main_bus: Arc<Mutex<Bus>>,
-    pub update_bus: Arc<(Mutex<u8>, Condvar)>,
+    pub master_bus: Arc<Mutex<Bus>>,
+    pub device_controller: Arc<DeviceController>,
+    pub profiler_handler: Option<fn(&ProfileFrame)>,
     pub sample_rate: u32,
 }
 
-#[derive(Default)]
-struct Profiler {
-    process: PeriodProfiler,
-    process_tps: TickProfiler,
+struct Profilers {
+    gen_time: PeriodProfiler,
+    gen_tps: TickProfiler,
     write_bulk: PeriodProfiler,
-
     events: PeriodProfiler,
     events_tps: TickProfiler,
-
     available_minmax: MinMaxProfiler,
     reader_tps: TickProfiler,
 }
 
+impl Default for Profilers {
+    fn default() -> Self {
+        Profilers {
+            gen_time: PeriodProfiler::new(0.2),
+            gen_tps: TickProfiler::new(1.0),
+            write_bulk: PeriodProfiler::new(0.2),
+            events: PeriodProfiler::new(0.2),
+            events_tps: TickProfiler::new(1.0),
+            available_minmax: MinMaxProfiler::new(),
+            reader_tps: TickProfiler::new(1.0),
+        }
+    }
+}
+
+pub struct ProfileFrame {
+    // Time consumed by the generator to produce a block of samples (in milliseconds)
+    pub gen_min: f32,
+    pub gen_av: f32,
+    pub gen_max: f32,
+
+    // Number of ticks per second the generator was called
+    pub gen_tps_min: f32,
+    pub gen_tps_av: f32,
+    pub gen_tps_max: f32,
+
+    // Time consumed by the write bulk operation (in milliseconds)
+    pub write_bulk_min: f32,
+    pub write_bulk_av: f32,
+    pub write_bulk_max: f32,
+
+    // Time consumed by the event processing (in milliseconds)
+    pub events_min: f32,
+    pub events_av: f32,
+    pub events_max: f32,
+
+    // Number of events processed per second
+    pub events_tps_min: f32,
+    pub events_tps_av: f32,
+    pub events_tps_max: f32,
+
+    // Minimum, average, and maximum number of available samples in the ring buffer
+    pub available_min: f32,
+    pub available_av: f32,
+    pub available_max: f32,
+
+    // Number of ticks per second the reader was called
+    pub reader_tps_min: f32,
+    pub reader_tps_av: f32,
+    pub reader_tps_max: f32,
+
+    // Device parameters
+    pub sample_rate: u32,
+    pub buffer_size: usize,
+    pub channels: u8,
+    pub block_size: usize,
+}
+
 pub struct Device {
+    // The backend device that handles audio output
     backend: BackendDevice<SampleType>,
+
+    // The ring buffer that stores audio samples
+    // used for inter-thread communication between the
+    // generator and the reader
     ring_buffer: Arc<RingBuffer>,
-    stop_signal: Arc<AtomicBool>,
-    main_bus: Arc<Mutex<Bus>>,
+
+    // The master bus used for audio generation
+    master_bus: Arc<Mutex<Bus>>,
+
+    // The sample-rate of the audio device and all the audio processing
     sample_rate: u32,
 
-    update_bus: Arc<(Mutex<u8>, Condvar)>,
-    profiler: Arc<Profiler>,
+    // The controller that allows user to control buses and more
+    controller: Arc<DeviceController>,
 
+    // Threads for audio generation, event processing, and statistics
+    stop_signal: Arc<AtomicBool>,
     generator_thread: Option<std::thread::JoinHandle<()>>,
     events_thread: Option<std::thread::JoinHandle<()>>,
     statistics_thread: Option<std::thread::JoinHandle<()>>,
+
+    // Profiler for collecting statistics about the audio processing
+    profiler_handler: Option<fn(&ProfileFrame)>,
+    profilers: Arc<Profilers>,
 }
 
 impl Drop for Device {
@@ -135,197 +144,249 @@ impl Device {
         Ok(Device {
             backend: backend_device,
             ring_buffer: Arc::new(RingBuffer::new()),
+            master_bus: Arc::clone(&config.master_bus),
+
+            controller: config.device_controller,
             sample_rate: config.sample_rate,
+
+            stop_signal: Arc::new(AtomicBool::new(false)),
             generator_thread: None,
             events_thread: None,
             statistics_thread: None,
-            update_bus: config.update_bus,
-            stop_signal: Arc::new(AtomicBool::new(false)),
-            main_bus: Arc::clone(&config.main_bus),
-            profiler: Arc::new(Profiler {
-                process: PeriodProfiler::new(0.2),
-                process_tps: TickProfiler::new(1.0),
-                write_bulk: PeriodProfiler::new(0.2),
-                events: PeriodProfiler::new(0.2),
-                events_tps: TickProfiler::new(1.0),
-                available_minmax: MinMaxProfiler::new(),
-                reader_tps: TickProfiler::new(1.0),
-            }),
+
+            profiler_handler: config.profiler_handler,
+            profilers: Arc::new(Profilers::default()),
         })
     }
 
-    pub fn open(&mut self) -> Result<(), DeviceOpenError> {
-        info!("Opening audio device");
-
-        let writer_buffer = Arc::clone(&self.ring_buffer);
-        let generator_stop_signal = Arc::clone(&self.stop_signal);
-        let generator_bus = Arc::clone(&self.main_bus);
+    fn spawn_generator_thread(&mut self) -> Result<(), DeviceOpenError> {
+        let buffer = Arc::clone(&self.ring_buffer);
+        let master = Arc::clone(&self.master_bus);
         let sample_rate = self.sample_rate;
-        let generator_profiler = Arc::clone(&self.profiler);
+        let profiler = Arc::clone(&self.profilers);
+        let tick = move |sample_index: usize| {
+            profiler.gen_tps.tick(1);
+
+            // Generate a block of planar samples
+            // All the processing is done in f32 format
+            let mut planar_block = PlanarBlock::<f32> {
+                samples: [[0.0; BLOCK_SIZE]; CHANNELS_COUNT as usize],
+            };
+            let block_info = BlockInfo {
+                sample_index,
+                sample_rate,
+            };
+
+            // Generate samples using the master bus
+            let bus_guard = master.lock().unwrap();
+            profiler.gen_time.start();
+            bus_guard.generate(&mut planar_block, &block_info);
+            profiler.gen_time.end();
+            drop(bus_guard);
+
+            // Convert planar samples to interleaved format
+            // Convert to the SampleType if necessary
+            let mut interleaved_samples: [InterleavedSample<SampleType>; BLOCK_SIZE] =
+                [InterleavedSample::default(); BLOCK_SIZE];
+            for i in 0..BLOCK_SIZE {
+                for channel in 0..CHANNELS_COUNT as usize {
+                    let sample = planar_block.samples[channel][i];
+                    interleaved_samples[i].channels[channel] = SampleType::from_f32(sample);
+                }
+            }
+
+            // Write interleaved samples to the ring buffer
+            profiler.write_bulk.start();
+            let guard = buffer.write_bulk_wait(BLOCK_SIZE);
+            guard.write_samples(&interleaved_samples);
+            profiler.write_bulk.end();
+        };
+
+        let stop_signal = Arc::clone(&self.stop_signal);
         self.generator_thread = Some(
             Builder::new()
                 .name("aud_gen".into())
                 .spawn(move || {
                     let mut sample_index = 0;
-
                     loop {
-                        generator_profiler.process_tps.tick(1);
-
                         // Check if the stop signal is set
-                        if generator_stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
+                        if stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
                             info!("Audio generator thread stopping");
                             break;
                         }
 
-                        // Generate a block of planar samples
-                        // All the processing is done in f32 format
-                        let mut planar_block = PlanarBlock::<f32> {
-                            samples: [[0.0; BLOCK_SIZE]; CHANNELS_COUNT as usize],
-                        };
-                        let block_info = BlockInfo {
-                            sample_index,
-                            sample_rate,
-                        };
+                        // Generate a block of samples
+                        tick(sample_index);
 
-                        let bus_guard = generator_bus.lock().unwrap();
-                        generator_profiler.process.start();
-                        bus_guard.generate(&mut planar_block, &block_info);
-                        generator_profiler.process.end();
-                        drop(bus_guard);
-
+                        // Increment the sample index for the next block
                         sample_index += BLOCK_SIZE;
-
-                        // Convert planar samples to interleaved format
-                        // Convert to the SampleType if necessary
-                        let mut interleaved_samples: [InterleavedSample<SampleType>; BLOCK_SIZE] =
-                            [InterleavedSample::default(); BLOCK_SIZE];
-                        for i in 0..BLOCK_SIZE {
-                            for channel in 0..CHANNELS_COUNT as usize {
-                                let sample = planar_block.samples[channel][i];
-                                interleaved_samples[i].channels[channel] =
-                                    SampleType::from_f32(sample);
-                            }
-                        }
-
-                        generator_profiler.write_bulk.start();
-                        let guard = writer_buffer.write_bulk_wait(BLOCK_SIZE);
-                        // Write interleaved samples to the ring buffer
-                        guard.write_samples(&interleaved_samples);
-                        generator_profiler.write_bulk.end();
                     }
                 })
-                .unwrap(),
+                .map_err(|_| DeviceOpenError::GeneratorThreadSpawnError)?,
         );
 
-        let bus_update = self.update_bus.clone();
+        Ok(())
+    }
+
+    fn spawn_events_thread(&mut self) -> Result<(), DeviceOpenError> {
+        let controller = Arc::clone(&self.controller);
+        let master = Arc::clone(&self.master_bus);
+        let profiler = Arc::clone(&self.profilers);
+        let tick = move || {
+            profiler.events_tps.tick(1);
+
+            // Wait for the update bus to signal that there are new events
+            controller.wait_for_update();
+
+            // Process events in the main bus
+            debug!("Processing events in the main bus");
+            let mut bus_guard = master.lock().unwrap();
+            profiler.events.start();
+            bus_guard.dispatch_events();
+            profiler.events.end();
+            drop(bus_guard);
+        };
+
         let events_stop_signal = Arc::clone(&self.stop_signal);
-        let events_bus = Arc::clone(&self.main_bus);
-        let events_profiler = Arc::clone(&self.profiler);
         self.events_thread = Some(
             Builder::new()
                 .name("aud_events".into())
                 .spawn(move || {
                     loop {
-                        events_profiler.events_tps.tick(1);
-
                         // Check if the stop signal is set
                         if events_stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
                             info!("Audio events thread stopping");
                             break;
                         }
 
-                        // Wait for the update bus to signal that there are new events
-                        let (lock, cvar) = &*bus_update;
-                        let mut update_count = lock.lock().unwrap();
-                        while *update_count == 0 {
-                            update_count = cvar.wait(update_count).unwrap();
-                        }
-
-                        // Reset the update count
-                        *update_count = 0;
-
-                        // Process events in the main bus
-                        debug!("Processing events in the main bus");
-                        let mut bus_guard = events_bus.lock().unwrap();
-                        events_profiler.events.start();
-                        bus_guard.process_events();
-                        events_profiler.events.end();
-                        drop(bus_guard);
+                        // Process events
+                        tick();
                     }
                 })
-                .unwrap(),
+                .map_err(|_| DeviceOpenError::EventThreadSpawnError)?,
         );
+        Ok(())
+    }
 
-        let statistics_profiler = Arc::clone(&self.profiler);
+    fn spawn_statistics_thread(&mut self) -> Result<(), DeviceOpenError> {
+        let profiler_handler = match &self.profiler_handler {
+            Some(handler) => handler.clone(),
+            None => {
+                warn!("No profiler handler provided, statistics thread will not log data");
+                return Ok(());
+            }
+        };
+
+        let statistics_profiler = Arc::clone(&self.profilers);
         let statistics_stop_signal = Arc::clone(&self.stop_signal);
+        let sample_rate = self.sample_rate;
+        let tick = move || {
+            statistics_profiler.gen_tps.update();
+            statistics_profiler.events_tps.update();
+
+            let (proc_min, proc_av, proc_max) = statistics_profiler.gen_time.get_stat();
+            let (proc_tps_min, proc_tps_av, proc_tps_max) = statistics_profiler.gen_tps.get_stat();
+            let (write_bulk_min, write_bulk_av, write_bulk_max) =
+                statistics_profiler.write_bulk.get_stat();
+            let (events_min, events_av, events_max) = statistics_profiler.events.get_stat();
+            let (events_tps_min, events_tps_av, events_tps_max) =
+                statistics_profiler.events_tps.get_stat();
+            let (available_min, available_av, available_max) =
+                statistics_profiler.available_minmax.get_stat();
+            let (reader_tps_min, reader_tps_av, reader_tps_max) =
+                statistics_profiler.reader_tps.get_stat();
+
+            let frame = ProfileFrame {
+                gen_min: proc_min,
+                gen_av: proc_av,
+                gen_max: proc_max,
+                gen_tps_min: proc_tps_min,
+                gen_tps_av: proc_tps_av,
+                gen_tps_max: proc_tps_max,
+                write_bulk_min,
+                write_bulk_av,
+                write_bulk_max,
+                events_min,
+                events_av,
+                events_max,
+                events_tps_min,
+                events_tps_av,
+                events_tps_max,
+                available_min,
+                available_av,
+                available_max,
+                reader_tps_min,
+                reader_tps_av,
+                reader_tps_max,
+                sample_rate,
+                buffer_size: DEVICE_BUFFER_SIZE,
+                channels: CHANNELS_COUNT,
+                block_size: BLOCK_SIZE,
+            };
+
+            profiler_handler(&frame);
+
+            // Sleep for a short duration to avoid busy-waiting
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+        };
+
         self.statistics_thread = Some(
             Builder::new()
                 .name("aud_stats".into())
                 .spawn(move || {
                     loop {
-                        statistics_profiler.process_tps.update();
-                        statistics_profiler.events_tps.update();
-
                         // Check if the stop signal is set
                         if statistics_stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
                             info!("Audio statistics thread stopping");
                             break;
                         }
 
-                        let (proc_min, proc_av, proc_max) = statistics_profiler.process.get_stat();
-                        let (proc_tps_min, proc_tps_av, proc_tps_max) =
-                            statistics_profiler.process_tps.get_stat();
-                        let (write_bulk_min, write_bulk_av, write_bulk_max) =
-                            statistics_profiler.write_bulk.get_stat();
-                        let (events_min, events_av, events_max) =
-                            statistics_profiler.events.get_stat();
-                        let (events_tps_min, events_tps_av, events_tps_max) =
-                            statistics_profiler.events_tps.get_stat();
-                        let (available_min, available_av, available_max) =
-                            statistics_profiler.available_minmax.get_stat();
-
-                        info!(
-                            "Gen: {:.1}/{:.1} (of {:.1}) ({:.0}). Ev: {:.1} ({:.0}). Buffer: {:}/{:}/{:}",
-                            proc_av,
-                            write_bulk_av,
-                            1000.0 / ((sample_rate as usize * (DEVICE_BUFFER_SIZE / BLOCK_SIZE)) / (DEVICE_BUFFER_SIZE)) as f32,
-                            proc_tps_av,
-                            events_av,
-                            events_tps_av,
-                            available_min,
-                            available_av,
-                            available_max
-                        );
-
-                        // Sleep for a short duration to avoid busy-waiting
-                        std::thread::sleep(std::time::Duration::from_millis(1000));
+                        // Collect and log statistics
+                        tick();
                     }
                 })
-                .unwrap(),
+                .map_err(|_| DeviceOpenError::StatisticsThreadSpawnError)?,
         );
 
-        let reader_profiler = Arc::clone(&self.profiler);
+        Ok(())
+    }
+
+    fn spawn_reader(&mut self) -> Result<(), DeviceOpenError> {
+        let reader_profiler = Arc::clone(&self.profilers);
         let reader_buffer = Arc::clone(&self.ring_buffer);
+        let func = move |buffer: &mut InterleavedSampleBuffer<SampleType>| {
+            reader_profiler.reader_tps.tick(1);
+
+            let guard = reader_buffer.read_bulk();
+            let (read, available) = guard.read_or_silence(buffer.samples);
+            if read < buffer.samples.len() {
+                warn!(
+                    "Buffer underflow: requested {} samples, got only {}",
+                    buffer.samples.len(),
+                    read
+                );
+            }
+
+            reader_profiler.available_minmax.update(available as u64);
+            if available < WATERMARK_THRESHOLD {
+                warn!("Low available samples in ring buffer: {}", available);
+            }
+        };
+
         self.backend
-            .open(move |buffer: &mut InterleavedSampleBuffer<SampleType>| {
-                reader_profiler.reader_tps.tick(1);
-
-                let guard = reader_buffer.read_bulk();
-                let (read, available) = guard.read_or_silence(buffer.samples);
-                if read < buffer.samples.len() {
-                    warn!(
-                        "Buffer underflow: requested {} samples, got only {}",
-                        buffer.samples.len(),
-                        read
-                    );
-                }
-
-                reader_profiler.available_minmax.update(available as u64);
-                if available < WATERMARK_THRESHOLD {
-                    warn!("Low available samples in ring buffer: {}", available);
-                }
-            })
+            .open(func)
             .map_err(DeviceOpenError::BackendSpecific)?;
+
+        Ok(())
+    }
+
+    pub fn open(&mut self) -> Result<(), DeviceOpenError> {
+        info!("Opening audio device");
+
+        self.spawn_events_thread()?;
+        self.spawn_generator_thread()?;
+        self.spawn_statistics_thread()?;
+        self.spawn_reader()?;
 
         Ok(())
     }
@@ -341,16 +402,15 @@ impl Device {
             .store(true, std::sync::atomic::Ordering::Relaxed);
         // Unlock the ring buffer to allow the generator thread to finish
         self.ring_buffer.poison();
+        // Notify the events thread to stop
+        self.controller.reset();
+
         // Wait for the generator thread to finish
         if let Some(thread) = self.generator_thread.take() {
             if let Err(e) = thread.join() {
                 warn!("Failed to join audio generator thread: {:?}", e);
             }
         }
-        // Notify the events thread to stop
-        *self.update_bus.0.lock().unwrap() = 1; // Set the update count to 1 to wake up the events thread
-        self.update_bus.1.notify_all(); // Notify the events thread to wake up and exit
-
         if let Some(thread) = self.events_thread.take() {
             if let Err(e) = thread.join() {
                 warn!("Failed to join audio events thread: {:?}", e);

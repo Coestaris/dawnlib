@@ -26,8 +26,8 @@ impl BlockInfo {
     }
 }
 
-pub(crate) trait Control {
-    fn process_events(&mut self);
+pub(crate) trait EventDispatcher {
+    fn dispatch_events(&mut self);
 }
 
 pub(crate) trait Processor {
@@ -64,16 +64,16 @@ impl Processor for ProcessorType {
     }
 }
 
-impl Control for ProcessorType {
-    fn process_events(&mut self) {
+impl EventDispatcher for ProcessorType {
+    fn dispatch_events(&mut self) {
         match self {
             ProcessorType::NoProcessor => {
                 // No events to process
             }
-            ProcessorType::Delay(delay) => delay.process_events(),
-            ProcessorType::Reverb(reverb) => reverb.process_events(),
-            ProcessorType::LPF(lpf) => lpf.process_events(),
-            ProcessorType::HPF(hpf) => hpf.process_events(),
+            ProcessorType::Delay(delay) => delay.dispatch_events(),
+            ProcessorType::Reverb(reverb) => reverb.dispatch_events(),
+            ProcessorType::LPF(lpf) => lpf.dispatch_events(),
+            ProcessorType::HPF(hpf) => hpf.dispatch_events(),
         }
     }
 }
@@ -112,16 +112,16 @@ impl Generator for SourceType {
     }
 }
 
-impl Control for SourceType {
-    fn process_events(&mut self) {
+impl EventDispatcher for SourceType {
+    fn dispatch_events(&mut self) {
         match self {
             SourceType::NoSource => {
                 // No events to process
             }
-            SourceType::Sampler(sampler) => sampler.process_events(),
-            SourceType::Clip(clip) => clip.process_events(),
-            SourceType::Waveform(waveform) => waveform.process_events(),
-            SourceType::Group(group) => group.process_events(),
+            SourceType::Sampler(sampler) => sampler.dispatch_events(),
+            SourceType::Clip(clip) => clip.dispatch_events(),
+            SourceType::Waveform(waveform) => waveform.dispatch_events(),
+            SourceType::Group(group) => group.dispatch_events(),
         }
     }
 }

@@ -1,6 +1,6 @@
-use crate::dsp::{BlockInfo, Control, Processor};
+use crate::control::{new_control, ControlReceiver, Controller};
+use crate::dsp::{BlockInfo, EventDispatcher, Processor};
 use crate::sample::PlanarBlock;
-use std::sync::mpsc::Receiver;
 
 pub enum ReverbMessage {
     SetRoomSize(f32), // Set the size of the reverb room
@@ -11,24 +11,24 @@ pub struct Reverb {
     pub room_size: f32, // Size of the reverb room
     pub damping: f32,   // Damping factor
 
-    receiver: Receiver<ReverbMessage>,
+    receiver: ControlReceiver<ReverbMessage>,
 }
 
 impl Reverb {
-    pub fn new() -> (Self, std::sync::mpsc::Sender<ReverbMessage>) {
-        let (sender, receiver) = std::sync::mpsc::channel();
+    pub fn new() -> (Self, Controller<ReverbMessage>) {
+        let (controller, receiver) = new_control();
         let reverb = Self {
             room_size: 0.5, // Default value
             damping: 0.5,   // Default value
             receiver,
         };
-        (reverb, sender)
+        (reverb, controller)
     }
 }
 
-impl Control for Reverb {
-    fn process_events(&mut self) {
-        while let Ok(message) = self.receiver.try_recv() {
+impl EventDispatcher for Reverb {
+    fn dispatch_events(&mut self) {
+        while let Some(message) = self.receiver.receive() {
             match message {
                 ReverbMessage::SetRoomSize(size) => {
                     self.room_size = size.clamp(0.0, 1.0); // Limit to [0.0, 1.0]

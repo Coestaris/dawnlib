@@ -1,7 +1,8 @@
-use crate::dsp::{BlockInfo, Control, Processor};
+use crate::control::{new_control, ControlReceiver, Controller};
+use crate::dsp::{BlockInfo, EventDispatcher, Processor};
 use crate::sample::PlanarBlock;
 
-enum LPFMessage {
+pub enum LPFMessage {
     SetCutoff(f32),    // Set the cutoff frequency
     SetResonance(f32), // Set the resonance amount
 }
@@ -10,25 +11,25 @@ pub struct LPF {
     pub cutoff: f32,    // Cutoff frequency
     pub resonance: f32, // Resonance amount
 
-    receiver: std::sync::mpsc::Receiver<LPFMessage>,
+    receiver: ControlReceiver<LPFMessage>,
 }
 
 impl LPF {
-    pub fn new() -> (Self, std::sync::mpsc::Sender<LPFMessage>) {
-        let (sender, receiver) = std::sync::mpsc::channel();
+    pub fn new() -> (Self, Controller<LPFMessage>) {
+        let (controller, receiver) = new_control();
         let lpf = Self {
             cutoff: 0.5,    // Default value
             resonance: 0.5, // Default value
             receiver,
         };
-        (lpf, sender)
+        (lpf, controller)
     }
 }
 
-impl Control for LPF {
-    fn process_events(&mut self) {
+impl EventDispatcher for LPF {
+    fn dispatch_events(&mut self) {
         // Process messages from the channel
-        while let Ok(message) = self.receiver.try_recv() {
+        while let Some(message) = self.receiver.receive() {
             match message {
                 LPFMessage::SetCutoff(cutoff) => {
                     self.cutoff = cutoff.clamp(0.0, 1.0); // Limit to [0.0, 1.0]

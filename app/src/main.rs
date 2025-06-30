@@ -10,12 +10,13 @@ use std::sync::{Arc, Condvar, Mutex};
 use yage2_app::create_object;
 use yage2_app::engine::application::Application;
 use yage2_core::utils::format_now;
-use yage2_sound::device::{Device, DeviceConfig};
+use yage2_sound::backend::BackendSpecificConfig;
+use yage2_sound::control::{Controller, DeviceController};
+use yage2_sound::device::{Device, DeviceConfig, ProfileFrame};
 use yage2_sound::dsp::bus::Bus;
 use yage2_sound::dsp::sources::group::GroupSource;
 use yage2_sound::dsp::sources::waveform::{WaveformMessage, WaveformSource};
 use yage2_sound::dsp::SourceType;
-use yage2_sound::{BackendSpecificConfig, SampleType};
 
 struct SimpleLogger;
 
@@ -127,23 +128,26 @@ fn main() {
     // ];
     // app.run(objects).unwrap();
 
-    let update_bus = Arc::new((Mutex::new(0u8), Condvar::new()));
+    let controller = Arc::new(DeviceController::new());
     let (source1, source1_controller) = WaveformSource::new().build();
     let (bus1, _) = Bus::new()
         .set_source(SourceType::Waveform(source1))
-        .set_volume(0.2)
+        .set_pan(-0.2)
+        .set_volume(0.3)
         .build();
 
     let (source2, source2_controller) = WaveformSource::new().build();
     let (bus2, _) = Bus::new()
         .set_source(SourceType::Waveform(source2))
+        .set_pan(0.0)
         .set_volume(0.3)
         .build();
 
     let (source3, source3_controller) = WaveformSource::new().build();
     let (bus3, _) = Bus::new()
         .set_source(SourceType::Waveform(source3))
-        .set_volume(0.4)
+        .set_pan(0.2)
+        .set_volume(0.3)
         .build();
 
     let (group, _) = GroupSource::new(vec![bus1, bus2, bus3]);
@@ -155,60 +159,78 @@ fn main() {
 
     let device_config = DeviceConfig {
         backend_specific: BackendSpecificConfig {},
-        main_bus: Arc::new(Mutex::new(master_bus)),
-        update_bus: Arc::clone(&update_bus),
+        master_bus: Arc::new(Mutex::new(master_bus)),
+        profiler_handler: Some(move |frame: &ProfileFrame| {
+            info!(
+                "Gen: {:.1}/{:.1} (of {:.1}) ({:.0}). Ev: {:.1} ({:.0}). Buffer: {:}/{:}/{:}",
+                frame.gen_av,
+                frame.write_bulk_av,
+                1000.0
+                    / ((frame.sample_rate as usize * (frame.buffer_size / frame.block_size))
+                        / (frame.buffer_size)) as f32,
+                frame.gen_tps_av,
+                frame.events_av,
+                frame.events_tps_av,
+                frame.available_min,
+                frame.available_av,
+                frame.available_max
+            );
+        }),
+        device_controller: Arc::clone(&controller),
         sample_rate: 48_000,
     };
-
-    fn control_waveform(controller: &Sender<WaveformMessage>, note: Note) {
-        controller
-            .send(WaveformMessage::SetFrequency(note.frequency()))
-            .expect("Failed to send frequency control");
-    }
-
-    fn notify_bus(update_bus: &(Mutex<u8>, Condvar)) {
-        let (lock, cvar) = update_bus;
-        let mut update = lock.lock().unwrap();
-        *update += 1;
-        cvar.notify_all();
-    }
 
     let mut device = Device::new(device_config).expect("Failed to create audio device");
     device.open().unwrap();
 
+    fn set_note(
+        controller: &DeviceController,
+        source_controller: &Controller<WaveformMessage>,
+        note: Note,
+    ) {
+        controller.send(
+            source_controller,
+            WaveformMessage::SetFrequency(note.frequency()),
+        );
+    }
+
     for i in 0..3 {
-        control_waveform(&source1_controller, Note::new(NoteName::C, 4));
-        control_waveform(&source2_controller, Note::new(NoteName::G, 4));
-        control_waveform(&source3_controller, Note::new(NoteName::E, 4));
-        notify_bus(&update_bus);
+        set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
+        set_note(&controller, &source2_controller, Note::new(NoteName::G, 4));
+        set_note(&controller, &source3_controller, Note::new(NoteName::E, 4));
+        controller.notify();
 
         std::thread::sleep(std::time::Duration::from_secs(2));
 
-        control_waveform(&source1_controller, Note::new(NoteName::C, 4));
-        control_waveform(&source2_controller, Note::new(NoteName::GSharp, 4));
-        control_waveform(&source3_controller, Note::new(NoteName::F, 4));
-        notify_bus(&update_bus);
+        set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
+        set_note(
+            &controller,
+            &source2_controller,
+            Note::new(NoteName::GSharp, 4),
+        );
+        set_note(&controller, &source3_controller, Note::new(NoteName::F, 4));
+        controller.notify();
 
         std::thread::sleep(std::time::Duration::from_secs(2));
 
-        control_waveform(&source1_controller, Note::new(NoteName::C, 4));
-        control_waveform(&source2_controller, Note::new(NoteName::A, 4));
-        control_waveform(&source3_controller, Note::new(NoteName::D, 4));
-        notify_bus(&update_bus);
+        set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
+        set_note(&controller, &source2_controller, Note::new(NoteName::A, 4));
+        set_note(&controller, &source3_controller, Note::new(NoteName::D, 4));
+        controller.notify();
 
         std::thread::sleep(std::time::Duration::from_secs(2));
 
-        control_waveform(&source1_controller, Note::new(NoteName::A, 3));
-        control_waveform(&source2_controller, Note::new(NoteName::G, 4));
-        control_waveform(&source3_controller, Note::new(NoteName::B, 4));
-        notify_bus(&update_bus);
+        set_note(&controller, &source1_controller, Note::new(NoteName::A, 3));
+        set_note(&controller, &source2_controller, Note::new(NoteName::G, 4));
+        set_note(&controller, &source3_controller, Note::new(NoteName::B, 4));
+        controller.notify();
 
         std::thread::sleep(std::time::Duration::from_secs(2));
 
-        control_waveform(&source1_controller, Note::new(NoteName::G, 2));
-        control_waveform(&source2_controller, Note::new(NoteName::C, 3));
-        control_waveform(&source3_controller, Note::new(NoteName::E, 4));
-        notify_bus(&update_bus);
+        set_note(&controller, &source1_controller, Note::new(NoteName::G, 2));
+        set_note(&controller, &source2_controller, Note::new(NoteName::C, 3));
+        set_note(&controller, &source3_controller, Note::new(NoteName::E, 4));
+        controller.notify();
 
         std::thread::sleep(std::time::Duration::from_secs(3));
     }
