@@ -1,8 +1,7 @@
 use crate::engine::vulkan::{
     VkObject, VulkanGraphicsError, SURFACE_EXTENSION_NAME,
-    XLIB_SURFACE_EXTENSION_NAME,
 };
-use ash::vk::{SurfaceKHR};
+use ash::vk::SurfaceKHR;
 use ash::{vk, Device, Instance};
 use log::debug;
 use std::ffi::c_char;
@@ -20,14 +19,14 @@ impl Surface {
     pub fn new(
         entry: &ash::Entry,
         instance: &Instance,
-        hinstance: HINSTANCE,
-        hwnd: HWND,
+        hinstance: vk::HINSTANCE,
+        hwnd: vk::HWND,
         name: Option<String>,
     ) -> Result<Self, VulkanGraphicsError> {
         debug!("Creating surface with name: {:?}", name);
 
         let surface_loader = ash::khr::win32_surface::Instance::new(entry, instance);
-        let create_info = Win32SurfaceCreateInfoKHR::default()
+        let create_info = ash::vk::Win32SurfaceCreateInfoKHR::default()
             .hinstance(hinstance)
             .hwnd(hwnd);
 
@@ -85,7 +84,7 @@ impl Surface {
         Ok(surface_capabilities.current_extent)
     }
 
-    pub fn get_min_images_count(
+    pub fn get_min_image_count(
         &self,
         physical_device: vk::PhysicalDevice,
     ) -> Result<u32, VulkanGraphicsError> {
@@ -109,6 +108,24 @@ impl Surface {
         };
 
         Ok(surface_capabilities.current_transform)
+    }
+
+    pub fn supports_queue_family(
+        &self,
+        physical_device: vk::PhysicalDevice,
+        queue_family_index: u32,
+    ) -> Result<bool, VulkanGraphicsError> {
+        let supports = unsafe {
+            self.surface_loader
+                .get_physical_device_surface_support(
+                    physical_device,
+                    queue_family_index,
+                    self.vk_surface,
+                )
+                .map_err(VulkanGraphicsError::SurfaceGetSupportError)?
+        };
+
+        Ok(supports)
     }
 }
 
@@ -135,9 +152,9 @@ impl VkObject for Surface {
         vec![
             SURFACE_EXTENSION_NAME,
             #[cfg(target_os = "windows")]
-            WIN32_SURFACE_EXTENSION_NAME,
+            crate::engine::vulkan::WIN32_SURFACE_EXTENSION_NAME,
             #[cfg(target_os = "linux")]
-            XLIB_SURFACE_EXTENSION_NAME,
+            crate::engine::vulkan::XLIB_SURFACE_EXTENSION_NAME,
         ]
     }
 }

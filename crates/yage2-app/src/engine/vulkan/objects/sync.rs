@@ -1,6 +1,6 @@
+use crate::engine::vulkan::{VkObject, VulkanGraphicsError};
 use ash::{vk, Device, Instance};
 use log::debug;
-use crate::engine::vulkan::{VkObject, VulkanGraphicsError};
 
 pub(crate) struct Semaphore {
     vk_semaphore: vk::Semaphore,
@@ -52,7 +52,8 @@ pub(crate) struct Fence {
 impl Fence {
     pub fn new(device: &Device, name: Option<String>) -> Result<Self, VulkanGraphicsError> {
         debug!("Creating fence: {:?}", name);
-        let fence_create_info = vk::FenceCreateInfo::default();
+        let fence_create_info =
+            vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
         let vk_fence = unsafe {
             device
                 .create_fence(&fence_create_info, None)

@@ -1,6 +1,6 @@
+use crate::engine::vulkan::{VkObject, VulkanGraphicsError};
 use ash::{vk, Device, Instance};
 use log::debug;
-use crate::engine::vulkan::{VkObject, VulkanGraphicsError};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -24,39 +24,25 @@ impl Shader {
         file_path: &str,
         name: Option<String>,
     ) -> Result<Self, VulkanGraphicsError> {
-        let code = std::fs::read(file_path)
-            .map_err(|_| VulkanGraphicsError::ShaderFileReadError(file_path.to_string()))?;
+        debug!("Creating shader: {:?} {:?}", file_path, name);
 
-        Self::new(shader_type, device, &code, name)
-    }
+        let mut file = std::fs::File::open(file_path)
+            .map_err(|e| VulkanGraphicsError::ShaderFileReadError(e.to_string()))?;
+        let data = ash::util::read_spv(&mut file)
+            .map_err(|e| VulkanGraphicsError::ShaderValidationError(e.to_string()))?;
 
-    pub fn new(
-        shader_type: ShaderType,
-        device: &Device,
-        code: &[u8],
-        name: Option<String>,
-    ) -> Result<Self, VulkanGraphicsError> {
-        debug!(
-            "Creating shader: {} ({:?}) with code size: {} bytes",
-            name.as_deref().unwrap_or("unnamed_shader"),
-            shader_type,
-            code.len()
-        );
-        let create_info = vk::ShaderModuleCreateInfo {
-            p_code: code.as_ptr() as *const u32,
-            code_size: code.len(),
-            flags: vk::ShaderModuleCreateFlags::empty(),
-            ..Default::default()
-        };
-
-        let shader_module = unsafe {
+        let shader_module_create_info = vk::ShaderModuleCreateInfo::default()
+            .code(&data)
+            .flags(vk::ShaderModuleCreateFlags::empty());
+        
+        let vk_shader_module = unsafe {
             device
-                .create_shader_module(&create_info, None)
+                .create_shader_module(&shader_module_create_info, None)
                 .map_err(VulkanGraphicsError::ShaderModuleCreateError)?
         };
 
         Ok(Shader {
-            vk_shader_module: shader_module,
+            vk_shader_module,
             shader_type,
             name,
         })

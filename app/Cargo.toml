@@ -6,4 +6,6 @@ edition = "2021"
 [dependencies]
 ansi_term = "0.12.1"
 log = "0.4.27"
-yage2 = { path = "../yage2" }
+yage2-app = { path = "../crates/yage2-app" }
+yage2-core = { path = "../crates/yage2-core" }
+yage2-sound = { path = "../crates/yage2-sound" }

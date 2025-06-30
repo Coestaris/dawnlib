@@ -1,10 +1,5 @@
-use std::ffi::c_char;
-use ash::{vk, Instance};
-use ash::vk::{CommandBufferResetFlags, CommandPoolCreateFlags};
-use log::{debug, info};
 use crate::engine::graphics::{Graphics, TickResult};
 use crate::engine::object::Renderable;
-use crate::engine::vulkan::{VulkanGraphicsError, VkObject};
 use crate::engine::vulkan::device::{get_device_extensions, get_physical_device};
 use crate::engine::vulkan::instance::{get_instance_extensions, get_layers, setup_debug};
 use crate::engine::vulkan::objects::command_buffer::CommandBuffer;
@@ -12,7 +7,15 @@ use crate::engine::vulkan::objects::shader::{Shader, ShaderType};
 use crate::engine::vulkan::objects::surface::Surface;
 use crate::engine::vulkan::objects::swapchain::Swapchain;
 use crate::engine::vulkan::objects::sync::{Fence, Semaphore};
-use crate::engine::vulkan::queue::get_queue_family_index;
+use crate::engine::vulkan::queue::{
+    get_graphics_queue_family_index, get_presentation_queue_family_index,
+};
+use crate::engine::vulkan::{VkObject, VulkanGraphicsError};
+use ash::vk::{CommandBufferResetFlags, CommandPoolCreateFlags};
+use ash::{vk, Device, Instance};
+use log::{debug, info, warn};
+use std::ffi::c_char;
+use std::hash::Hash;
 
 pub struct VulkanGraphicsInitArgs<'a> {
     pub(crate) instance_extensions: Vec<*const c_char>,
@@ -22,12 +25,26 @@ pub struct VulkanGraphicsInitArgs<'a> {
         Box<dyn Fn(&ash::Entry, &Instance) -> Result<Surface, VulkanGraphicsError> + 'a>,
 }
 
-struct Frame {
+struct ImageData {
     index: usize,
+    queue_submit_fence: Fence,
+    swapchain_acquire_semaphore: Semaphore,
+    swapchain_release_semaphore: Semaphore,
     command_buffer: CommandBuffer,
-    render_finished_semaphore: Semaphore,
-    image_available_semaphore: Semaphore,
-    in_flight_fence: Fence,
+}
+impl VkObject for ImageData {
+    fn name(&self) -> String {
+        format!("ImageData_{}", self.index)
+    }
+
+    fn destroy(&self, instance: &Instance, device: &Device) -> Result<(), VulkanGraphicsError> {
+        debug!("Destroying image data: {}", self.name());
+        self.command_buffer.destroy(instance, device)?;
+        self.swapchain_acquire_semaphore.destroy(instance, device)?;
+        self.swapchain_release_semaphore.destroy(instance, device)?;
+        self.queue_submit_fence.destroy(instance, device)?;
+        Ok(())
+    }
 }
 
 struct VulkanObjects {
@@ -40,14 +57,17 @@ struct VulkanObjects {
     pipeline_layout: vk::PipelineLayout,
     render_pass: vk::RenderPass,
 
+    presentation_queue: vk::Queue,
+    graphics_queue: vk::Queue,
+
     surface: Surface,
     swapchain: Swapchain,
 }
 
 pub struct VulkanGraphics {
     vk: VulkanObjects,
-    frames: Vec<Frame>,
-    current_frame_index: usize,
+    per_image_data: Vec<ImageData>,
+    image_index: u32,
 
     shader1: Option<Shader>,
     shader2: Option<Shader>,
@@ -83,20 +103,8 @@ impl Drop for VulkanGraphics {
                 .device
                 .destroy_render_pass(self.vk.render_pass, None);
 
-            /* We must destroy thing in reverse order of creation. */
-            for frame in self.frames.iter_mut() {
-                let _ = frame
-                    .command_buffer
-                    .destroy(&self.vk.instance, &self.vk.device);
-                let _ = frame
-                    .render_finished_semaphore
-                    .destroy(&self.vk.instance, &self.vk.device);
-                let _ = frame
-                    .image_available_semaphore
-                    .destroy(&self.vk.instance, &self.vk.device);
-                let _ = frame
-                    .in_flight_fence
-                    .destroy(&self.vk.instance, &self.vk.device);
+            for image_data in self.per_image_data.iter_mut() {
+                let _ = image_data.destroy(&self.vk.instance, &self.vk.device);
             }
 
             let _ = self
@@ -132,85 +140,95 @@ impl Drop for VulkanGraphics {
 }
 
 impl VulkanGraphics {
-    fn process_buffer(
+    #[inline]
+    fn render(
         &self,
-        frame: &Frame,
-        _: &[Renderable],
+        image_index: u32,
+        buffer: &CommandBuffer,
+        renderables: &[Renderable],
     ) -> Result<TickResult, VulkanGraphicsError> {
-        frame
-            .command_buffer
-            .reset(&self.vk.device, CommandBufferResetFlags::RELEASE_RESOURCES)?;
-        frame.command_buffer.begin(
+        // Reset the command buffer to release resources and prepare for recording
+        buffer.reset(&self.vk.device, CommandBufferResetFlags::empty())?;
+
+        // Begin recording commands into the command buffer
+        // This will prepare the command buffer for recording commands
+        buffer.begin(
             &self.vk.device,
             vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
         )?;
 
+        // Record the commands for rendering
+        // This function will handle the actual rendering logic
+        let result = self.record_commands(image_index, buffer, renderables)?;
+        buffer.end(&self.vk.device)?;
+
+        Ok(result)
+    }
+
+    #[inline]
+    fn record_commands(
+        &self,
+        image_index: u32,
+        buffer: &CommandBuffer,
+        _: &[Renderable],
+    ) -> Result<TickResult, VulkanGraphicsError> {
+        let extent = self.vk.swapchain.get_extent();
         let render_pass_begin_info = vk::RenderPassBeginInfo::default()
             .render_pass(self.vk.render_pass)
-            .framebuffer(self.vk.swapchain.vk_framebuffers[frame.index])
+            .framebuffer(self.vk.swapchain.vk_framebuffers[image_index as usize])
             .render_area(vk::Rect2D {
                 offset: vk::Offset2D { x: 0, y: 0 },
-                extent: vk::Extent2D {
-                    width: 800,  // Replace with actual width
-                    height: 600, // Replace with actual height
-                },
+                extent,
             })
             .clear_values(&[vk::ClearValue {
                 color: vk::ClearColorValue {
-                    float32: [0.0, 0.0, 0.0, 1.0],
+                    float32: [0.3, 0.3, 0.0, 1.0],
                 },
             }]);
 
         unsafe {
             self.vk.device.cmd_begin_render_pass(
-                frame.command_buffer.vk_command_buffer,
+                buffer.handle(),
                 &render_pass_begin_info,
                 vk::SubpassContents::INLINE,
-            );
-        }
-
-        unsafe {
-            self.vk.device.cmd_bind_pipeline(
-                frame.command_buffer.vk_command_buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.vk.pipeline, // This should be the actual pipeline, not layout
             );
         }
 
         let viewport = vk::Viewport {
             x: 0.0,
             y: 0.0,
-            width: 800.0,  // Replace with actual width
-            height: 600.0, // Replace with actual height
+            width: extent.width as f32,   // Replace with actual width
+            height: extent.height as f32, // Replace with actual height
             min_depth: 0.0,
             max_depth: 1.0,
         };
         unsafe {
-            self.vk.device.cmd_set_viewport(
-                frame.command_buffer.vk_command_buffer,
-                0,
-                std::slice::from_ref(&viewport),
-            );
+            self.vk
+                .device
+                .cmd_set_viewport(buffer.handle(), 0, std::slice::from_ref(&viewport));
         }
 
         let scissor = vk::Rect2D {
             offset: vk::Offset2D { x: 0, y: 0 },
-            extent: vk::Extent2D {
-                width: 800,  // Replace with actual width
-                height: 600, // Replace with actual height
-            },
+            extent,
         };
         unsafe {
-            self.vk.device.cmd_set_scissor(
-                frame.command_buffer.vk_command_buffer,
-                0,
-                std::slice::from_ref(&scissor),
+            self.vk
+                .device
+                .cmd_set_scissor(buffer.handle(), 0, std::slice::from_ref(&scissor));
+        }
+
+        unsafe {
+            self.vk.device.cmd_bind_pipeline(
+                buffer.handle(),
+                vk::PipelineBindPoint::GRAPHICS,
+                self.vk.pipeline, // This should be the actual pipeline, not layout
             );
         }
 
         // Here you would typically bind vertex buffers, index buffers, etc.
 
-        frame.command_buffer.draw(
+        buffer.draw(
             &self.vk.device,
             3, // Number of vertices to draw, replace with actual count
             1, // Instance count, replace with actual if using instancing
@@ -219,20 +237,12 @@ impl VulkanGraphics {
         );
 
         unsafe {
-            self.vk
-                .device
-                .cmd_end_render_pass(frame.command_buffer.vk_command_buffer);
+            self.vk.device.cmd_end_render_pass(buffer.handle());
         }
-
-        frame.command_buffer.end(&self.vk.device)?;
 
         Ok(TickResult {
             drawn_triangles: 1, // Placeholder, actual rendering logic would go here
         })
-    }
-
-    fn get_current_frame(&self) -> &Frame {
-        &self.frames[self.current_frame_index]
     }
 }
 
@@ -282,34 +292,38 @@ impl Graphics<VulkanGraphicsError> for VulkanGraphics {
 
             debug!("Creating Vulkan device");
             let physical_device = get_physical_device(&instance)?;
-            let queue_family_index = get_queue_family_index(&instance, physical_device)?;
-            let queue_priority = [1.0f32];
-            let queue_create_info = vk::DeviceQueueCreateInfo::default()
-                .queue_family_index(queue_family_index as u32)
-                .queue_priorities(&queue_priority);
             let device_extensions = get_device_extensions(&instance, physical_device, &init)?;
             let device_extensions_array = device_extensions.as_slice();
+            let surface = (init.surface_constructor)(&entry, &instance)?;
+
+            let graphics_queue_family_index =
+                get_graphics_queue_family_index(&instance, physical_device)?;
+            let presentation_queue_family_index =
+                get_presentation_queue_family_index(&instance, physical_device, &surface)?;
+            let unique_queues = std::collections::HashSet::from([
+                graphics_queue_family_index,
+                presentation_queue_family_index,
+            ]);
+            let priority = [1.0];
+            let mut queues_create_infos = vec![];
+            for queue_family_index in unique_queues {
+                let queue_create_info = vk::DeviceQueueCreateInfo::default()
+                    .queue_family_index(queue_family_index as u32)
+                    .queue_priorities(&priority);
+                queues_create_infos.push(queue_create_info);
+            }
+
+            let queues = queues_create_infos.as_slice();
             let device_create_info = vk::DeviceCreateInfo::default()
                 .enabled_extension_names(device_extensions_array)
-                .queue_create_infos(std::slice::from_ref(&queue_create_info));
+                .queue_create_infos(queues);
             let device = instance
                 .create_device(physical_device, &device_create_info, None)
                 .map_err(VulkanGraphicsError::CreateDeviceFailed)?;
-            let surface = (init.surface_constructor)(&entry, &instance)?;
-
-            info!("Vulkan device created successfully");
-            let shader1 = Shader::new_from_file(
-                ShaderType::Vertex,
-                &device,
-                "/home/taris/work/yage2/app/resources/shaders/triangle.vert.spv",
-                Some("triangle_vert".to_string()),
-            )?;
-            let shader2 = Shader::new_from_file(
-                ShaderType::Vertex,
-                &device,
-                "/home/taris/work/yage2/app/resources/shaders/triangle.frag.spv",
-                Some("triangle_frag".to_string()),
-            )?;
+            let graphics_queue =
+                unsafe { device.get_device_queue(graphics_queue_family_index as u32, 0) };
+            let presentation_queue =
+                unsafe { device.get_device_queue(presentation_queue_family_index as u32, 0) };
 
             let dynamic_states = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
             let dynamic_state_create_info =
@@ -380,9 +394,17 @@ impl Graphics<VulkanGraphicsError> for VulkanGraphics {
                 .input_attachments(&[])
                 .preserve_attachments(&[]);
 
+            let dependency = vk::SubpassDependency::default()
+                .src_subpass(vk::SUBPASS_EXTERNAL)
+                .dst_subpass(0)
+                .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+                .src_access_mask(vk::AccessFlags::empty())
+                .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
             let render_pass_create_info = vk::RenderPassCreateInfo::default()
                 .attachments(std::slice::from_ref(&color_attachment_description))
-                .subpasses(std::slice::from_ref(&subpass_create_info));
+                .subpasses(std::slice::from_ref(&subpass_create_info))
+                .dependencies(std::slice::from_ref(&dependency));
             let render_pass = device
                 .create_render_pass(&render_pass_create_info, None)
                 .map_err(VulkanGraphicsError::RenderPassCreateError)?;
@@ -396,33 +418,46 @@ impl Graphics<VulkanGraphicsError> for VulkanGraphics {
                 Some("main_swapchain".to_string()),
             )?;
 
-            let mut frames = vec![];
-            for _ in 0..swapchain.get_images_count().max(2) {
-                frames.push(Frame {
-                    index: frames.len(),
+            swapchain.update(&instance, &device, &surface)?;
+
+            let mut per_image_data = vec![];
+            for i in 0..swapchain.get_images_count() {
+                per_image_data.push(ImageData {
+                    index: i,
                     command_buffer: CommandBuffer::new(
                         &device,
-                        queue_family_index,
+                        graphics_queue_family_index,
                         CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
-                        Some(format!("CommandBuffer_{}", frames.len())),
+                        Some(format!("command_buffer_{}", i)),
                     )?,
-                    render_finished_semaphore: Semaphore::new(
+                    swapchain_acquire_semaphore: Semaphore::new(
                         &device,
-                        Some(format!("RenderFinishedSemaphore_{}", frames.len())),
+                        Some(format!("swapchain_acquire_semaphore_{}", i)),
                     )?,
-                    image_available_semaphore: Semaphore::new(
+                    swapchain_release_semaphore: Semaphore::new(
                         &device,
-                        Some(format!("ImageAvailableSemaphore_{}", frames.len())),
+                        Some(format!("swapchain_release_semaphore_{}", i)),
                     )?,
-                    in_flight_fence: Fence::new(
+                    queue_submit_fence: Fence::new(
                         &device,
-                        Some(format!("InFlightFence_{}", frames.len())),
+                        Some(format!("queue_submit_fence_{}", i)),
                     )?,
                 })
             }
 
-            swapchain.update(&instance, &device, &surface)?;
-
+            info!("Vulkan device created successfully");
+            let shader1 = Shader::new_from_file(
+                ShaderType::Vertex,
+                &device,
+                "D:\\Coding\\yage2\\app\\resources\\shaders\\triangle.vert.spv",
+                Some("triangle_vert".to_string()),
+            )?;
+            let shader2 = Shader::new_from_file(
+                ShaderType::Fragment,
+                &device,
+                "D:\\Coding\\yage2\\app\\resources\\shaders\\triangle.frag.spv",
+                Some("triangle_frag".to_string()),
+            )?;
             let stages = [
                 vk::PipelineShaderStageCreateInfo::default()
                     .stage(vk::ShaderStageFlags::VERTEX)
@@ -465,9 +500,11 @@ impl Graphics<VulkanGraphicsError> for VulkanGraphics {
                     render_pass,
                     pipeline: graphics_pipeline, // This should be the actual pipeline, not layout
                     swapchain,
+                    presentation_queue,
+                    graphics_queue,
                 },
-                frames,
-                current_frame_index: 0,
+                per_image_data,
+                image_index: 0,
                 shader1: Some(shader1),
                 shader2: Some(shader2),
             })
@@ -475,48 +512,90 @@ impl Graphics<VulkanGraphicsError> for VulkanGraphics {
     }
 
     fn tick(&mut self, renderables: &[Renderable]) -> Result<TickResult, VulkanGraphicsError> {
-        let frame_index = match self.vk.swapchain.acquire_next_image(
-            &self.vk.device,
-            &self.frames[self.current_frame_index].image_available_semaphore,
-        ) {
-            Ok(image_index) => image_index,
-            Err(VulkanGraphicsError::SwapchainSuboptimal) => {
-                self.vk
-                    .swapchain
-                    .update(&self.vk.instance, &self.vk.device, &self.vk.surface)?;
-                return Ok(TickResult { drawn_triangles: 0 });
+        // Acquire the next image from the swapchain
+        self.image_index = {
+            loop {
+                // Try to acquire the next image from the swapchain
+                // If the swapchain is suboptimal, we will recreate it
+                // This will block until the image is ready to be acquired
+                // TODO: Implement some kind of timeout or retry logic
+                match self.vk.swapchain.acquire_next_image(
+                    &self.vk.device,
+                    &self.per_image_data[self.image_index as usize].swapchain_acquire_semaphore,
+                ) {
+                    Ok(image_index) => break image_index,
+                    Err(VulkanGraphicsError::SwapchainSuboptimal) => {
+                        warn!("Swapchain is suboptimal, recreating...");
+                        self.vk.swapchain.update(
+                            &self.vk.instance,
+                            &self.vk.device,
+                            &self.vk.surface,
+                        )?;
+
+                        // Retry acquiring the next image
+                        continue;
+                    }
+
+                    Err(e) => Err(e)?,
+                }
             }
-            Err(e) => Err(e)?,
         };
+        // debug!("image: {}", self.image_index);
 
-        let frame = &self.frames[frame_index as usize];
-        frame.in_flight_fence.wait(&self.vk.device, u64::MAX)?;
-        frame.in_flight_fence.reset(&self.vk.device)?;
+        let image_data = &self.per_image_data[self.image_index as usize];
 
-        let result = self.process_buffer(frame, renderables)?;
+        // Wait for the fence to be signaled before proceeding
+        image_data
+            .queue_submit_fence
+            .wait(&self.vk.device, u64::MAX)?;
+        image_data.queue_submit_fence.reset(&self.vk.device)?;
 
-        let wait_semaphores = [frame.image_available_semaphore.handle()];
-        let signal_semaphores = [frame.render_finished_semaphore.handle()];
-        let buffers = [frame.command_buffer.vk_command_buffer];
+        // Process the command buffer for the current frame
+        let result = self.render(self.image_index, &image_data.command_buffer, renderables)?;
+
+        // Submit the command buffer to the graphics queue
+        // This will block until the command buffer is ready to be submitted
+        // Wait for acquire semaphore to be signaled before submitting the command buffer
+        let wait_semaphores = [image_data.swapchain_acquire_semaphore.handle()];
+        // Signal the swapchain release semaphore after the command buffer has finished executing
+        // (will be used to present the image)
+        let signal_semaphores = [image_data.swapchain_release_semaphore.handle()];
+        // Specify the command buffer to be submitted
+        let buffers = [image_data.command_buffer.handle()];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
         let submit_info = vk::SubmitInfo::default()
             .wait_semaphores(&wait_semaphores)
             .wait_dst_stage_mask(&wait_stages)
             .command_buffers(&buffers)
             .signal_semaphores(&signal_semaphores);
-        let queue = unsafe { self.vk.device.get_device_queue(0, 0) };
         unsafe {
             self.vk
                 .device
-                .queue_submit(queue, &[submit_info], frame.in_flight_fence.vk_fence)
+                .queue_submit(
+                    self.vk.graphics_queue,
+                    &[submit_info],
+                    image_data.queue_submit_fence.vk_fence,
+                )
                 .map_err(VulkanGraphicsError::UnknownError)?;
         }
 
-        self.vk
-            .swapchain
-            .queue_present(&self.vk.device, queue, frame_index, None)?;
-
-        self.current_frame_index = (self.current_frame_index + 1) % self.frames.len();
+        // Present the image to the swapchain and handle suboptimal swapchain
+        // This will block until the image is ready to be presented
+        match self.vk.swapchain.queue_present(
+            &self.vk.device,
+            self.vk.presentation_queue,
+            self.image_index,
+            &image_data.swapchain_release_semaphore,
+        ) {
+            Err(VulkanGraphicsError::SwapchainSuboptimal) => {
+                warn!("Swapchain is suboptimal, recreating...");
+                self.vk
+                    .swapchain
+                    .update(&self.vk.instance, &self.vk.device, &self.vk.surface)?;
+            }
+            Err(e) => Err(e)?,
+            _ => {}
+        }
 
         Ok(result)
     }

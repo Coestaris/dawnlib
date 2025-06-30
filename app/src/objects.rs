@@ -1,7 +1,7 @@
 use log::info;
-use yage2::create_object;
-use yage2::engine::event::{Event, EventMask, KeyCode};
-use yage2::engine::object::{DispatchAction, Object, ObjectCtx, Renderable};
+use yage2_app::create_object;
+use yage2_app::engine::event::{Event, EventMask, KeyCode};
+use yage2_app::engine::object::{DispatchAction, Object, ObjectCtx, Renderable};
 
 pub(crate) struct EventListener;
 

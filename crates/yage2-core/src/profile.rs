@@ -1,25 +1,9 @@
+use crate::time::current_us;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
-use std::time::SystemTime;
 
-#[allow(dead_code)]
-pub fn current_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
-
-#[allow(dead_code)]
-pub fn current_us() -> u64 {
-    SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_micros() as u64
-}
-
-pub struct TickCounter {
+pub struct TickProfiler {
     start: Arc<AtomicU64>,
     ticks: Arc<AtomicU32>,
     start_ticks: Arc<AtomicU32>,
@@ -29,13 +13,13 @@ pub struct TickCounter {
     smooth_factor: f32,
 }
 
-impl Default for TickCounter {
+impl Default for TickProfiler {
     fn default() -> Self {
         Self::new(0.5)
     }
 }
 
-impl TickCounter {
+impl TickProfiler {
     pub fn new(smooth_factor: f32) -> Self {
         Self {
             start: Arc::new(AtomicU64::new(current_us())),
@@ -110,26 +94,28 @@ impl TickCounter {
     }
 }
 
-pub struct PeriodCounter {
+pub struct PeriodProfiler {
     start_us: Arc<AtomicU64>,
     min_us: Arc<AtomicU64>,
     current_us: Arc<AtomicU64>,
     max_us: Arc<AtomicU64>,
+    smooth_factor: f32,
 }
 
-impl Default for PeriodCounter {
+impl Default for PeriodProfiler {
     fn default() -> Self {
-        Self::new()
+        Self::new(0.5)
     }
 }
 
-impl PeriodCounter {
-    pub fn new() -> Self {
+impl PeriodProfiler {
+    pub fn new(smooth_factor: f32) -> Self {
         Self {
             start_us: Arc::new(AtomicU64::new(0)),
             min_us: Arc::new(AtomicU64::new(u64::MAX)),
             current_us: Arc::new(AtomicU64::new(0)),
             max_us: Arc::new(AtomicU64::new(0)),
+            smooth_factor,
         }
     }
 
@@ -149,7 +135,9 @@ impl PeriodCounter {
         );
 
         // Update the min, average, and max averages
-        current = (elapsed_us + current) / 2;
+        current = (elapsed_us as f32 * self.smooth_factor
+            + current as f32 * (1.0 - self.smooth_factor)) as u64;
+
         if elapsed_us < min {
             min = elapsed_us;
         }
@@ -173,6 +161,62 @@ impl PeriodCounter {
             min as f32 / 1000.0,
             current as f32 / 1000.0,
             max as f32 / 1000.0,
+        )
+    }
+}
+
+pub struct MinMaxProfiler {
+    min: Arc<AtomicU64>,
+    average: Arc<AtomicU64>,
+    max: Arc<AtomicU64>,
+}
+
+impl Default for MinMaxProfiler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MinMaxProfiler {
+    pub fn new() -> Self {
+        Self {
+            min: Arc::new(AtomicU64::new(u64::MAX)),
+            average: Arc::new(AtomicU64::new(0)),
+            max: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    pub fn reset(&self) {
+        self.min.store(u64::MAX, Relaxed);
+        self.average.store(0, Relaxed);
+        self.max.store(0, Relaxed);
+    }
+
+    pub fn update(&self, value: u64) {
+        let mut min = self.min.load(Relaxed);
+        let mut average = self.average.load(Relaxed);
+        let mut max = self.max.load(Relaxed);
+
+        if value < min {
+            min = value;
+        }
+        if value > max {
+            max = value;
+        }
+
+        average = (average + value) / 2;
+
+        self.min.store(min, Relaxed);
+        self.average.store(average, Relaxed);
+        self.max.store(max, Relaxed);
+    }
+
+    /* In milliseconds */
+    pub fn get_stat(&self) -> (f32, f32, f32) {
+        (
+            self.min.load(Relaxed) as f32,
+            self.average.load(Relaxed) as f32,
+            self.max.load(Relaxed) as f32,
         )
     }
 }

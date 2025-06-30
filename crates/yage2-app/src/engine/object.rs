@@ -73,10 +73,10 @@ macro_rules! create_object {
         ($expression:expr) => {
           {
             use std::sync::{Arc, Mutex};
-          Arc::new(Mutex::new($expression)) as yage2::engine::object::ObjectPtr
+          Arc::new(Mutex::new($expression)) as yage2_app::engine::object::ObjectPtr
           }
         };
         ($object_type:ty, $($args:expr),*) => {
-            Arc::new(Mutex::new($object_type::new($($args),*))) as yage2::engine::object::ObjectPtr
+            Arc::new(Mutex::new($object_type::new($($args),*))) as yage2_app::engine::object::ObjectPtr
         };
     }

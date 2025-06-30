@@ -14,11 +14,16 @@ pub enum VulkanGraphicsError {
     EntryCreationError(ash::LoadingError),
     SurfaceCreateError(vk::Result),
     EnumerateVersionError(vk::Result),
+    DeviceWaitIdleError(vk::Result),
     InstanceCreationError(vk::Result),
     EnumerateLayersError(vk::Result),
     EnumerateExtensionsError(vk::Result),
     EnumeratePhysicalDevicesError(vk::Result),
+    
     EnumerateQueueFamiliesError(vk::Result),
+    GraphicsQueueFamilyNotFound(),
+    PresentationQueueFamilyNotFound(),
+    
     CreateDeviceFailed(vk::Result),
     CreateDebugMessengerFailed(vk::Result),
     CreateDebugReportFailed(vk::Result),
@@ -27,6 +32,7 @@ pub enum VulkanGraphicsError {
     CreateImageViewFailed(vk::Result),
     ShaderModuleCreateError(vk::Result),
     ShaderFileReadError(String),
+    ShaderValidationError(String),
     CreateFramebufferFailed(vk::Result),
     RenderPassCreateError(vk::Result),
     PipelineCreateError(vk::Result),
@@ -53,6 +59,7 @@ pub enum VulkanGraphicsError {
     FenceDestroyFailed(vk::Result),
 
     // Surface-related errors
+    SurfaceGetSupportError(vk::Result),
     SurfaceGetCapabilitiesError(vk::Result),
     SurfaceGetFormatsError(vk::Result),
 

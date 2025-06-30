@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "app",
+    "crates/yage2-core",
+    "crates/yage2-app",
+    "crates/yage2-sound",
+]

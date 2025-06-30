@@ -1,12 +1,12 @@
-use crate::core::time::TickCounter;
 pub(crate) use crate::engine::event::{Event, KeyCode, MouseButton};
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
+use yage2_core::profile::TickProfiler;
 
 pub struct InputManager {
     receiver: Receiver<Event>,
-    eps: Arc<TickCounter>,
+    eps: Arc<TickProfiler>,
 
     // Maps mouse buttons to their pressed state
     buttons_state: HashMap<MouseButton, bool>,
@@ -17,7 +17,7 @@ pub struct InputManager {
 }
 
 impl InputManager {
-    pub(crate) fn new(receiver: Receiver<Event>, eps: Arc<TickCounter>) -> Self {
+    pub(crate) fn new(receiver: Receiver<Event>, eps: Arc<TickProfiler>) -> Self {
         InputManager {
             receiver,
             eps,

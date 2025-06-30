@@ -1,5 +1,3 @@
-use crate::core::sync::Rendezvous;
-use crate::core::time::{current_us, PeriodCounter, TickCounter};
 use crate::engine::input::{Event, InputManager};
 use crate::engine::object::{DispatchAction, ObjectCtx, ObjectPtr, Renderable};
 use crate::engine::object_collection::ObjectsCollection;
@@ -12,6 +10,9 @@ use std::sync::{
 };
 use std::thread;
 use std::thread::JoinHandle;
+use yage2_core::profile::{PeriodProfiler, TickProfiler};
+use yage2_core::sync::Rendezvous;
+use yage2_core::time::current_us;
 
 #[derive(Debug)]
 pub struct ApplicationConfig {
@@ -68,23 +69,23 @@ pub enum StatisticsThreadError {
 
 #[derive(Default)]
 struct RendererProfiler {
-    fps: TickCounter,
-    renderables: TickCounter,
-    drawn_triangles: TickCounter,
+    fps: TickProfiler,
+    renderables: TickProfiler,
+    drawn_triangles: TickProfiler,
 
-    before_frame_sync: PeriodCounter,
-    window_tick: PeriodCounter,
-    graphics_tick: PeriodCounter,
-    after_frame_sync: PeriodCounter,
-    copy_objects: PeriodCounter,
+    before_frame_sync: PeriodProfiler,
+    window_tick: PeriodProfiler,
+    graphics_tick: PeriodProfiler,
+    after_frame_sync: PeriodProfiler,
+    copy_objects: PeriodProfiler,
 }
 
 #[derive(Default)]
 struct LogicProfiler {
-    ups: TickCounter,
-    before_frame_sync: PeriodCounter,
-    logic_processing: PeriodCounter,
-    after_frame_sync: PeriodCounter,
+    ups: TickProfiler,
+    before_frame_sync: PeriodProfiler,
+    logic_processing: PeriodProfiler,
+    after_frame_sync: PeriodProfiler,
 }
 
 /// Shared data between the renderer and logic threads
@@ -190,8 +191,6 @@ where
                     }
                 }
                 drop(renderables);
-
-                thread::sleep(std::time::Duration::from_millis(16)); /* 60 FPS */
                 profile!(profiler.graphics_tick.end());
 
                 // Stage 4: Synchronize with the logic thread
@@ -245,7 +244,7 @@ fn start_logic_thread(
     after_frame: Arc<Rendezvous>,
     events_receiver: Receiver<Event>,
     shared_data: Arc<SharedData>,
-    eps: Arc<TickCounter>,
+    eps: Arc<TickProfiler>,
     profiler: Arc<LogicProfiler>,
 ) -> Result<JoinHandle<Result<(), LogicThreadError>>, LogicThreadError> {
     Ok(thread::Builder::new()
@@ -345,7 +344,7 @@ fn start_logic_thread(
 fn start_statistics_thread(
     renderer_profiler: Arc<RendererProfiler>,
     logic_profiler: Arc<LogicProfiler>,
-    eps: Arc<TickCounter>,
+    eps: Arc<TickProfiler>,
     shared_data: Arc<SharedData>,
 ) -> Result<JoinHandle<Result<(), StatisticsThreadError>>, StatisticsThreadError> {
     Ok(thread::Builder::new()
@@ -529,16 +528,16 @@ pub trait Application<Win, PlatformError, Graphics, GraphicsError> {
 
         // Create the renderer profiler used to gather statistics and debug information
         let renderer_profiler = Arc::new(RendererProfiler {
-            fps: TickCounter::new(0.3),
-            renderables: TickCounter::new(1.0),
-            drawn_triangles: TickCounter::new(1.0),
+            fps: TickProfiler::new(0.3),
+            renderables: TickProfiler::new(1.0),
+            drawn_triangles: TickProfiler::new(1.0),
             ..Default::default()
         });
         let logic_profiler = Arc::new(LogicProfiler {
-            ups: TickCounter::new(0.3),
+            ups: TickProfiler::new(0.3),
             ..Default::default()
         });
-        let eps = Arc::new(TickCounter::new(1.0));
+        let eps = Arc::new(TickProfiler::new(1.0));
 
         // Create a channel for receiving events from the window handler that is usually handled
         // by the OS or renderer thread and sending them to the logic thread.

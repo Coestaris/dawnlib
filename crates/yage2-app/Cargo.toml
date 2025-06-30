@@ -1,5 +1,5 @@
 [package]
-name = "yage2"
+name = "yage2-app"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,10 +10,10 @@ windows = { version = "0.61.1", features = ["Win32_System_LibraryLoader", "Win32
 x11 = "2.21.0"
 
 [dependencies]
-libc = "0.2.172"
 ash = "0.38"
 log = "0.4.27"
 bitflags = "2.9.1"
+yage2-core = { path = "../yage2-core" }
 
 [build-dependencies]
 vergen = { version = "8.3.2", features = ["build", "cargo", "git", "gitcl", "rustc", "si"] }

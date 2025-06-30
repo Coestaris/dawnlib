@@ -4,9 +4,9 @@ use log::debug;
 use crate::engine::vulkan::{VkObject, VulkanGraphicsError};
 
 pub(crate) struct CommandBuffer {
-    pub(crate) vk_command_buffer: vk::CommandBuffer,
+    vk_command_buffer: vk::CommandBuffer,
     // currently supported only for primary command buffers
-    pub(crate) vk_command_pool: vk::CommandPool,
+    vk_command_pool: vk::CommandPool,
     name: Option<String>,
 }
 
@@ -24,6 +24,7 @@ impl CommandBuffer {
 
         let command_pool_create_info = vk::CommandPoolCreateInfo::default()
             .flags(flags)
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
             .queue_family_index(queue_family_index as u32);
         let vk_command_pool = unsafe {
             device
@@ -106,6 +107,11 @@ impl CommandBuffer {
                 .map_err(VulkanGraphicsError::CommandBufferResetFailed)?;
         }
         Ok(())
+    }
+    
+    #[inline]
+    pub fn handle(&self) -> vk::CommandBuffer {
+        self.vk_command_buffer
     }
 }
 

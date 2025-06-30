@@ -1,3 +1,4 @@
 target/
 .idea
-yage2/Cargo.lock
+crates/yage2/Cargo.lock
+crates/yage2-sound/Cargo.lock

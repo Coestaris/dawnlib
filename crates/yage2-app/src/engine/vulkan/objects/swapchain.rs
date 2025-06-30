@@ -50,6 +50,9 @@ impl Swapchain {
         device: &Device,
         surface: &Surface,
     ) -> Result<(), VulkanGraphicsError> {
+        // Wait for the device to be idle before updating the swapchain
+        unsafe { device.device_wait_idle() }.map_err(VulkanGraphicsError::DeviceWaitIdleError)?;
+
         // Destroy the old swapchain and its resources
         self.destroy(instance, device)?;
 
@@ -58,8 +61,7 @@ impl Swapchain {
         // Create a new swapchain
         const DEFAULT_FORMAT: vk::Format = vk::Format::B8G8R8A8_SRGB;
         let images_count = surface
-            .get_min_images_count(self.vk_physical_device)?
-            .max(2);
+            .get_min_image_count(self.vk_physical_device)?;
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::default()
             .surface(surface.vk_surface)
             .min_image_count(images_count)
@@ -70,6 +72,7 @@ impl Swapchain {
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
             .pre_transform(surface.get_current_transform(self.vk_physical_device)?)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .present_mode(vk::PresentModeKHR::FIFO)
             .clipped(true);
         let vk_swapchain = unsafe {
@@ -85,7 +88,7 @@ impl Swapchain {
         };
 
         let mut vk_image_views = Vec::new();
-        for i in 0..images_count - 1 {
+        for i in 0..images_count {
             debug!("Creating image view for image index: {}", i);
 
             let image_view_create_info = vk::ImageViewCreateInfo::default()
@@ -153,12 +156,14 @@ impl Swapchain {
         let acquire_info = vk::AcquireNextImageInfoKHR::default()
             .swapchain(self.vk_swapchain)
             .timeout(u64::MAX)
+            .device_mask(1)
             .semaphore(semaphore.handle())
             .fence(vk::Fence::null());
 
         match unsafe { self.swapchain_loader.acquire_next_image2(&acquire_info) } {
             Ok((index, false)) => Ok(index),
             Ok((_, true)) => Err(VulkanGraphicsError::SwapchainSuboptimal),
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => Err(VulkanGraphicsError::SwapchainSuboptimal),
             Err(e) => Err(VulkanGraphicsError::SwapchainAcquireNextImageError(e)),
         }
     }
@@ -168,17 +173,19 @@ impl Swapchain {
         _: &Device,
         queue: vk::Queue,
         image_index: u32,
-        _: Option<&Semaphore>,
+        semaphore: &Semaphore,
     ) -> Result<(), VulkanGraphicsError> {
         let indices = [image_index];
+        let semaphores = [semaphore.handle()];
         let swapchains = [self.vk_swapchain];
         let present_info = vk::PresentInfoKHR::default()
             .swapchains(&swapchains)
+            .wait_semaphores(&semaphores)
             .image_indices(&indices);
-        // TODO: Implement semaphore support
         match unsafe { self.swapchain_loader.queue_present(queue, &present_info) } {
             Ok(false) => Ok(()),
             Ok(true) => Err(VulkanGraphicsError::SwapchainSuboptimal),
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => Err(VulkanGraphicsError::SwapchainSuboptimal),
             Err(e) => Err(VulkanGraphicsError::SwapchainQueuePresentError(e)),
         }
     }
@@ -205,15 +212,20 @@ impl VkObject for Swapchain {
             self.name(),
             self.vk_swapchain
         );
-        unsafe {
-            for framebuffer in &self.vk_framebuffers {
+
+        for framebuffer in &self.vk_framebuffers {
+            unsafe {
                 device.destroy_framebuffer(*framebuffer, None);
             }
-            for image_view in &self.vk_image_views {
+        }
+        for image_view in &self.vk_image_views {
+            unsafe {
                 device.destroy_image_view(*image_view, None);
             }
-            #[cfg(not(target_os = "linux"))]
-            if self.vk_swapchain != vk::SwapchainKHR::null() {
+        }
+
+        if self.vk_swapchain != vk::SwapchainKHR::null() {
+            unsafe {
                 self.swapchain_loader
                     .destroy_swapchain(self.vk_swapchain, None);
             }
