@@ -10,12 +10,22 @@ use crate::sample::{InterleavedSample, InterleavedSampleBuffer, PlanarBlock, Sam
 use crate::{SampleType, BLOCK_SIZE, CHANNELS_COUNT, DEVICE_BUFFER_SIZE, RING_BUFFER_SIZE};
 use log::{debug, info, warn};
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
-use std::thread::Builder;
 use yage2_core::profile::{MinMaxProfiler, PeriodProfiler, TickProfiler};
+use yage2_core::threads::{ThreadManager, ThreadPriority};
 
 const WATERMARK_THRESHOLD: usize = RING_BUFFER_SIZE / 4;
 
+const GENERATOR_THREAD_NAME: &str = "aud_gen";
+const GENERATOR_THREAD_PRIORITY: ThreadPriority = ThreadPriority::High;
+
+const EVENTS_THREAD_NAME: &str = "aud_events";
+const EVENTS_THREAD_PRIORITY: ThreadPriority = ThreadPriority::Normal;
+
+const STATISTICS_THREAD_NAME: &str = "aud_stats";
+const STATISTICS_THREAD_PRIORITY: ThreadPriority = ThreadPriority::Low;
+
 pub struct DeviceConfig {
+    pub thread_manager: Arc<ThreadManager>,
     pub backend_specific: BackendSpecificConfig,
     pub master_bus: Arc<Mutex<Bus>>,
     pub device_controller: Arc<DeviceController>,
@@ -91,6 +101,8 @@ pub struct ProfileFrame {
 }
 
 pub struct Device {
+    thread_manager: Arc<ThreadManager>,
+
     // The backend device that handles audio output
     backend: BackendDevice<SampleType>,
 
@@ -110,9 +122,6 @@ pub struct Device {
 
     // Threads for audio generation, event processing, and statistics
     stop_signal: Arc<AtomicBool>,
-    generator_thread: Option<std::thread::JoinHandle<()>>,
-    events_thread: Option<std::thread::JoinHandle<()>>,
-    statistics_thread: Option<std::thread::JoinHandle<()>>,
 
     // Profiler for collecting statistics about the audio processing
     profiler_handler: Option<fn(&ProfileFrame)>,
@@ -142,6 +151,8 @@ impl Device {
             .map_err(DeviceCreationError::BackendSpecific)?;
 
         Ok(Device {
+            thread_manager: config.thread_manager,
+
             backend: backend_device,
             ring_buffer: Arc::new(RingBuffer::new()),
             master_bus: Arc::clone(&config.master_bus),
@@ -150,9 +161,6 @@ impl Device {
             sample_rate: config.sample_rate,
 
             stop_signal: Arc::new(AtomicBool::new(false)),
-            generator_thread: None,
-            events_thread: None,
-            statistics_thread: None,
 
             profiler_handler: config.profiler_handler,
             profilers: Arc::new(Profilers::default()),
@@ -203,15 +211,16 @@ impl Device {
         };
 
         let stop_signal = Arc::clone(&self.stop_signal);
-        self.generator_thread = Some(
-            Builder::new()
-                .name("aud_gen".into())
-                .spawn(move || {
+        self.thread_manager
+            .spawn(
+                GENERATOR_THREAD_NAME.into(),
+                GENERATOR_THREAD_PRIORITY,
+                move || {
                     let mut sample_index = 0;
                     loop {
                         // Check if the stop signal is set
                         if stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
-                            info!("Audio generator thread stopping");
+                            debug!("Received stop signal");
                             break;
                         }
 
@@ -221,9 +230,9 @@ impl Device {
                         // Increment the sample index for the next block
                         sample_index += BLOCK_SIZE;
                     }
-                })
-                .map_err(|_| DeviceOpenError::GeneratorThreadSpawnError)?,
-        );
+                },
+            )
+            .map_err(DeviceOpenError::GeneratorThreadSpawnError)?;
 
         Ok(())
     }
@@ -248,23 +257,25 @@ impl Device {
         };
 
         let events_stop_signal = Arc::clone(&self.stop_signal);
-        self.events_thread = Some(
-            Builder::new()
-                .name("aud_events".into())
-                .spawn(move || {
+        self.thread_manager
+            .spawn(
+                EVENTS_THREAD_NAME.into(),
+                EVENTS_THREAD_PRIORITY,
+                move || {
                     loop {
                         // Check if the stop signal is set
                         if events_stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
-                            info!("Audio events thread stopping");
+                            debug!("Received stop signal");
                             break;
                         }
 
                         // Process events
                         tick();
                     }
-                })
-                .map_err(|_| DeviceOpenError::EventThreadSpawnError)?,
-        );
+                },
+            )
+            .map_err(DeviceOpenError::EventThreadSpawnError)?;
+
         Ok(())
     }
 
@@ -330,23 +341,24 @@ impl Device {
             std::thread::sleep(std::time::Duration::from_millis(1000));
         };
 
-        self.statistics_thread = Some(
-            Builder::new()
-                .name("aud_stats".into())
-                .spawn(move || {
+        self.thread_manager
+            .spawn(
+                STATISTICS_THREAD_NAME.into(),
+                STATISTICS_THREAD_PRIORITY,
+                move || {
                     loop {
                         // Check if the stop signal is set
                         if statistics_stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
-                            info!("Audio statistics thread stopping");
+                            debug!("Received stop signal");
                             break;
                         }
 
                         // Collect and log statistics
                         tick();
                     }
-                })
-                .map_err(|_| DeviceOpenError::StatisticsThreadSpawnError)?,
-        );
+                },
+            )
+            .map_err(DeviceOpenError::StatisticsThreadSpawnError)?;
 
         Ok(())
     }
@@ -404,23 +416,6 @@ impl Device {
         self.ring_buffer.poison();
         // Notify the events thread to stop
         self.controller.reset();
-
-        // Wait for the generator thread to finish
-        if let Some(thread) = self.generator_thread.take() {
-            if let Err(e) = thread.join() {
-                warn!("Failed to join audio generator thread: {:?}", e);
-            }
-        }
-        if let Some(thread) = self.events_thread.take() {
-            if let Err(e) = thread.join() {
-                warn!("Failed to join audio events thread: {:?}", e);
-            }
-        }
-        if let Some(thread) = self.statistics_thread.take() {
-            if let Err(e) = thread.join() {
-                warn!("Failed to join audio statistics thread: {:?}", e);
-            }
-        }
 
         Ok(())
     }

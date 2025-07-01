@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+use yage2_core::threads::ThreadError;
 use crate::backend::BackendSpecificError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,21 +33,23 @@ impl std::error::Error for DeviceCreationError {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeviceOpenError {
-    GeneratorThreadSpawnError,
-    EventThreadSpawnError,
-    StatisticsThreadSpawnError,
+    GeneratorThreadSpawnError(ThreadError),
+    EventThreadSpawnError(ThreadError),
+    StatisticsThreadSpawnError(ThreadError),
     BackendSpecific(BackendSpecificError),
 }
 
 impl Display for DeviceOpenError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            DeviceOpenError::GeneratorThreadSpawnError => {
-                write!(f, "Failed to spawn generator thread")
+            DeviceOpenError::GeneratorThreadSpawnError(err) => {
+                write!(f, "Failed to spawn generator thread: {}", err)
             }
-            DeviceOpenError::EventThreadSpawnError => write!(f, "Failed to spawn event thread"),
-            DeviceOpenError::StatisticsThreadSpawnError => {
-                write!(f, "Failed to spawn statistics thread")
+            DeviceOpenError::EventThreadSpawnError(err) => {
+                write!(f, "Failed to spawn event thread: {}", err)
+            }
+            DeviceOpenError::StatisticsThreadSpawnError(err) => {
+                write!(f, "Failed to spawn statistics thread: {}", err)
             }
             DeviceOpenError::BackendSpecific(err) => write!(f, "Failed to open device: {}", err),
         }

@@ -80,7 +80,7 @@ impl DeviceController {
     pub fn reset(&self) {
         let (lock, cvar) = &self.update_bus;
         let mut update = lock.lock().unwrap();
-        *update = 0;
+        *update = 1;
         cvar.notify_all();
     }
 }

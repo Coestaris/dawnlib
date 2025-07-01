@@ -1270,6 +1270,7 @@ name = "yage2-core"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "log",
 ]
 
 [[package]]

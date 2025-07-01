@@ -9,6 +9,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
 use yage2_app::create_object;
 use yage2_app::engine::application::Application;
+use yage2_core::threads::{ThreadManager, ThreadManagerConfig};
 use yage2_core::utils::format_now;
 use yage2_sound::backend::BackendSpecificConfig;
 use yage2_sound::control::{Controller, DeviceController};
@@ -40,7 +41,7 @@ impl log::Log for SimpleLogger {
             let formatted_date = format_now().unwrap_or("unknown".to_string());
 
             println!(
-                "[{}][{:>17}][{:>14}]: {} [{}:{}]",
+                "[{}][{:>19}][{:>14}]: {} [{}:{}]",
                 Cyan.paint(formatted_date),
                 Yellow
                     .paint(std::thread::current().name().unwrap_or("main"))
@@ -128,6 +129,20 @@ fn main() {
     // ];
     // app.run(objects).unwrap();
 
+    let thread_manager: Arc<ThreadManager> = Arc::new(ThreadManager::new(ThreadManagerConfig {
+        profile_handle: Some(|frame: &yage2_core::threads::ProfileFrame| {
+            let mut str = String::with_capacity(1024);
+            for frame in &frame.threads {
+                str.push_str(&format!(
+                    "{}: ({:.1}) ",
+                    frame.name, frame.cpu_utilization * 100.0
+                ));
+            }
+
+            info!("{}", str);
+        }),
+    }));
+
     let controller = Arc::new(DeviceController::new());
     let (source1, source1_controller) = WaveformSource::new().build();
     let (bus1, _) = Bus::new()
@@ -158,6 +173,7 @@ fn main() {
         .build();
 
     let device_config = DeviceConfig {
+        thread_manager: Arc::clone(&thread_manager),
         backend_specific: BackendSpecificConfig {},
         master_bus: Arc::new(Mutex::new(master_bus)),
         profiler_handler: Some(move |frame: &ProfileFrame| {
@@ -194,46 +210,50 @@ fn main() {
         );
     }
 
-    for i in 0..3 {
-        set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
-        set_note(&controller, &source2_controller, Note::new(NoteName::G, 4));
-        set_note(&controller, &source3_controller, Note::new(NoteName::E, 4));
-        controller.notify();
+    // for i in 0..3 {
+    set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
+    set_note(&controller, &source2_controller, Note::new(NoteName::G, 4));
+    set_note(&controller, &source3_controller, Note::new(NoteName::E, 4));
+    controller.notify();
 
-        std::thread::sleep(std::time::Duration::from_secs(2));
+    // std::thread::sleep(std::time::Duration::from_secs(2));
 
-        set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
-        set_note(
-            &controller,
-            &source2_controller,
-            Note::new(NoteName::GSharp, 4),
-        );
-        set_note(&controller, &source3_controller, Note::new(NoteName::F, 4));
-        controller.notify();
+    // set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
+    // set_note(
+    //     &controller,
+    //     &source2_controller,
+    //     Note::new(NoteName::GSharp, 4),
+    // );
+    // set_note(&controller, &source3_controller, Note::new(NoteName::F, 4));
+    // controller.notify();
+    //
+    // std::thread::sleep(std::time::Duration::from_secs(2));
+    //
+    // set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
+    // set_note(&controller, &source2_controller, Note::new(NoteName::A, 4));
+    // set_note(&controller, &source3_controller, Note::new(NoteName::D, 4));
+    // controller.notify();
+    //
+    // std::thread::sleep(std::time::Duration::from_secs(2));
+    //
+    // set_note(&controller, &source1_controller, Note::new(NoteName::A, 3));
+    // set_note(&controller, &source2_controller, Note::new(NoteName::G, 4));
+    // set_note(&controller, &source3_controller, Note::new(NoteName::B, 4));
+    // controller.notify();
+    //
+    // std::thread::sleep(std::time::Duration::from_secs(2));
+    //
+    // set_note(&controller, &source1_controller, Note::new(NoteName::G, 2));
+    // set_note(&controller, &source2_controller, Note::new(NoteName::C, 3));
+    // set_note(&controller, &source3_controller, Note::new(NoteName::E, 4));
+    // controller.notify();
 
-        std::thread::sleep(std::time::Duration::from_secs(2));
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    // }
 
-        set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
-        set_note(&controller, &source2_controller, Note::new(NoteName::A, 4));
-        set_note(&controller, &source3_controller, Note::new(NoteName::D, 4));
-        controller.notify();
+    device.close().unwrap();
 
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
-        set_note(&controller, &source1_controller, Note::new(NoteName::A, 3));
-        set_note(&controller, &source2_controller, Note::new(NoteName::G, 4));
-        set_note(&controller, &source3_controller, Note::new(NoteName::B, 4));
-        controller.notify();
-
-        std::thread::sleep(std::time::Duration::from_secs(2));
-
-        set_note(&controller, &source1_controller, Note::new(NoteName::G, 2));
-        set_note(&controller, &source2_controller, Note::new(NoteName::C, 3));
-        set_note(&controller, &source3_controller, Note::new(NoteName::E, 4));
-        controller.notify();
-
-        std::thread::sleep(std::time::Duration::from_secs(3));
-    }
+    thread_manager.join_all();
 
     info!("Yage2 Engine finished");
 }
