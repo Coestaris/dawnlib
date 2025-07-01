@@ -5,10 +5,15 @@ extern crate core;
 use crate::objects::Point;
 use ansi_term::Colour::{Blue, Cyan, Green, Red, Yellow};
 use log::{info, Level, LevelFilter, Metadata, Record};
+use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
 use yage2_app::create_object;
 use yage2_app::engine::application::Application;
+use yage2_core::resources::{
+    LoadStrategy, ResourceId, ResourceManager, ResourceManagerConfig, ResourceManagerIO,
+    ResourceMetadata,
+};
 use yage2_core::threads::{ThreadManager, ThreadManagerConfig};
 use yage2_core::utils::format_now;
 use yage2_sound::backend::BackendSpecificConfig;
@@ -106,6 +111,22 @@ impl Note {
     }
 }
 
+struct ResourcesIO {}
+
+impl ResourceManagerIO for ResourcesIO {
+    fn has_updates(&self) -> bool {
+        todo!()
+    }
+
+    fn enumerate_resources(&self) -> HashMap<ResourceId, ResourceMetadata> {
+        todo!()
+    }
+
+    fn load(&mut self, id: ResourceId) -> Result<Vec<u8>, String> {
+        todo!()
+    }
+}
+
 fn main() {
     static LOGGER: SimpleLogger = SimpleLogger;
     log::set_logger(&LOGGER)
@@ -129,13 +150,19 @@ fn main() {
     // ];
     // app.run(objects).unwrap();
 
+    let resource_manager = Arc::new(ResourceManager::new(ResourceManagerConfig {
+        backend: Box::new(ResourcesIO {}),
+        load_strategy: LoadStrategy::Lazy,
+    }));
+
     let thread_manager: Arc<ThreadManager> = Arc::new(ThreadManager::new(ThreadManagerConfig {
         profile_handle: Some(|frame: &yage2_core::threads::ProfileFrame| {
             let mut str = String::with_capacity(1024);
             for frame in &frame.threads {
                 str.push_str(&format!(
                     "{}: ({:.1}) ",
-                    frame.name, frame.cpu_utilization * 100.0
+                    frame.name,
+                    frame.cpu_utilization * 100.0
                 ));
             }
 

@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 libc = "0.2.172"
 log = "0.4.27"
+dashmap = "7.0.0-rc2"
