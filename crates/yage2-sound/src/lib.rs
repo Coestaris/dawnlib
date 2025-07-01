@@ -1,12 +1,13 @@
 pub mod backend;
 pub mod control;
-#[cfg(feature = "cpal")]
-mod cpal;
 pub mod device;
 pub mod dsp;
 mod error;
 mod ringbuf;
 mod sample;
+
+#[cfg(feature = "cpal")]
+mod cpal;
 
 /// Hardcoded sample type of the data transferred between the audio
 /// processing thread and the audio device.
