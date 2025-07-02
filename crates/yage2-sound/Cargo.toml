@@ -4,13 +4,16 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["cpal"]
+default = ["cpal", "resources-resample", "resources-wav"]
 cpal = ["dep:cpal"]
+resources-resample = ["rubato"]
+resources-wav = ["hound"]
 
 [dependencies]
 yage2-core = { path = "../yage2-core" }
 cpal = { version = "0.16.0", optional = true }
+hound = { version = "3.5.1", optional = true } # For WAV file reading/writing
+rubato = { version = "0.16.2", optional = true } # For resampling
 log = "0.4.27"
-hound = "3.5.1"
-rubato = "0.16.2"
-i24 = "2.1.0"
+i24 = "2.1.0" # For 24-bit PCM support (used in WAV files)
+

@@ -1,16 +1,16 @@
 use crate::sample::{InterleavedSample, Sample};
 use crate::CHANNELS_COUNT;
-use log::warn;
-use rubato::{Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType};
-use yage2_core::resources::{Resource, ResourceFactory, ResourceMetadata};
 
+#[cfg(feature = "resources-resample")]
 fn resample(
     data: Vec<InterleavedSample<f32>>,
     src_sample_rate: u32,
     dest_sample_rate: u32,
-) -> Vec<InterleavedSample<f32>> {
+) -> Result<Vec<InterleavedSample<f32>>, String> {
+    use rubato::{Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType};
+
     if src_sample_rate == dest_sample_rate {
-        return data; // No resampling needed
+        return Ok(data);
     }
 
     /// Converts interleaved audio to planar format
@@ -53,10 +53,22 @@ fn resample(
         data.len(),
         CHANNELS_COUNT as usize,
     )
-    .unwrap();
+    .map_err(|e| format!("Failed to create resampler: {}", e))?;
 
-    let resampled_planar = resampler.process(&planar_data, None).unwrap();
-    interleave(&resampled_planar)
+    let resampled_planar = resampler
+        .process(&planar_data, None)
+        .map_err(|e| format!("Failed to resample audio: {}", e))?;
+
+    Ok(interleave(&resampled_planar))
+}
+
+#[cfg(not(feature = "resources-resample"))]
+fn resample(
+    _: Vec<InterleavedSample<f32>>,
+    _: u32,
+    _: u32,
+) -> Result<Vec<InterleavedSample<f32>>, String> {
+    Err("Resampling is not enabled. Please enable the 'resample-resources' feature or use a WAV file with the same sample rate as the audio device.".to_string())
 }
 
 fn to_interleaved_f32<F>(
@@ -93,92 +105,6 @@ where
     output
 }
 
-pub(crate) struct WAVResourceFactory {
-    sample_rate: u32,
-}
-
-impl WAVResourceFactory {
-    pub fn new(sample_rate: u32) -> Self {
-        WAVResourceFactory { sample_rate }
-    }
-}
-
-impl ResourceFactory for WAVResourceFactory {
-    fn parse(&self, metadata: &ResourceMetadata, raw: &[u8]) -> Result<Resource, String> {
-        let mut buf_reader = std::io::Cursor::new(raw);
-        match hound::WavReader::new(&mut buf_reader) {
-            Ok(mut reader) => {
-                let spec = reader.spec();
-                if spec.sample_rate != self.sample_rate {
-                    warn!(
-                        "Resampling from {} Hz to {} Hz of the WAV file '{}'",
-                        spec.sample_rate, self.sample_rate, metadata.name
-                    );
-                }
-
-                let data = match (spec.sample_format, spec.bits_per_sample) {
-                    (hound::SampleFormat::Float, 32) => {
-                        let samples: Vec<f32> =
-                            reader.samples::<f32>().map(|s| s.unwrap()).collect();
-                        resample(
-                            to_interleaved_f32(samples, spec.channels as usize),
-                            spec.sample_rate,
-                            self.sample_rate,
-                        )
-                    }
-                    (hound::SampleFormat::Int, 16) => {
-                        let samples: Vec<i16> =
-                            reader.samples::<i16>().map(|s| s.unwrap()).collect();
-                        resample(
-                            to_interleaved_f32(samples, spec.channels as usize),
-                            spec.sample_rate,
-                            self.sample_rate,
-                        )
-                    }
-                    (hound::SampleFormat::Int, 24) => {
-                        let samples: Vec<i24::i24> = reader
-                            .samples::<i32>()
-                            .map(|s| i24::i24::try_from_i32(s.unwrap()).unwrap())
-                            .collect();
-                        resample(
-                            to_interleaved_f32(samples, spec.channels as usize),
-                            spec.sample_rate,
-                            self.sample_rate,
-                        )
-                    }
-                    (hound::SampleFormat::Int, 32) => {
-                        let samples: Vec<i32> =
-                            reader.samples::<i32>().map(|s| s.unwrap()).collect();
-                        resample(
-                            to_interleaved_f32(samples, spec.channels as usize),
-                            spec.sample_rate,
-                            self.sample_rate,
-                        )
-                    }
-                    _ => {
-                        return Err(format!(
-                            "Unsupported WAV format: {:?} with {} bits per sample",
-                            spec.sample_format, spec.bits_per_sample
-                        ));
-                    }
-                };
-
-                Ok(Resource::new(ClipResource {
-                    sample_rate: self.sample_rate,
-                    len: data.len(),
-                    channels: CHANNELS_COUNT as u16,
-                    data,
-                }))
-            }
-
-            Err(e) => Err(format!("Error parsing WAV file: {}", e)),
-        }
-    }
-
-    fn finalize(&self, metadata: &ResourceMetadata, resource: &Resource) -> Result<(), String> {
-        Ok(())
-    }
-}
 
 pub struct ClipResource {
     pub sample_rate: u32,
@@ -186,3 +112,102 @@ pub struct ClipResource {
     pub channels: u16,
     pub data: Vec<InterleavedSample<f32>>,
 }
+
+
+#[cfg(feature = "resources-wav")]
+pub(crate) mod wav
+{
+    use log::warn;
+    use yage2_core::resources::{Resource, ResourceFactory, ResourceMetadata};
+    use crate::CHANNELS_COUNT;
+    use crate::resources::{resample, to_interleaved_f32, ClipResource};
+
+    pub(crate) struct WAVResourceFactory {
+        sample_rate: u32,
+    }
+
+    impl WAVResourceFactory {
+        pub fn new(sample_rate: u32) -> Self {
+            WAVResourceFactory { sample_rate }
+        }
+    }
+
+    impl ResourceFactory for WAVResourceFactory {
+        fn parse(&self, metadata: &ResourceMetadata, raw: &[u8]) -> Result<Resource, String> {
+            let mut buf_reader = std::io::Cursor::new(raw);
+            match hound::WavReader::new(&mut buf_reader) {
+                Ok(mut reader) => {
+                    let spec = reader.spec();
+                    if spec.sample_rate != self.sample_rate {
+                        warn!(
+                            "Resampling from {} Hz to {} Hz of the WAV file '{}'",
+                            spec.sample_rate, self.sample_rate, metadata.name
+                        );
+                    }
+
+                    let data = match (spec.sample_format, spec.bits_per_sample) {
+                        (hound::SampleFormat::Float, 32) => {
+                            let samples: Vec<f32> =
+                                reader.samples::<f32>().map(|s| s.unwrap()).collect();
+                            resample(
+                                to_interleaved_f32(samples, spec.channels as usize),
+                                spec.sample_rate,
+                                self.sample_rate,
+                            )
+                        }
+                        (hound::SampleFormat::Int, 16) => {
+                            let samples: Vec<i16> =
+                                reader.samples::<i16>().map(|s| s.unwrap()).collect();
+                            resample(
+                                to_interleaved_f32(samples, spec.channels as usize),
+                                spec.sample_rate,
+                                self.sample_rate,
+                            )
+                        }
+                        (hound::SampleFormat::Int, 24) => {
+                            let samples: Vec<i24::i24> = reader
+                                .samples::<i32>()
+                                .map(|s| i24::i24::try_from_i32(s.unwrap()).unwrap())
+                                .collect();
+                            resample(
+                                to_interleaved_f32(samples, spec.channels as usize),
+                                spec.sample_rate,
+                                self.sample_rate,
+                            )
+                        }
+                        (hound::SampleFormat::Int, 32) => {
+                            let samples: Vec<i32> =
+                                reader.samples::<i32>().map(|s| s.unwrap()).collect();
+                            resample(
+                                to_interleaved_f32(samples, spec.channels as usize),
+                                spec.sample_rate,
+                                self.sample_rate,
+                            )
+                        }
+                        _ => {
+                            return Err(format!(
+                                "Unsupported WAV {} format: {:?} with {} bits per sample",
+                                metadata.name, spec.sample_format, spec.bits_per_sample
+                            ));
+                        }
+                    }
+                        .map_err(|e| format!("Error resampling WAV {} file: {}", metadata.name, e))?;
+
+                    Ok(Resource::new(ClipResource {
+                        sample_rate: self.sample_rate,
+                        len: data.len(),
+                        channels: CHANNELS_COUNT as u16,
+                        data,
+                    }))
+                }
+
+                Err(e) => Err(format!("Error parsing WAV {} file: {}", metadata.name, e)),
+            }
+        }
+
+        fn finalize(&self, metadata: &ResourceMetadata, resource: &Resource) -> Result<(), String> {
+            Ok(())
+        }
+    }
+}
+    

@@ -156,9 +156,10 @@ impl AudioManager {
         let backend = AudioBackend::<SampleType>::new(backend_config)
             .map_err(AudioManagerCreationError::BackendSpecific)?;
 
+        #[cfg(feature = "resources-wav")]
         config.resource_manager.register_factory(
             ResourceType::AudioWAV,
-            Arc::new(crate::resources::WAVResourceFactory::new(
+            Arc::new(crate::resources::wav::WAVResourceFactory::new(
                 config.sample_rate,
             )),
         );
