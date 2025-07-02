@@ -7,8 +7,6 @@ use crate::dsp::sources::group::GroupSource;
 use crate::dsp::sources::sampler::SamplerSource;
 use crate::dsp::sources::waveform::WaveformSource;
 use crate::sample::PlanarBlock;
-use std::sync::mpsc::Sender;
-use std::sync::Arc;
 
 pub mod bus;
 mod math;

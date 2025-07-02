@@ -5,7 +5,6 @@ use crate::control::AudioController;
 use crate::dsp::bus::Bus;
 use crate::dsp::{BlockInfo, EventDispatcher, Generator};
 use crate::error::{AudioManagerCreationError, AudioManagerStartError, AudioManagerStopError};
-use crate::resources::{finalize_resource, parse_resource};
 use crate::ringbuf::RingBuffer;
 use crate::sample::{InterleavedSample, InterleavedSampleBuffer, PlanarBlock, Sample};
 use crate::{SampleType, BLOCK_SIZE, CHANNELS_COUNT, DEVICE_BUFFER_SIZE, RING_BUFFER_SIZE};
@@ -158,9 +157,10 @@ impl AudioManager {
             .map_err(AudioManagerCreationError::BackendSpecific)?;
 
         config.resource_manager.register_factory(
-            ResourceType::Audio,
-            parse_resource,
-            finalize_resource,
+            ResourceType::AudioWAV,
+            Arc::new(crate::resources::WAVResourceFactory::new(
+                config.sample_rate,
+            )),
         );
 
         Ok(AudioManager {

@@ -109,7 +109,7 @@ mod native_impl {
         1
     }
 
-    pub fn get_cpu_utilization(data: &mut NativeData, native_id: NativeId) -> f32 {
+    pub fn get_cpu_utilization(_: &mut NativeData, _: NativeId) -> f32 {
         // Placeholder for actual CPU utilization retrieval logic
         0.0
     }
@@ -174,7 +174,6 @@ struct ThreadWrapper {
     native_id: NativeId,
     native_data: NativeData,
     name: String,
-    priority: ThreadPriority,
 }
 
 pub struct ProfileThreadFrame {
@@ -286,7 +285,6 @@ impl ThreadManager {
             native_data: NativeData::default(),
             native_id,
             name,
-            priority,
         };
         let mut threads = self.threads.lock().unwrap();
         threads.push(thread_wrapper);

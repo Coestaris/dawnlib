@@ -1,11 +1,8 @@
-use crate::resources::ResourceData::Unloaded;
-use dashmap::mapref::one::Ref;
-use dashmap::{DashMap, Entry};
+use dashmap::DashMap;
 use log::{info, warn};
 use std::any::Any;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -15,7 +12,7 @@ pub type ResourceChecksum = u64;
 
 pub trait ResourceManagerIO {
     fn has_updates(&self) -> bool;
-    fn enumerate_resources(&self) -> HashMap<ResourceId, ResourceMetadata>;
+    fn enumerate_resources(&self) -> Result<HashMap<ResourceId, ResourceMetadata>, String>;
     fn load(&mut self, id: ResourceId) -> Result<Vec<u8>, String>;
 }
 
@@ -28,7 +25,7 @@ pub enum ResourceType {
     Texture,
     Shader,
     Mesh,
-    Audio,
+    AudioWAV,
     Font,
     Script,
 }
@@ -66,30 +63,10 @@ pub enum ResourceData {
     Parsed(Resource),
 }
 
-pub type ParserFn = fn(&ResourceMetadata, &[u8]) -> Result<Resource, String>;
-pub type FinalizerFn = fn(&ResourceMetadata, &Resource) -> Result<(), String>;
+pub trait ResourceFactory {
+    fn parse(&self, metadata: &ResourceMetadata, raw: &[u8]) -> Result<Resource, String>;
 
-pub struct ResourceFactory {
-    // The type of the resource this handler is responsible for
-    resource_type: ResourceType,
-
-    // Performs the parsing and processing the resource data
-    // into the usable format, such as a texture, audio buffer, etc.
-    // After the parsing is done, the resource is transformed into a Parsed state
-    parser: ParserFn,
-
-    // Frees all the resources allocated by the parser
-    // After the finalizer is called, the resource is transformed into a Unloaded state
-    finalizer: FinalizerFn,
-
-    // Indicates whether the resource has been updated since the last load
-    has_updates: AtomicBool,
-}
-
-impl ResourceFactory {
-    pub fn finalize_all() {}
-
-    pub fn poll() {}
+    fn finalize(&self, metadata: &ResourceMetadata, resource: &Resource) -> Result<(), String>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -117,7 +94,7 @@ struct ResourceContainer {
 pub struct ResourceManager {
     backend: Mutex<Box<dyn ResourceManagerIO>>,
     resources: DashMap<ResourceType, DashMap<ResourceId, ResourceContainer>>,
-    factories: DashMap<ResourceType, Arc<ResourceFactory>>,
+    factories: DashMap<ResourceType, Arc<dyn ResourceFactory>>,
 }
 
 impl PartialEq<ResourceMetadata> for &ResourceMetadata {
@@ -131,26 +108,60 @@ impl PartialEq<ResourceMetadata> for &ResourceMetadata {
 }
 
 #[derive(Debug)]
-pub enum ResourceGetError {
-    NotFound,
-    NoFactory,
+pub enum ResourceManagerLoadError {
+    IOError(String),
+}
+
+impl std::fmt::Display for ResourceManagerLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResourceManagerLoadError::IOError(msg) => write!(f, "IO error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for ResourceManagerLoadError {}
+
+#[derive(Debug)]
+pub enum ResourceManagerGetError {
+    ResourceNotFound,
+    NoSuitableFactory,
     NoRawDataLoaded,
     ParserFailed(String),
 }
 
-impl std::fmt::Display for ResourceGetError {
+impl std::fmt::Display for ResourceManagerGetError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ResourceGetError::NotFound => write!(f, "Resource not found"),
-            ResourceGetError::NoFactory => {
+            ResourceManagerGetError::ResourceNotFound => write!(f, "Resource not found"),
+            ResourceManagerGetError::NoSuitableFactory => {
                 write!(f, "No factory registered for this resource type")
             }
-            ResourceGetError::NoRawDataLoaded => write!(f, "No raw data loaded for this resource"),
-            ResourceGetError::ParserFailed(msg) => write!(f, "Parser failed: {}", msg),
+            ResourceManagerGetError::NoRawDataLoaded => {
+                write!(f, "No raw data loaded for this resource")
+            }
+            ResourceManagerGetError::ParserFailed(msg) => write!(f, "Parser failed: {}", msg),
         }
     }
 }
-impl std::error::Error for ResourceGetError {}
+impl std::error::Error for ResourceManagerGetError {}
+
+#[derive(Debug)]
+pub enum ResourceManagerPollError {
+    EnumerateFailed(String),
+}
+
+impl std::fmt::Display for ResourceManagerPollError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResourceManagerPollError::EnumerateFailed(msg) => {
+                write!(f, "Failed to enumerate resources: {}", msg)
+            }
+        }
+    }
+}
+
+impl std::error::Error for ResourceManagerPollError {}
 
 impl ResourceManager {
     pub fn new(config: ResourceManagerConfig) -> Self {
@@ -161,25 +172,9 @@ impl ResourceManager {
         }
     }
 
-    // Registers a new resource handler for a specific resource type
-    // The handler is responsible for parsing the resource data and finalizing it
-    pub fn register_factory(
-        &self,
-        resource_type: ResourceType,
-        parser: ParserFn,
-        finalizer: FinalizerFn,
-    ) -> Arc<ResourceFactory> {
+    pub fn register_factory(&self, resource_type: ResourceType, factory: Arc<dyn ResourceFactory>) {
         info!("Registering resource factory for type: {:?}", resource_type);
-        let factory = ResourceFactory {
-            resource_type,
-            parser,
-            finalizer,
-            has_updates: AtomicBool::new(false),
-        };
-
-        let factory = Arc::new(factory);
         self.factories.insert(resource_type, factory.clone());
-        factory
     }
 
     // Checks if the IO backend has any updates
@@ -187,7 +182,7 @@ impl ResourceManager {
     // If some resources have been updated, they are marked as unfresh
     // Calling this function will not load any resources
     // It is not recommended to call this function too often
-    pub fn poll_io(&self) {
+    pub fn poll_io(&self) -> Result<bool, ResourceManagerPollError> {
         let updated_resources = {
             let backend = self.backend.lock().unwrap();
             if backend.has_updates() {
@@ -197,32 +192,41 @@ impl ResourceManager {
             }
         };
 
-        /* Just add them to the list for now */
-        if let Some(resources) = updated_resources {
-            for (id, metadata) in resources {
-                let type_map = self.resources.entry(metadata.resource_type).or_default();
-                let entry = type_map.entry(id).or_insert_with(|| {
-                    info!("Adding new resource: {:?}", metadata);
-                    ResourceContainer {
-                        metadata: RwLock::new(metadata.clone()),
-                        raw: RwLock::new(ResourceRaw::Dropped),
-                        data: RwLock::new(ResourceData::Unloaded),
-                        fresh: AtomicBool::new(false),
-                    }
-                });
+        let updated_resources = match updated_resources {
+            Some(Err(e)) => Err(ResourceManagerPollError::EnumerateFailed(e))?,
+            Some(Ok(resources)) => resources,
+            None => return Ok(false),
+        };
 
-                // Update metadata if it has changed
-                let mut existing_metadata = entry.metadata.write().unwrap();
-                if &*existing_metadata != &metadata {
-                    info!("Updating resource metadata: {:?}", metadata);
-                    *existing_metadata = metadata;
-                    entry.fresh.store(false, Ordering::Relaxed);
+        /* Just add them to the list for now */
+        let mut any_updates = false;
+        for (id, metadata) in updated_resources {
+            let type_map = self.resources.entry(metadata.resource_type).or_default();
+            let entry = type_map.entry(id).or_insert_with(|| {
+                info!("Adding new resource: {:?}", metadata);
+                any_updates = true;
+                ResourceContainer {
+                    metadata: RwLock::new(metadata.clone()),
+                    raw: RwLock::new(ResourceRaw::Dropped),
+                    data: RwLock::new(ResourceData::Unloaded),
+                    fresh: AtomicBool::new(false),
                 }
+            });
+
+            // Update metadata if it has changed
+            let mut existing_metadata = entry.metadata.write().unwrap();
+            if &*existing_metadata != &metadata {
+                info!("Updating resource metadata: {:?}", metadata);
+                *existing_metadata = metadata;
+                entry.fresh.store(false, Ordering::Relaxed);
+                any_updates = true;
             }
         }
+
+        Ok(any_updates)
     }
 
-    pub fn load_all(&self) {
+    pub fn load_all(&self) -> Result<(), ResourceManagerLoadError> {
         let mut backend = self.backend.lock().unwrap();
         for type_map in self.resources.iter() {
             for resource_container in type_map.value().iter() {
@@ -237,8 +241,36 @@ impl ResourceManager {
                         *raw = ResourceRaw::Loaded(raw_data);
                         resource_container.fresh.store(true, Ordering::Relaxed);
                     }
-                    Err(e) => {
-                        warn!("Failed to load resource {}: {}", id, e);
+                    Err(e) => Err(ResourceManagerLoadError::IOError(e))?,
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn finalize_all(&self, resource_type: ResourceType) {
+        for type_map in self.resources.iter() {
+            if type_map.key() != &resource_type {
+                continue; // Skip other resource types
+            }
+
+            for resource_container in type_map.value().iter() {
+                let metadata = resource_container.metadata.read().unwrap();
+                let mut data = resource_container.data.write().unwrap();
+                if let ResourceData::Parsed(ref resource) = *data {
+                    let factory = match self.factories.get(&resource_type) {
+                        Some(factory) => factory,
+                        None => continue, // No factory registered for this type
+                    };
+
+                    // Call the finalizer to clean up resources
+                    if let Err(e) = factory.finalize(&metadata, resource) {
+                        warn!("Failed to finalize resource {}: {}", metadata.name, e);
+                    } else {
+                        info!("Finalized resource: {}", metadata.name);
+                        // Mark the resource as unloaded
+                        *data = ResourceData::Unloaded;
                     }
                 }
             }
@@ -249,14 +281,14 @@ impl ResourceManager {
         &self,
         resource_type: ResourceType,
         resource_id: ResourceId,
-    ) -> Result<Resource, ResourceGetError> {
+    ) -> Result<Resource, ResourceManagerGetError> {
         let type_map = self
             .resources
             .get(&resource_type)
-            .ok_or(ResourceGetError::NotFound)?;
+            .ok_or(ResourceManagerGetError::ResourceNotFound)?;
         let resource = type_map
             .get(&resource_id)
-            .ok_or(ResourceGetError::NotFound)?;
+            .ok_or(ResourceManagerGetError::ResourceNotFound)?;
 
         let mut data = resource.data.write().unwrap();
         let raw = resource.raw.read().unwrap();
@@ -268,12 +300,13 @@ impl ResourceManager {
         if let ResourceRaw::Loaded(ref raw_data) = *raw {
             let factory = match self.factories.get(&resource_type) {
                 Some(factory) => factory,
-                None => return Err(ResourceGetError::NoFactory),
+                None => return Err(ResourceManagerGetError::NoSuitableFactory),
             };
 
             // Parse the raw data into a usable resource
-            let parsed_resource = (factory.parser)(&metadata, raw_data)
-                .map_err(|e| ResourceGetError::ParserFailed(e))?;
+            let parsed_resource = factory
+                .parse(&metadata, raw_data)
+                .map_err(|e| ResourceManagerGetError::ParserFailed(e))?;
 
             // Update the resource data to Parsed state
             *data = ResourceData::Parsed(parsed_resource.clone());
@@ -283,7 +316,26 @@ impl ResourceManager {
 
             Ok(parsed_resource)
         } else {
-            Err(ResourceGetError::NoRawDataLoaded)
+            Err(ResourceManagerGetError::NoRawDataLoaded)
+        }
+    }
+}
+
+impl Drop for ResourceManager {
+    fn drop(&mut self) {
+        // Log about all not finalized resources
+        for map in self.resources.iter() {
+            for resource_container in map.iter() {
+                let metadata = resource_container.metadata.read().unwrap();
+                if let ResourceData::Parsed(_) = *resource_container.data.read().unwrap() {
+                    warn!(
+                        "Resource {} (ID: {}) of type {:?} is not finalized",
+                        metadata.name,
+                        resource_container.key(),
+                        metadata.resource_type
+                    );
+                }
+            }
         }
     }
 }

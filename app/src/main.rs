@@ -120,7 +120,7 @@ impl ResourceManagerIO for ResourcesIO {
         true
     }
 
-    fn enumerate_resources(&self) -> HashMap<ResourceId, ResourceMetadata> {
+    fn enumerate_resources(&self) -> Result<HashMap<ResourceId, ResourceMetadata>, String> {
         let mut map = HashMap::new();
         map.insert(
             1,
@@ -128,18 +128,18 @@ impl ResourceManagerIO for ResourcesIO {
                 name: "sample.wav".to_string(),
                 tag: 0,
                 id: 1,
-                resource_type: ResourceType::Audio,
+                resource_type: ResourceType::AudioWAV,
                 checksum: 0xABABABABABABABAB,
             },
         );
 
-        map
+        Ok(map)
     }
 
     fn load(&mut self, id: ResourceId) -> Result<Vec<u8>, String> {
         info!("Loading resource with ID: {}", id);
 
-        let file_1 = "/home/taris/work/yage2/app/resources/sample.wav";
+        let file_1 = "D:\\SAMPLES\\J O E Z Z\\Sample Magic Jazz Hop 2\\loops\\melodic_loops\\jh2_90_clarinet_loop_dusty_cordial_Gmin.wav";
 
         if id == 1 {
             std::fs::read(file_1).map_err(|e| e.to_string())
@@ -204,9 +204,9 @@ fn main() {
     let resource_manager = Arc::new(ResourceManager::new(ResourceManagerConfig {
         backend: Box::new(ResourcesIO {}),
     }));
-    resource_manager.poll_io();
-    resource_manager.load_all();
-    
+    resource_manager.poll_io().unwrap();
+    resource_manager.load_all().unwrap();
+
     let thread_manager: Arc<ThreadManager> = Arc::new(ThreadManager::new(ThreadManagerConfig {
         profile_handle: Some(profile_threads),
     }));
@@ -234,18 +234,19 @@ fn main() {
         AudioManager::new(audio_manager_config).expect("Failed to create audio device");
 
     let clip = resource_manager
-        .get_resource(ResourceType::Audio, 1)
+        .get_resource(ResourceType::AudioWAV, 1)
         .unwrap();
 
     audio_manager.start().unwrap();
 
     audio_controller.send_and_notify(&clip_control, ClipMessage::Play(clip.clone()));
 
-    sleep(std::time::Duration::from_millis(100000));
-    
+    sleep(std::time::Duration::from_millis(15000));
+
     audio_manager.stop().unwrap();
 
     thread_manager.join_all();
 
+    resource_manager.finalize_all(ResourceType::AudioWAV);
     info!("Yage2 Engine finished");
 }

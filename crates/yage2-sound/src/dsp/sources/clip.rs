@@ -1,7 +1,7 @@
 use crate::control::{new_control, ControlReceiver, Controller};
 use crate::dsp::{BlockInfo, EventDispatcher, Generator};
 use crate::resources::ClipResource;
-use crate::sample::PlanarBlock;
+use crate::sample::{PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
 use crate::BLOCK_SIZE;
 use yage2_core::resources::Resource;
 
@@ -53,29 +53,27 @@ impl EventDispatcher for ClipSource {
 }
 
 impl Generator for ClipSource {
-    fn generate(&mut self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
+    fn generate(&mut self, output: &mut PlanarBlock<f32>, _: &BlockInfo) {
         if let Some(res) = &self.playing_clip {
             let clip = res.downcast_ref::<ClipResource>().unwrap();
 
             // Generate audio data from the clip resource
-            // assume for now that sample rate is same as output sample rate
-            // assume that sample is monophonic
             let to_copy = (clip.len as usize - self.position).min(BLOCK_SIZE);
 
             // Copy audio data from the clip resource to the output block
             for i in 0..to_copy {
                 // TODO: Implement some kind of batch processing
-                output.samples[0][i] = clip.data[self.position + i];
-                output.samples[1][i] = clip.data[self.position + i];
+                let sample = clip.data[self.position + i];
+                output.samples[LEFT_CHANNEL][i] = sample.channels[LEFT_CHANNEL];
+                output.samples[RIGHT_CHANNEL][i] = sample.channels[RIGHT_CHANNEL];
             }
-            
+
             self.position += to_copy;
             if self.position >= clip.len as usize {
                 // Reset position if we reached the end of the clip
                 self.position = 0;
                 log::info!("ClipSource: Reached end of clip, resetting position");
             }
-            
         } else {
             output.silence();
         }

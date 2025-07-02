@@ -42,7 +42,7 @@ impl EventDispatcher for Reverb {
 }
 
 impl Processor for Reverb {
-    fn process(&self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
+    fn process(&self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, _: &BlockInfo) {
         // Bypass for now, just copy input to output
         output.copy_from(input);
     }

@@ -1,4 +1,3 @@
-use log::error;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Condvar, Mutex};
 
