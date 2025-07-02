@@ -79,7 +79,7 @@ impl EventDispatcher for ProcessorType {
 }
 
 pub(crate) trait Generator {
-    fn generate(&self, output: &mut PlanarBlock<f32>, info: &BlockInfo);
+    fn generate(&mut self, output: &mut PlanarBlock<f32>, info: &BlockInfo);
 }
 
 pub enum SourceType {
@@ -97,7 +97,7 @@ impl Default for SourceType {
 }
 
 impl Generator for SourceType {
-    fn generate(&self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
+    fn generate(&mut self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
         match self {
             SourceType::NoSource => {
                 // No source, do nothing

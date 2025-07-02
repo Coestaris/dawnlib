@@ -3,6 +3,8 @@ use std::ops;
 
 #[derive(Debug)]
 pub(crate) enum SampleCode {
+    U8,
+    I8,
     I16,
     I32,
     U16,
@@ -14,6 +16,8 @@ pub(crate) enum SampleCode {
 #[allow(dead_code)]
 pub(crate) trait Sample: Copy + Clone + PartialOrd + PartialEq + Default {
     fn from_f32(value: f32) -> Self;
+    fn to_f32(self) -> f32;
+
     fn zero_value() -> Self;
     fn code() -> SampleCode;
 }
@@ -30,52 +34,103 @@ macro_rules! impl_sample {
             }
 
             fn from_f32(value: f32) -> Self {
-                <$type>::clamp_f32(value)
+                <$type>::from_f32_inner(value)
+            }
+
+            fn to_f32(self) -> f32 {
+                <$type>::to_f32_inner(self)
             }
         }
     };
 }
 
-trait ClampF32Sample {
+trait F32Converter {
     // Assume that the value is in the range of -1.0 to 1.0
-    fn clamp_f32(value: f32) -> Self;
+    fn from_f32_inner(value: f32) -> Self;
+
+    fn to_f32_inner(value: Self) -> f32;
 }
 
-impl ClampF32Sample for i16 {
-    fn clamp_f32(value: f32) -> Self {
+impl F32Converter for i8 {
+    fn from_f32_inner(value: f32) -> Self {
+        (value.clamp(-1.0, 1.0) * (i8::MAX / 2) as f32) as i8
+    }
+
+    fn to_f32_inner(value: Self) -> f32 {
+        (value as f32) / (i8::MAX / 2) as f32
+    }
+}
+
+impl F32Converter for u8 {
+    fn from_f32_inner(value: f32) -> Self {
+        ((value.clamp(-1.0, 1.0) + 1.0) * (u8::MAX as f32 / 2.0)) as u8
+    }
+
+    fn to_f32_inner(value: Self) -> f32 {
+        ((value as f32) / (u8::MAX as f32 / 2.0)) - 1.0
+    }
+}
+
+impl F32Converter for i16 {
+    fn from_f32_inner(value: f32) -> Self {
         (value.clamp(-1.0, 1.0) * (i16::MAX / 2) as f32) as i16
     }
+
+    fn to_f32_inner(value: Self) -> f32 {
+        (value as f32) / (i16::MAX / 2) as f32
+    }
 }
 
-impl ClampF32Sample for i32 {
-    fn clamp_f32(value: f32) -> Self {
+impl F32Converter for i32 {
+    fn from_f32_inner(value: f32) -> Self {
         (value.clamp(-1.0, 1.0) * (i32::MAX / 2) as f32) as i32
     }
+
+    fn to_f32_inner(value: Self) -> f32 {
+        (value as f32) / (i32::MAX / 2) as f32
+    }
 }
-impl ClampF32Sample for u16 {
-    fn clamp_f32(value: f32) -> Self {
+impl F32Converter for u16 {
+    fn from_f32_inner(value: f32) -> Self {
         ((value.clamp(-1.0, 1.0) + 1.0) * (u16::MAX as f32 / 2.0)) as u16
     }
-}
 
-impl ClampF32Sample for u32 {
-    fn clamp_f32(value: f32) -> Self {
-        ((value.clamp(-1.0, 1.0) + 1.0) * (u32::MAX as f32 / 2.0)) as u32
+    fn to_f32_inner(value: Self) -> f32 {
+        ((value as f32) / (u16::MAX as f32 / 2.0)) - 1.0
     }
 }
 
-impl ClampF32Sample for f32 {
-    fn clamp_f32(value: f32) -> Self {
+impl F32Converter for u32 {
+    fn from_f32_inner(value: f32) -> Self {
+        ((value.clamp(-1.0, 1.0) + 1.0) * (u32::MAX as f32 / 2.0)) as u32
+    }
+
+    fn to_f32_inner(value: Self) -> f32 {
+        ((value as f32) / (u32::MAX as f32 / 2.0)) - 1.0
+    }
+}
+
+impl F32Converter for f32 {
+    fn from_f32_inner(value: f32) -> Self {
+        value.clamp(-1.0, 1.0)
+    }
+
+    fn to_f32_inner(value: Self) -> f32 {
         value.clamp(-1.0, 1.0)
     }
 }
 
-impl ClampF32Sample for f64 {
-    fn clamp_f32(value: f32) -> Self {
+impl F32Converter for f64 {
+    fn from_f32_inner(value: f32) -> Self {
         value.clamp(-1.0, 1.0) as f64
+    }
+
+    fn to_f32_inner(value: Self) -> f32 {
+        value.clamp(-1.0, 1.0) as f32
     }
 }
 
+impl_sample!(i8, SampleCode::I8);
 impl_sample!(i16, SampleCode::I16);
 impl_sample!(i32, SampleCode::I32);
 impl_sample!(u16, SampleCode::U16);

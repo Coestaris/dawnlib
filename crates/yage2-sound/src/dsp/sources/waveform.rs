@@ -118,7 +118,7 @@ fn sawtooth_wave(frequency: f32, time: f32) -> f32 {
 }
 
 impl Generator for WaveformSource {
-    fn generate(&self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
+    fn generate(&mut self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
         let data = &self.controllable;
         let frequency = data.frequency;
 

@@ -109,7 +109,7 @@ impl EventDispatcher for Bus {
 }
 
 impl Generator for Bus {
-    fn generate(&self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
+    fn generate(&mut self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
         // Generate samples for the source
         self.controllable.source.generate(output, info);
 

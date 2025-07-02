@@ -36,13 +36,13 @@ pub(crate) fn new_control<M>() -> (Controller<M>, ControlReceiver<M>) {
     )
 }
 
-pub struct DeviceController {
+pub struct AudioController {
     update_bus: (Mutex<u8>, Condvar),
 }
 
-impl DeviceController {
+impl AudioController {
     pub fn new() -> Self {
-        DeviceController {
+        AudioController {
             update_bus: (Mutex::new(0), Condvar::new()),
         }
     }

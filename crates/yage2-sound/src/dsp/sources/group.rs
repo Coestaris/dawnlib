@@ -34,8 +34,8 @@ impl EventDispatcher for GroupSource {
 }
 
 impl Generator for GroupSource {
-    fn generate(&self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
-        for bus in &self.busses {
+    fn generate(&mut self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
+        for bus in &mut self.busses {
             let mut bus_output = PlanarBlock::default();
             bus.generate(&mut bus_output, info);
             output.mix(&bus_output);

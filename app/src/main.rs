@@ -8,21 +8,23 @@ use log::{info, Level, LevelFilter, Metadata, Record};
 use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread::sleep;
 use yage2_app::create_object;
 use yage2_app::engine::application::Application;
 use yage2_core::resources::{
-    LoadStrategy, ResourceId, ResourceManager, ResourceManagerConfig, ResourceManagerIO,
-    ResourceMetadata,
+    ResourceChecksum, ResourceId, ResourceManager, ResourceManagerConfig, ResourceManagerIO,
+    ResourceMetadata, ResourceTag, ResourceType,
 };
 use yage2_core::threads::{ThreadManager, ThreadManagerConfig};
 use yage2_core::utils::format_now;
 use yage2_sound::backend::BackendSpecificConfig;
-use yage2_sound::control::{Controller, DeviceController};
-use yage2_sound::device::{Device, DeviceConfig, ProfileFrame};
+use yage2_sound::control::{AudioController, Controller};
 use yage2_sound::dsp::bus::Bus;
+use yage2_sound::dsp::sources::clip::{ClipMessage, ClipSource};
 use yage2_sound::dsp::sources::group::GroupSource;
 use yage2_sound::dsp::sources::waveform::{WaveformMessage, WaveformSource};
 use yage2_sound::dsp::SourceType;
+use yage2_sound::manager::{AudioManager, AudioManagerConfig};
 
 struct SimpleLogger;
 
@@ -115,16 +117,65 @@ struct ResourcesIO {}
 
 impl ResourceManagerIO for ResourcesIO {
     fn has_updates(&self) -> bool {
-        todo!()
+        true
     }
 
     fn enumerate_resources(&self) -> HashMap<ResourceId, ResourceMetadata> {
-        todo!()
+        let mut map = HashMap::new();
+        map.insert(
+            1,
+            ResourceMetadata {
+                name: "sample.wav".to_string(),
+                tag: 0,
+                id: 1,
+                resource_type: ResourceType::Audio,
+                checksum: 0xABABABABABABABAB,
+            },
+        );
+
+        map
     }
 
     fn load(&mut self, id: ResourceId) -> Result<Vec<u8>, String> {
-        todo!()
+        info!("Loading resource with ID: {}", id);
+
+        let file_1 = "/home/taris/work/yage2/app/resources/sample.wav";
+
+        if id == 1 {
+            std::fs::read(file_1).map_err(|e| e.to_string())
+        } else {
+            Err(format!("Resource with ID {} not found", id))
+        }
     }
+}
+
+fn profile_threads(frame: &yage2_core::threads::ProfileFrame) {
+    let mut str = String::with_capacity(1024);
+    for thread in &frame.threads {
+        str.push_str(&format!(
+            "{}: ({:.1}) ",
+            thread.name,
+            thread.cpu_utilization * 100.0
+        ));
+    }
+    info!("{}", str);
+}
+
+fn profile_audio(frame: &yage2_sound::manager::ProfileFrame) {
+    info!(
+        "Gen: {:.1}/{:.1} (of {:.1}) ({:.0}). Ev: {:.1} ({:.0}). Buffer: {:}/{:}/{:}",
+        frame.gen_av,
+        frame.write_bulk_av,
+        1000.0
+            / ((frame.sample_rate as usize * (frame.buffer_size / frame.block_size))
+                / (frame.buffer_size)) as f32,
+        frame.gen_tps_av,
+        frame.events_av,
+        frame.events_tps_av,
+        frame.available_min,
+        frame.available_av,
+        frame.available_max
+    );
 }
 
 fn main() {
@@ -152,133 +203,47 @@ fn main() {
 
     let resource_manager = Arc::new(ResourceManager::new(ResourceManagerConfig {
         backend: Box::new(ResourcesIO {}),
-        load_strategy: LoadStrategy::Lazy,
     }));
-
+    resource_manager.poll_io();
+    resource_manager.load_all();
+    
     let thread_manager: Arc<ThreadManager> = Arc::new(ThreadManager::new(ThreadManagerConfig {
-        profile_handle: Some(|frame: &yage2_core::threads::ProfileFrame| {
-            let mut str = String::with_capacity(1024);
-            for frame in &frame.threads {
-                str.push_str(&format!(
-                    "{}: ({:.1}) ",
-                    frame.name,
-                    frame.cpu_utilization * 100.0
-                ));
-            }
-
-            info!("{}", str);
-        }),
+        profile_handle: Some(profile_threads),
     }));
 
-    let controller = Arc::new(DeviceController::new());
-    let (source1, source1_controller) = WaveformSource::new().build();
-    let (bus1, _) = Bus::new()
-        .set_source(SourceType::Waveform(source1))
-        .set_pan(-0.2)
-        .set_volume(0.3)
-        .build();
-
-    let (source2, source2_controller) = WaveformSource::new().build();
-    let (bus2, _) = Bus::new()
-        .set_source(SourceType::Waveform(source2))
-        .set_pan(0.0)
-        .set_volume(0.3)
-        .build();
-
-    let (source3, source3_controller) = WaveformSource::new().build();
-    let (bus3, _) = Bus::new()
-        .set_source(SourceType::Waveform(source3))
-        .set_pan(0.2)
-        .set_volume(0.3)
-        .build();
-
-    let (group, _) = GroupSource::new(vec![bus1, bus2, bus3]);
+    let (clip_source, clip_control) = ClipSource::new();
     let (master_bus, _) = Bus::new()
-        .set_source(SourceType::Group(group))
+        .set_source(SourceType::Clip(clip_source))
         .set_volume(0.5)
         .set_pan(0.0)
         .build();
 
-    let device_config = DeviceConfig {
+    let audio_controller = Arc::new(AudioController::new());
+    let audio_manager_config = AudioManagerConfig {
         thread_manager: Arc::clone(&thread_manager),
+        resource_manager: Arc::clone(&resource_manager),
+
         backend_specific: BackendSpecificConfig {},
         master_bus: Arc::new(Mutex::new(master_bus)),
-        profiler_handler: Some(move |frame: &ProfileFrame| {
-            info!(
-                "Gen: {:.1}/{:.1} (of {:.1}) ({:.0}). Ev: {:.1} ({:.0}). Buffer: {:}/{:}/{:}",
-                frame.gen_av,
-                frame.write_bulk_av,
-                1000.0
-                    / ((frame.sample_rate as usize * (frame.buffer_size / frame.block_size))
-                        / (frame.buffer_size)) as f32,
-                frame.gen_tps_av,
-                frame.events_av,
-                frame.events_tps_av,
-                frame.available_min,
-                frame.available_av,
-                frame.available_max
-            );
-        }),
-        device_controller: Arc::clone(&controller),
+        profiler_handler: Some(profile_audio),
+        controller: Arc::clone(&audio_controller),
         sample_rate: 48_000,
     };
 
-    let mut device = Device::new(device_config).expect("Failed to create audio device");
-    device.open().unwrap();
+    let mut audio_manager =
+        AudioManager::new(audio_manager_config).expect("Failed to create audio device");
 
-    fn set_note(
-        controller: &DeviceController,
-        source_controller: &Controller<WaveformMessage>,
-        note: Note,
-    ) {
-        controller.send(
-            source_controller,
-            WaveformMessage::SetFrequency(note.frequency()),
-        );
-    }
+    let clip = resource_manager
+        .get_resource(ResourceType::Audio, 1)
+        .unwrap();
 
-    // for i in 0..3 {
-    set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
-    set_note(&controller, &source2_controller, Note::new(NoteName::G, 4));
-    set_note(&controller, &source3_controller, Note::new(NoteName::E, 4));
-    controller.notify();
+    audio_manager.start().unwrap();
 
-    // std::thread::sleep(std::time::Duration::from_secs(2));
+    audio_controller.send_and_notify(&clip_control, ClipMessage::Play(clip.clone()));
 
-    // set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
-    // set_note(
-    //     &controller,
-    //     &source2_controller,
-    //     Note::new(NoteName::GSharp, 4),
-    // );
-    // set_note(&controller, &source3_controller, Note::new(NoteName::F, 4));
-    // controller.notify();
-    //
-    // std::thread::sleep(std::time::Duration::from_secs(2));
-    //
-    // set_note(&controller, &source1_controller, Note::new(NoteName::C, 4));
-    // set_note(&controller, &source2_controller, Note::new(NoteName::A, 4));
-    // set_note(&controller, &source3_controller, Note::new(NoteName::D, 4));
-    // controller.notify();
-    //
-    // std::thread::sleep(std::time::Duration::from_secs(2));
-    //
-    // set_note(&controller, &source1_controller, Note::new(NoteName::A, 3));
-    // set_note(&controller, &source2_controller, Note::new(NoteName::G, 4));
-    // set_note(&controller, &source3_controller, Note::new(NoteName::B, 4));
-    // controller.notify();
-    //
-    // std::thread::sleep(std::time::Duration::from_secs(2));
-    //
-    // set_note(&controller, &source1_controller, Note::new(NoteName::G, 2));
-    // set_note(&controller, &source2_controller, Note::new(NoteName::C, 3));
-    // set_note(&controller, &source3_controller, Note::new(NoteName::E, 4));
-    // controller.notify();
-
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    // }
-
-    device.close().unwrap();
+    sleep(std::time::Duration::from_millis(100000));
+    
+    audio_manager.stop().unwrap();
 
     thread_manager.join_all();
 

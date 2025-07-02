@@ -1,16 +1,18 @@
 use crate::backend::{
-    BackendDevice, BackendDeviceTrait, BackendSpecificConfig, CreateBackendConfig,
+    AudioBackend, BackendDeviceTrait, BackendSpecificConfig, CreateBackendConfig,
 };
-use crate::control::DeviceController;
+use crate::control::AudioController;
 use crate::dsp::bus::Bus;
 use crate::dsp::{BlockInfo, EventDispatcher, Generator};
-use crate::error::{DeviceCloseError, DeviceCreationError, DeviceOpenError};
+use crate::error::{AudioManagerCreationError, AudioManagerStartError, AudioManagerStopError};
+use crate::resources::{finalize_resource, parse_resource};
 use crate::ringbuf::RingBuffer;
 use crate::sample::{InterleavedSample, InterleavedSampleBuffer, PlanarBlock, Sample};
 use crate::{SampleType, BLOCK_SIZE, CHANNELS_COUNT, DEVICE_BUFFER_SIZE, RING_BUFFER_SIZE};
 use log::{debug, info, warn};
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use yage2_core::profile::{MinMaxProfiler, PeriodProfiler, TickProfiler};
+use yage2_core::resources::{ResourceManager, ResourceType};
 use yage2_core::threads::{ThreadManager, ThreadPriority};
 
 const WATERMARK_THRESHOLD: usize = RING_BUFFER_SIZE / 4;
@@ -24,13 +26,16 @@ const EVENTS_THREAD_PRIORITY: ThreadPriority = ThreadPriority::Normal;
 const STATISTICS_THREAD_NAME: &str = "aud_stats";
 const STATISTICS_THREAD_PRIORITY: ThreadPriority = ThreadPriority::Low;
 
-pub struct DeviceConfig {
+pub struct AudioManagerConfig {
     pub thread_manager: Arc<ThreadManager>,
+    pub resource_manager: Arc<ResourceManager>,
+
     pub backend_specific: BackendSpecificConfig,
     pub master_bus: Arc<Mutex<Bus>>,
-    pub device_controller: Arc<DeviceController>,
-    pub profiler_handler: Option<fn(&ProfileFrame)>,
+    pub controller: Arc<AudioController>,
     pub sample_rate: u32,
+
+    pub profiler_handler: Option<fn(&ProfileFrame)>,
 }
 
 struct Profilers {
@@ -93,18 +98,18 @@ pub struct ProfileFrame {
     pub reader_tps_av: f32,
     pub reader_tps_max: f32,
 
-    // Device parameters
+    // Manager parameters
     pub sample_rate: u32,
     pub buffer_size: usize,
     pub channels: u8,
     pub block_size: usize,
 }
 
-pub struct Device {
+pub struct AudioManager {
     thread_manager: Arc<ThreadManager>,
 
-    // The backend device that handles audio output
-    backend: BackendDevice<SampleType>,
+    // The backend that handles audio output
+    backend: AudioBackend<SampleType>,
 
     // The ring buffer that stores audio samples
     // used for inter-thread communication between the
@@ -118,7 +123,7 @@ pub struct Device {
     sample_rate: u32,
 
     // The controller that allows user to control buses and more
-    controller: Arc<DeviceController>,
+    controller: Arc<AudioController>,
 
     // Threads for audio generation, event processing, and statistics
     stop_signal: Arc<AtomicBool>,
@@ -128,16 +133,18 @@ pub struct Device {
     profilers: Arc<Profilers>,
 }
 
-impl Drop for Device {
+impl Drop for AudioManager {
     fn drop(&mut self) {
-        let _ = self.close();
+        let _ = self.stop();
     }
 }
 
-impl Device {
-    pub fn new(config: DeviceConfig) -> Result<Self, DeviceCreationError> {
+impl AudioManager {
+    pub fn new(config: AudioManagerConfig) -> Result<Self, AudioManagerCreationError> {
         if config.sample_rate == 0 {
-            return Err(DeviceCreationError::InvalidSampleRate(config.sample_rate));
+            return Err(AudioManagerCreationError::InvalidSampleRate(
+                config.sample_rate,
+            ));
         }
 
         let backend_config = CreateBackendConfig {
@@ -147,17 +154,23 @@ impl Device {
             buffer_size: DEVICE_BUFFER_SIZE,
         };
 
-        let backend_device = BackendDevice::<SampleType>::new(backend_config)
-            .map_err(DeviceCreationError::BackendSpecific)?;
+        let backend = AudioBackend::<SampleType>::new(backend_config)
+            .map_err(AudioManagerCreationError::BackendSpecific)?;
 
-        Ok(Device {
+        config.resource_manager.register_factory(
+            ResourceType::Audio,
+            parse_resource,
+            finalize_resource,
+        );
+
+        Ok(AudioManager {
             thread_manager: config.thread_manager,
 
-            backend: backend_device,
+            backend,
             ring_buffer: Arc::new(RingBuffer::new()),
             master_bus: Arc::clone(&config.master_bus),
 
-            controller: config.device_controller,
+            controller: config.controller,
             sample_rate: config.sample_rate,
 
             stop_signal: Arc::new(AtomicBool::new(false)),
@@ -167,7 +180,7 @@ impl Device {
         })
     }
 
-    fn spawn_generator_thread(&mut self) -> Result<(), DeviceOpenError> {
+    fn spawn_generator_thread(&mut self) -> Result<(), AudioManagerStartError> {
         let buffer = Arc::clone(&self.ring_buffer);
         let master = Arc::clone(&self.master_bus);
         let sample_rate = self.sample_rate;
@@ -186,7 +199,7 @@ impl Device {
             };
 
             // Generate samples using the master bus
-            let bus_guard = master.lock().unwrap();
+            let mut bus_guard = master.lock().unwrap();
             profiler.gen_time.start();
             bus_guard.generate(&mut planar_block, &block_info);
             profiler.gen_time.end();
@@ -232,12 +245,12 @@ impl Device {
                     }
                 },
             )
-            .map_err(DeviceOpenError::GeneratorThreadSpawnError)?;
+            .map_err(AudioManagerStartError::GeneratorThreadSpawnError)?;
 
         Ok(())
     }
 
-    fn spawn_events_thread(&mut self) -> Result<(), DeviceOpenError> {
+    fn spawn_events_thread(&mut self) -> Result<(), AudioManagerStartError> {
         let controller = Arc::clone(&self.controller);
         let master = Arc::clone(&self.master_bus);
         let profiler = Arc::clone(&self.profilers);
@@ -274,12 +287,12 @@ impl Device {
                     }
                 },
             )
-            .map_err(DeviceOpenError::EventThreadSpawnError)?;
+            .map_err(AudioManagerStartError::EventThreadSpawnError)?;
 
         Ok(())
     }
 
-    fn spawn_statistics_thread(&mut self) -> Result<(), DeviceOpenError> {
+    fn spawn_statistics_thread(&mut self) -> Result<(), AudioManagerStartError> {
         let profiler_handler = match &self.profiler_handler {
             Some(handler) => handler.clone(),
             None => {
@@ -358,12 +371,12 @@ impl Device {
                     }
                 },
             )
-            .map_err(DeviceOpenError::StatisticsThreadSpawnError)?;
+            .map_err(AudioManagerStartError::StatisticsThreadSpawnError)?;
 
         Ok(())
     }
 
-    fn spawn_reader(&mut self) -> Result<(), DeviceOpenError> {
+    fn spawn_reader(&mut self) -> Result<(), AudioManagerStartError> {
         let reader_profiler = Arc::clone(&self.profilers);
         let reader_buffer = Arc::clone(&self.ring_buffer);
         let func = move |buffer: &mut InterleavedSampleBuffer<SampleType>| {
@@ -387,13 +400,13 @@ impl Device {
 
         self.backend
             .open(func)
-            .map_err(DeviceOpenError::BackendSpecific)?;
+            .map_err(AudioManagerStartError::BackendSpecific)?;
 
         Ok(())
     }
 
-    pub fn open(&mut self) -> Result<(), DeviceOpenError> {
-        info!("Opening audio device");
+    pub fn start(&mut self) -> Result<(), AudioManagerStartError> {
+        info!("Starting audio manager");
 
         self.spawn_events_thread()?;
         self.spawn_generator_thread()?;
@@ -403,11 +416,11 @@ impl Device {
         Ok(())
     }
 
-    pub fn close(&mut self) -> Result<(), DeviceCloseError> {
-        info!("Closing audio device");
+    pub fn stop(&mut self) -> Result<(), AudioManagerStopError> {
+        info!("Closing audio manager");
         self.backend
             .close()
-            .map_err(DeviceCloseError::BackendSpecific)?;
+            .map_err(AudioManagerStopError::BackendSpecific)?;
 
         // Notify the generator thread to stop
         self.stop_signal

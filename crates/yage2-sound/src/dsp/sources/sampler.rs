@@ -40,7 +40,7 @@ impl EventDispatcher for SamplerSource {
 }
 
 impl Generator for SamplerSource {
-    fn generate(&self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
+    fn generate(&mut self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
         output.silence();
     }
 }
