@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use log::{info, warn};
+use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
@@ -12,7 +13,7 @@ pub type ResourceChecksum = u64;
 
 pub trait ResourceManagerIO {
     fn has_updates(&self) -> bool;
-    fn enumerate_resources(&self) -> Result<HashMap<ResourceId, ResourceMetadata>, String>;
+    fn enumerate_resources(&self) -> Result<HashMap<ResourceId, ResourceHeader>, String>;
     fn load(&mut self, id: ResourceId) -> Result<Vec<u8>, String>;
 }
 
@@ -20,14 +21,40 @@ pub struct ResourceManagerConfig {
     pub backend: Box<dyn ResourceManagerIO>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ResourceType {
-    Texture,
-    Shader,
-    Mesh,
+    Unknown,
+
+    // Shader types
+    ShaderGLSL,
+    ShaderSPIRV,
+    ShaderHLSL,
+
+    // Audio types
+    AudioFLAC,
     AudioWAV,
-    Font,
-    Script,
+    AudioOGG,
+    AudioMP3,
+
+    // Image types
+    ImagePNG,
+    ImageJPEG,
+    ImageBMP,
+
+    // Font types
+    FontTTF,
+    FontOTF,
+
+    // Model types
+    ModelOBJ,
+    ModelGLTF,
+    ModelFBX,
+}
+
+impl Default for ResourceType {
+    fn default() -> Self {
+        ResourceType::Unknown
+    }
 }
 
 pub enum ResourceRaw {
@@ -64,23 +91,37 @@ pub enum ResourceData {
 }
 
 pub trait ResourceFactory {
-    fn parse(&self, metadata: &ResourceMetadata, raw: &[u8]) -> Result<Resource, String>;
+    fn parse(&self, header: &ResourceHeader, raw: &[u8]) -> Result<Resource, String>;
 
-    fn finalize(&self, metadata: &ResourceMetadata, resource: &Resource) -> Result<(), String>;
+    fn finalize(&self, header: &ResourceHeader, resource: &Resource) -> Result<(), String>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ResourceMetadata {
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ResourceHeader {
+    #[serde(default)]
     pub name: String,
-    pub tag: ResourceTag,
-    pub id: ResourceId,
+    #[serde(default)]
+    pub tag: String,
+    #[serde(default)]
     pub resource_type: ResourceType,
+    #[serde(default)]
     pub checksum: ResourceChecksum,
 }
 
+impl Default for ResourceHeader {
+    fn default() -> Self {
+        ResourceHeader {
+            name: String::new(),
+            tag: String::new(),
+            resource_type: ResourceType::Unknown,
+            checksum: 0,
+        }
+    }
+}
+
 struct ResourceContainer {
-    // Metadata about the resource
-    metadata: RwLock<ResourceMetadata>,
+    // Core information about the resource
+    header: RwLock<ResourceHeader>,
 
     // Raw data loaded from the IO-backend.
     raw: RwLock<ResourceRaw>,
@@ -97,11 +138,10 @@ pub struct ResourceManager {
     factories: DashMap<ResourceType, Arc<dyn ResourceFactory>>,
 }
 
-impl PartialEq<ResourceMetadata> for &ResourceMetadata {
-    fn eq(&self, other: &ResourceMetadata) -> bool {
+impl PartialEq<ResourceHeader> for &ResourceHeader {
+    fn eq(&self, other: &ResourceHeader) -> bool {
         self.name == other.name
             && self.tag == other.tag
-            && self.id == other.id
             && self.resource_type == other.resource_type
             && self.checksum == other.checksum
     }
@@ -200,24 +240,24 @@ impl ResourceManager {
 
         /* Just add them to the list for now */
         let mut any_updates = false;
-        for (id, metadata) in updated_resources {
-            let type_map = self.resources.entry(metadata.resource_type).or_default();
+        for (id, header) in updated_resources {
+            let type_map = self.resources.entry(header.resource_type).or_default();
             let entry = type_map.entry(id).or_insert_with(|| {
-                info!("Adding new resource: {:?}", metadata);
+                info!("Adding new resource: {:?}", header);
                 any_updates = true;
                 ResourceContainer {
-                    metadata: RwLock::new(metadata.clone()),
+                    header: RwLock::new(header.clone()),
                     raw: RwLock::new(ResourceRaw::Dropped),
                     data: RwLock::new(ResourceData::Unloaded),
                     fresh: AtomicBool::new(false),
                 }
             });
 
-            // Update metadata if it has changed
-            let mut existing_metadata = entry.metadata.write().unwrap();
-            if &*existing_metadata != &metadata {
-                info!("Updating resource metadata: {:?}", metadata);
-                *existing_metadata = metadata;
+            // Update header if it has changed
+            let mut existing_header = entry.header.write().unwrap();
+            if &*existing_header != &header {
+                info!("Updating resource header: {:?}", header);
+                *existing_header = header;
                 entry.fresh.store(false, Ordering::Relaxed);
                 any_updates = true;
             }
@@ -256,7 +296,7 @@ impl ResourceManager {
             }
 
             for resource_container in type_map.value().iter() {
-                let metadata = resource_container.metadata.read().unwrap();
+                let header = resource_container.header.read().unwrap();
                 let mut data = resource_container.data.write().unwrap();
                 if let ResourceData::Parsed(ref resource) = *data {
                     let factory = match self.factories.get(&resource_type) {
@@ -265,10 +305,10 @@ impl ResourceManager {
                     };
 
                     // Call the finalizer to clean up resources
-                    if let Err(e) = factory.finalize(&metadata, resource) {
-                        warn!("Failed to finalize resource {}: {}", metadata.name, e);
+                    if let Err(e) = factory.finalize(&header, resource) {
+                        warn!("Failed to finalize resource {}: {}", header.name, e);
                     } else {
-                        info!("Finalized resource: {}", metadata.name);
+                        info!("Finalized resource: {}", header.name);
                         // Mark the resource as unloaded
                         *data = ResourceData::Unloaded;
                     }
@@ -292,7 +332,7 @@ impl ResourceManager {
 
         let mut data = resource.data.write().unwrap();
         let raw = resource.raw.read().unwrap();
-        let metadata = resource.metadata.read().unwrap();
+        let header = resource.header.read().unwrap();
         if let ResourceData::Parsed(ref resource) = *data {
             return Ok(resource.clone());
         }
@@ -305,7 +345,7 @@ impl ResourceManager {
 
             // Parse the raw data into a usable resource
             let parsed_resource = factory
-                .parse(&metadata, raw_data)
+                .parse(&header, raw_data)
                 .map_err(|e| ResourceManagerGetError::ParserFailed(e))?;
 
             // Update the resource data to Parsed state
@@ -326,13 +366,13 @@ impl Drop for ResourceManager {
         // Log about all not finalized resources
         for map in self.resources.iter() {
             for resource_container in map.iter() {
-                let metadata = resource_container.metadata.read().unwrap();
+                let header = resource_container.header.read().unwrap();
                 if let ResourceData::Parsed(_) = *resource_container.data.read().unwrap() {
                     warn!(
                         "Resource {} (ID: {}) of type {:?} is not finalized",
-                        metadata.name,
+                        header.name,
                         resource_container.key(),
-                        metadata.resource_type
+                        header.resource_type
                     );
                 }
             }

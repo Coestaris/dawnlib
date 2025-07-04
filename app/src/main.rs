@@ -13,7 +13,7 @@ use yage2_app::create_object;
 use yage2_app::engine::application::Application;
 use yage2_core::resources::{
     ResourceChecksum, ResourceId, ResourceManager, ResourceManagerConfig, ResourceManagerIO,
-    ResourceMetadata, ResourceTag, ResourceType,
+    ResourceHeader, ResourceTag, ResourceType,
 };
 use yage2_core::threads::{ThreadManager, ThreadManagerConfig};
 use yage2_core::utils::format_now;
@@ -120,14 +120,13 @@ impl ResourceManagerIO for ResourcesIO {
         true
     }
 
-    fn enumerate_resources(&self) -> Result<HashMap<ResourceId, ResourceMetadata>, String> {
+    fn enumerate_resources(&self) -> Result<HashMap<ResourceId, ResourceHeader>, String> {
         let mut map = HashMap::new();
         map.insert(
             1,
-            ResourceMetadata {
+            ResourceHeader {
                 name: "sample.wav".to_string(),
-                tag: 0,
-                id: 1,
+                tag: "".to_string(),
                 resource_type: ResourceType::AudioWAV,
                 checksum: 0xABABABABABABABAB,
             },

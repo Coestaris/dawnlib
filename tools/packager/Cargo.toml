@@ -1,0 +1,11 @@
+[package]
+name = "packager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ansi_term = "0.12.1"
+log = "0.4.27"
+clap = { version = "4.5.40", features = ["derive"] }
+yage2-core = { path = "../../crates/yage2-core" }
+yage2-yarc = { path = "../../crates/yage2-yarc" }

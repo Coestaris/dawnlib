@@ -118,7 +118,7 @@ pub struct ClipResource {
 pub(crate) mod wav
 {
     use log::warn;
-    use yage2_core::resources::{Resource, ResourceFactory, ResourceMetadata};
+    use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};
     use crate::CHANNELS_COUNT;
     use crate::resources::{resample, to_interleaved_f32, ClipResource};
 
@@ -133,7 +133,7 @@ pub(crate) mod wav
     }
 
     impl ResourceFactory for WAVResourceFactory {
-        fn parse(&self, metadata: &ResourceMetadata, raw: &[u8]) -> Result<Resource, String> {
+        fn parse(&self, metadata: &ResourceHeader, raw: &[u8]) -> Result<Resource, String> {
             let mut buf_reader = std::io::Cursor::new(raw);
             match hound::WavReader::new(&mut buf_reader) {
                 Ok(mut reader) => {
@@ -205,7 +205,7 @@ pub(crate) mod wav
             }
         }
 
-        fn finalize(&self, metadata: &ResourceMetadata, resource: &Resource) -> Result<(), String> {
+        fn finalize(&self, metadata: &ResourceHeader, resource: &Resource) -> Result<(), String> {
             Ok(())
         }
     }
