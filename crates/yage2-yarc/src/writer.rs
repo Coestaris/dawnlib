@@ -1,9 +1,15 @@
+use crate::preprocessors::{
+    compile_glsl_shader, dummy_preprocessor, resample_flac_file, resample_ogg_file,
+    resample_wav_file, PreProcessor, PreprocessorsError,
+};
 use crate::structures::{
-    Compression, HashAlgorithm, ReadMode, ResourceMetadata, TypeSpecificMetadata, YARCManifest,
+    ChecksumAlgorithm, Compression, ReadMode, ResourceMetadata, TypeSpecificMetadata, YARCManifest,
     YARCWriteOptions,
 };
 use log::{debug, info};
 use serde::{Deserialize, Serialize};
+use std::fs::File;
+use std::io::{BufReader, Read};
 use tempdir::TempDir;
 use yage2_core::resources::{ResourceChecksum, ResourceHeader, ResourceType};
 use yage2_core::utils::format_now;
@@ -18,10 +24,47 @@ struct Container {
 
 #[derive(Debug)]
 pub enum WriterError {
+    CollectingFilesFailed(std::io::Error),
     IoError(std::io::Error),
-    ParseError(toml::de::Error),
-    Other(String),
+    TarError(std::io::Error),
+    ParseMetadataFailed(String, toml::de::Error),
+    FormatMetadataFailed(toml::ser::Error),
+    ValidateMetadataFailed(String, String),
+    PreprocessorFailed(PreprocessorsError),
+
+    UnsupportedCompression(Compression),
+    UnsupportedChecksumAlgorithm(ChecksumAlgorithm),
+    UnsupportedResourceType(ResourceType),
+    UnknownResourceType(String),
 }
+
+impl std::fmt::Display for WriterError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WriterError::CollectingFilesFailed(e) => write!(f, "Failed to collect files: {}", e),
+            WriterError::IoError(e) => write!(f, "I/O error: {}", e),
+            WriterError::TarError(e) => write!(f, "Tar error: {}", e),
+            WriterError::ParseMetadataFailed(name, e) => {
+                write!(f, "Failed to parse metadata for '{}': {}", name, e)
+            }
+            WriterError::FormatMetadataFailed(e) => write!(f, "Failed to format metadata: {}", e),
+            WriterError::ValidateMetadataFailed(name, e) => {
+                write!(f, "Metadata validation failed for '{}': {}", name, e)
+            }
+            WriterError::PreprocessorFailed(e) => write!(f, "Preprocessor failed: {}", e),
+            WriterError::UnsupportedCompression(c) => write!(f, "Unsupported compression: {:?}", c),
+            WriterError::UnsupportedChecksumAlgorithm(a) => {
+                write!(f, "Unsupported checksum algorithm: {:?}", a)
+            }
+            WriterError::UnsupportedResourceType(t) => {
+                write!(f, "Unsupported resource type: {:?}", t)
+            }
+            WriterError::UnknownResourceType(s) => write!(f, "Unknown resource type: {}", s),
+        }
+    }
+}
+
+impl std::error::Error for WriterError {}
 
 /// Collect files from the specified path based on the read mode
 /// and return a vector of file paths.
@@ -71,35 +114,17 @@ fn normalize_name<P: AsRef<std::path::Path>>(path: P) -> String {
         .replace(|c: char| !c.is_alphanumeric() && c != '_', "")
 }
 
-/// Preprocessor function type that takes a file path and metadata,
-/// and returns a processed file path or an error.
-type PreProcessor<'a> = fn(
-    &'a std::path::PathBuf,
-    &ResourceMetadata,
-) -> Result<(&'a std::path::PathBuf, ResourceMetadata), WriterError>;
-
-fn dummy_preprocessor<'a>(
-    path: &'a std::path::PathBuf,
-    metadata: &ResourceMetadata,
-) -> Result<(&'a std::path::PathBuf, ResourceMetadata), WriterError> {
-    // This is a dummy preprocessor that does nothing
-    // In a real implementation, this could be used to preprocess files
-    // (e.g., compiling shaders, converting audio formats, etc.)
-    Ok((path, metadata.clone()))
-}
-
-fn extension_to_resource_type(ext: &str) -> (ResourceType, PreProcessor) {
-    match ext {
+fn extension_to_resource_type(ext: &str) -> Result<(ResourceType, PreProcessor), WriterError> {
+    Ok(match ext {
         // Shader types
-        "glsl" => (ResourceType::ShaderGLSL, dummy_preprocessor),
+        "glsl" => (ResourceType::ShaderGLSL, compile_glsl_shader),
         "spv" => (ResourceType::ShaderSPIRV, dummy_preprocessor),
         "hlsl" => (ResourceType::ShaderHLSL, dummy_preprocessor),
 
         // Audio types
-        "flac" => (ResourceType::AudioFLAC, dummy_preprocessor),
-        "wav" => (ResourceType::AudioWAV, dummy_preprocessor),
-        "ogg" => (ResourceType::AudioOGG, dummy_preprocessor),
-        "mp3" => (ResourceType::AudioMP3, dummy_preprocessor),
+        "flac" => (ResourceType::AudioFLAC, resample_flac_file),
+        "wav" => (ResourceType::AudioWAV, resample_wav_file),
+        "ogg" => (ResourceType::AudioOGG, resample_ogg_file),
 
         // Image types
         "png" => (ResourceType::ImagePNG, dummy_preprocessor),
@@ -115,35 +140,34 @@ fn extension_to_resource_type(ext: &str) -> (ResourceType, PreProcessor) {
         "fbx" => (ResourceType::ModelFBX, dummy_preprocessor),
         "gltf" | "glb" => (ResourceType::ModelGLTF, dummy_preprocessor),
 
-        _ => (ResourceType::Unknown, dummy_preprocessor),
-    }
+        _ => {
+            // If the extension is not recognized, return an error
+            return Err(WriterError::UnknownResourceType(ext.to_string()));
+        }
+    })
 }
 
 fn checksum<P: AsRef<std::path::Path>>(
     path: P,
-    algorithm: HashAlgorithm,
+    algorithm: ChecksumAlgorithm,
 ) -> Result<ResourceChecksum, WriterError> {
-    use std::fs::File;
-    use std::io::Read;
-
-    let content = File::open(path)
-        .map_err(WriterError::IoError)?
-        .bytes()
-        .collect::<Result<Vec<u8>, std::io::Error>>()
+    let mut file = BufReader::new(File::open(path).map_err(WriterError::IoError)?);
+    let mut content = Vec::new();
+    file.read_to_end(&mut content)
         .map_err(WriterError::IoError)?;
+
     let hash = match algorithm {
-        HashAlgorithm::Md5 => {
+        ChecksumAlgorithm::Md5 => {
             let mut hasher = md5::Context::new();
             hasher.consume(&content);
             hasher.compute().0
         }
-        _ => panic!("Unimplemented hash algorithm"),
+        _ => {
+            return Err(WriterError::UnsupportedChecksumAlgorithm(algorithm));
+        }
     };
 
-    // Convert the hash to a u64 (this is a simplification, real
-    // hash functions may produce larger hashes)
-    // TODO: Handle larger hashes properly
-    Ok(u64::from_le_bytes(hash[0..8].try_into().unwrap_or([0; 8])))
+    Ok(ResourceChecksum::from_bytes(&hash))
 }
 
 fn create_manifest(create_options: YARCWriteOptions, containers: &[Container]) -> YARCManifest {
@@ -168,18 +192,21 @@ fn validate_metadata<P: AsRef<std::path::Path>>(
 ) -> Result<ResourceMetadata, WriterError> {
     let metadata_content =
         std::fs::read_to_string(metadata_path.as_ref()).map_err(WriterError::IoError)?;
-    let mut metadata: ResourceMetadata =
-        toml::from_str(&metadata_content).map_err(WriterError::ParseError)?;
+    let mut metadata: ResourceMetadata = toml::from_str(&metadata_content)
+        .map_err(|e| WriterError::ParseMetadataFailed(name.to_string(), e))?;
 
     // If some fields are missing, the serde will fill them with defaults
     // But we need to ensure that the resource type matches
     if metadata.common.resource_type == ResourceType::Unknown {
         metadata.common.resource_type = resource_type;
     } else if metadata.common.resource_type != resource_type {
-        return Err(WriterError::Other(format!(
-            "Resource type mismatch: expected {:?}, found {:?}",
-            resource_type, metadata.common.resource_type
-        )));
+        return Err(WriterError::ValidateMetadataFailed(
+            name.to_string(),
+            format!(
+                "Resource type mismatch: expected {:?}, found {:?}",
+                resource_type, metadata.common.resource_type
+            ),
+        ));
     }
 
     // Ensure the type-specific metadata is set
@@ -190,10 +217,13 @@ fn validate_metadata<P: AsRef<std::path::Path>>(
         _ => {
             // Ensure the type-specific metadata is suitable for the resource type
             if !metadata.type_specific.suitable_for(resource_type) {
-                return Err(WriterError::Other(format!(
-                    "Type-specific metadata {:?} is not suitable for resource type {:?}",
-                    metadata.type_specific, resource_type
-                )));
+                return Err(WriterError::ValidateMetadataFailed(
+                    name.to_string(),
+                    format!(
+                        "Type-specific metadata {:?} is not suitable for resource type {:?}",
+                        metadata.type_specific, resource_type
+                    ),
+                ));
             }
         }
     };
@@ -214,7 +244,7 @@ fn create_metadata<P: AsRef<std::path::Path>>(
         name: name.to_string(),
         tag: String::new(),
         resource_type,
-        checksum: 0,
+        checksum: ResourceChecksum::default(),
     };
 
     Ok(ResourceMetadata {
@@ -254,33 +284,37 @@ fn prepare_files<P: AsRef<std::path::Path>>(
         }
 
         let mut name = normalize_name(&file);
-        let (resource_type, preprocessor) = extension_to_resource_type(&ext);
+        let (resource_type, preprocessor) = extension_to_resource_type(&ext)?;
         info!("Processing file: {} (type: {:?})", we, resource_type);
 
         let toml = file.with_extension("toml");
         let mut metadata = if toml.exists() {
             // Metadata object found, validate it
-            validate_metadata(&toml, resource_type, &name).unwrap()
+            validate_metadata(&toml, resource_type, &name)?
         } else {
-            // If file not exist. Create new one
-            create_metadata::<P>(resource_type, &name).unwrap()
+            // If file doesn't exist. Create a new one
+            create_metadata::<P>(resource_type, &name)?
         };
 
-        // Preprocess file here, since it can modify the metadata
-        (file, metadata) = preprocessor(file, &metadata).unwrap();
-        // If user/preprocessor changed the name, we need to update it
+        // Calculate the checksum, in case the preprocessor wants to use it
+        metadata.common.checksum = checksum(&file, options.checksum_algorithm)?;
+        // Preprocessor is responsible for modifying the file and metadata
+        // and copying the file to the temp directory
+        let dest_path = directory.path().join(&name);
+
+        // TODO: What if the preprocessor changes the name?
+        metadata =
+            preprocessor(file, &metadata, &dest_path).map_err(WriterError::PreprocessorFailed)?;
+
+        // If a user / preprocessor changed the name, we need to update it
         name = metadata.common.name.clone();
         // Update the metadata with the checksum
-        metadata.common.checksum = checksum(&file, options.hash_algorithm)?;
+        metadata.common.checksum = checksum(&dest_path, options.checksum_algorithm)?;
         // Write the metadata to a temporary file
         let metadata_path = directory.path().join(&name).with_extension("toml");
-        let metadata_content = toml::to_string(&metadata).unwrap();
-        std::fs::write(&metadata_path, metadata_content).unwrap();
-
-        // Copy the file to the temp directory
-        let dest_path = directory.path().join(&name);
-        debug!("Copying file {} to {}", we, dest_path.display());
-        std::fs::copy(file, &dest_path).map_err(WriterError::IoError)?;
+        let metadata_content =
+            toml::to_string(&metadata).map_err(WriterError::FormatMetadataFailed)?;
+        std::fs::write(&metadata_path, metadata_content).map_err(WriterError::IoError)?;
 
         // Create the resource entry
         resources.push(Container {
@@ -296,7 +330,7 @@ fn prepare_files<P: AsRef<std::path::Path>>(
 
     // Write the manifest to a temporary file
     let manifest_path = directory.path().join(".manifest.toml");
-    let manifest_content = toml::to_string(&manifest).unwrap();
+    let manifest_content = toml::to_string(&manifest).map_err(WriterError::FormatMetadataFailed)?;
     std::fs::write(&manifest_path, manifest_content).map_err(WriterError::IoError)?;
 
     // Make sure that manifest is the first file in the archive
@@ -321,7 +355,7 @@ where
     W: std::io::Write,
 {
     for resource in files {
-        let mut file = std::fs::File::open(resource).map_err(WriterError::IoError)?;
+        let mut file = File::open(resource).map_err(WriterError::IoError)?;
         tar_builder
             .append_file(resource.file_name().unwrap(), &mut file)
             .map_err(WriterError::IoError)?;
@@ -332,14 +366,15 @@ where
 
 /// Implementation of creating a YARC from a directory
 /// This will involve reading files, normalizing names, and writing to a .tar or .tar.gz archive
-/// with the specified compression and hash algorithm.
+/// with the specified compression and checksum algorithm.
 pub fn write_from_directory<P: AsRef<std::path::Path>>(
     input_dir: P,
     options: YARCWriteOptions,
     output: P,
 ) -> Result<(), WriterError> {
     // Read the directory and collect files based on the read mode
-    let files = collect_files(input_dir, options.read_mode).map_err(WriterError::IoError)?;
+    let files =
+        collect_files(input_dir, options.read_mode).map_err(WriterError::CollectingFilesFailed)?;
 
     // Group files with their metadata
     let temp_dir = TempDir::new("yage2_yarc").map_err(WriterError::IoError)?;
@@ -347,20 +382,20 @@ pub fn write_from_directory<P: AsRef<std::path::Path>>(
 
     // Create the output archive
     let output_path = output.as_ref();
-    let output_file = std::fs::File::create(output_path).map_err(WriterError::IoError)?;
+    let output_file = std::fs::File::create(output_path).map_err(WriterError::TarError)?;
     match options.compression {
         Compression::None => {
             // Create a tar archive
             let mut tar = tar::Builder::new(output_file);
             add_files(&mut tar, &output_files)?;
-            tar.finish().map_err(WriterError::IoError)?;
+            tar.finish().map_err(WriterError::TarError)?;
         }
         Compression::Gzip => {
             // Create a gzipped tar archive
             let enc = flate2::write::GzEncoder::new(output_file, flate2::Compression::default());
             let mut tar = tar::Builder::new(enc);
             add_files(&mut tar, &output_files)?;
-            tar.finish().map_err(WriterError::IoError)?;
+            tar.finish().map_err(WriterError::TarError)?;
         }
     }
 

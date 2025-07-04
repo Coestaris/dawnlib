@@ -12,6 +12,7 @@
 // All names are normalized to lowercase, so there are no conflicts,
 // whitespace is replaced with underscores, and special characters are removed.
 
+pub(crate) mod preprocessors;
 pub mod structures;
 mod writer;
 

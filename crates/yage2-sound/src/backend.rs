@@ -1,6 +1,5 @@
 use crate::sample::{InterleavedSampleBuffer, Sample};
 
-#[cfg(feature = "cpal")]
 pub mod backend_impl {
     pub type BackendSpecificConfig = crate::cpal::DeviceConfig;
     pub(crate) type AudioBackend<S> = crate::cpal::Device<S>;

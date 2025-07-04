@@ -9,7 +9,25 @@ use std::sync::{Arc, Mutex, RwLock};
 
 pub type ResourceId = usize;
 pub type ResourceTag = usize;
-pub type ResourceChecksum = u64;
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+
+pub struct ResourceChecksum(u64);
+
+impl ResourceChecksum {
+    pub fn from_bytes(bytes: &[u8]) -> ResourceChecksum {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        bytes.hash(&mut hasher);
+        ResourceChecksum(hasher.finish() >> 1) // Shift to reduce the size
+    }
+}
+
+impl Default for ResourceChecksum {
+    fn default() -> Self {
+        ResourceChecksum(0)
+    }
+}
 
 pub trait ResourceManagerIO {
     fn has_updates(&self) -> bool;
@@ -34,7 +52,6 @@ pub enum ResourceType {
     AudioFLAC,
     AudioWAV,
     AudioOGG,
-    AudioMP3,
 
     // Image types
     ImagePNG,
@@ -114,7 +131,7 @@ impl Default for ResourceHeader {
             name: String::new(),
             tag: String::new(),
             resource_type: ResourceType::Unknown,
-            checksum: 0,
+            checksum: ResourceChecksum::default(),
         }
     }
 }

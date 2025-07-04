@@ -19,7 +19,7 @@ impl Default for ShaderType {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct ShaderMetadata {
     #[serde(default)]
-    shader_type: ShaderType,
+    pub(crate) shader_type: ShaderType,
     #[serde(default)]
     compile_options: Vec<String>,
 }
@@ -85,10 +85,9 @@ impl TypeSpecificMetadata {
             ResourceType::ShaderGLSL | ResourceType::ShaderSPIRV | ResourceType::ShaderHLSL => {
                 TypeSpecificMetadata::Shader(ShaderMetadata::default())
             }
-            ResourceType::AudioFLAC
-            | ResourceType::AudioWAV
-            | ResourceType::AudioOGG
-            | ResourceType::AudioMP3 => TypeSpecificMetadata::Audio(AudioMetadata::default()),
+            ResourceType::AudioFLAC | ResourceType::AudioWAV | ResourceType::AudioOGG => {
+                TypeSpecificMetadata::Audio(AudioMetadata::default())
+            }
             ResourceType::ImagePNG | ResourceType::ImageJPEG | ResourceType::ImageBMP => {
                 TypeSpecificMetadata::Image(ImageMetadata::default())
             }
@@ -112,10 +111,7 @@ impl TypeSpecificMetadata {
             TypeSpecificMetadata::Audio(_) => {
                 matches!(
                     resource_type,
-                    ResourceType::AudioFLAC
-                        | ResourceType::AudioWAV
-                        | ResourceType::AudioOGG
-                        | ResourceType::AudioMP3
+                    ResourceType::AudioFLAC | ResourceType::AudioWAV | ResourceType::AudioOGG
                 )
             }
             TypeSpecificMetadata::Image(_) => {
@@ -165,7 +161,7 @@ pub enum ReadMode {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub enum HashAlgorithm {
+pub enum ChecksumAlgorithm {
     Md5,
     Blake3,
 }
@@ -174,7 +170,7 @@ pub enum HashAlgorithm {
 pub struct YARCWriteOptions {
     pub compression: Compression,
     pub read_mode: ReadMode,
-    pub hash_algorithm: HashAlgorithm,
+    pub checksum_algorithm: ChecksumAlgorithm,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

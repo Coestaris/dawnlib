@@ -163,6 +163,20 @@ impl AudioManager {
                 config.sample_rate,
             )),
         );
+        #[cfg(feature = "resources-ogg")]
+        config.resource_manager.register_factory(
+            ResourceType::AudioOGG,
+            Arc::new(crate::resources::ogg::OGGResourceFactory::new(
+                config.sample_rate,
+            )),
+        );
+        #[cfg(feature = "resources-flac")]
+        config.resource_manager.register_factory(
+            ResourceType::AudioFLAC,
+            Arc::new(crate::resources::flac::FLACResourceFactory::new(
+                config.sample_rate,
+            )),
+        );
 
         Ok(AudioManager {
             thread_manager: config.thread_manager,

@@ -1,10 +1,8 @@
 use ansi_term::Color::{Blue, Cyan, Green, Red, Yellow};
-use clap::builder::ValueParserFactory;
-use clap::command;
-use clap::Parser;
+use clap::{command, Parser};
 use log::{Level, Metadata, Record};
 use yage2_core::utils::format_now;
-use yage2_yarc::structures::{Compression, HashAlgorithm, ReadMode, YARCWriteOptions};
+use yage2_yarc::structures::{ChecksumAlgorithm, Compression, ReadMode, YARCWriteOptions};
 
 struct SimpleLogger;
 
@@ -58,7 +56,7 @@ struct CLI {
     #[arg(short, long)]
     output: String,
 
-    /// Use compression for the YARC
+    /// Use compression for the YARC (true by default)
     #[arg(short, long)]
     compression: Option<bool>,
 
@@ -66,9 +64,9 @@ struct CLI {
     #[arg(short, long)]
     recursive: Option<bool>,
 
-    /// Hash algorithm to use for the YARC
+    /// Checksum algorithm to use for the YARC
     #[arg(short = 'a', long)]
-    hash_algorithm: Option<String>,
+    checksum_algorithm: Option<String>,
 }
 
 fn main() {
@@ -82,20 +80,20 @@ fn main() {
     log::info!("Input directory: {}", cli.input);
     log::info!("Output file: {}", cli.output);
 
-    let hash_str = cli.hash_algorithm.unwrap_or("md5".to_string());
-    let hash = match hash_str.as_str() {
-        "md5" => HashAlgorithm::Md5,
-        "blake3" => HashAlgorithm::Blake3,
+    let checksum_str = cli.checksum_algorithm.unwrap_or("md5".to_string());
+    let checksum = match checksum_str.as_str() {
+        "md5" => ChecksumAlgorithm::Md5,
+        "blake3" => ChecksumAlgorithm::Blake3,
         _ => {
-            log::error!("Unsupported hash algorithm: {}", hash_str);
+            log::error!("Unsupported checksum algorithm: {}", checksum_str);
             return;
         }
     };
 
-    let yarc = yage2_yarc::write_from_directory(
+    yage2_yarc::write_from_directory(
         cli.input,
         YARCWriteOptions {
-            compression: if cli.compression.unwrap_or(false) {
+            compression: if cli.compression.unwrap_or(true) {
                 Compression::Gzip
             } else {
                 Compression::None
@@ -105,8 +103,12 @@ fn main() {
             } else {
                 ReadMode::Flat
             },
-            hash_algorithm: hash,
+            checksum_algorithm: checksum,
         },
         cli.output,
-    );
+    )
+    .unwrap_or_else(|err| {
+        log::error!("Failed to create YARC: {}", err);
+        std::process::exit(1);
+    });
 }
