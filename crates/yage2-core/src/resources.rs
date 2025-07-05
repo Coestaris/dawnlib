@@ -7,9 +7,6 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
-pub type ResourceId = usize;
-pub type ResourceTag = usize;
-
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 
 pub struct ResourceChecksum([u8; 16]);
@@ -31,8 +28,8 @@ impl Default for ResourceChecksum {
 
 pub trait ResourceManagerIO {
     fn has_updates(&self) -> bool;
-    fn enumerate_resources(&self) -> Result<HashMap<ResourceId, ResourceHeader>, String>;
-    fn load(&mut self, id: ResourceId) -> Result<Vec<u8>, String>;
+    fn enumerate_resources(&mut self) -> Result<HashMap<String, ResourceHeader>, String>;
+    fn load(&mut self, id: String) -> Result<Vec<u8>, String>;
 }
 
 pub struct ResourceManagerConfig {
@@ -72,14 +69,6 @@ impl Default for ResourceType {
     fn default() -> Self {
         ResourceType::Unknown
     }
-}
-
-pub enum ResourceRaw {
-    // Raw data loaded from the IO-backend
-    Dropped,
-
-    // Raw data that has been loaded from the IO-backend
-    Loaded(Vec<u8>),
 }
 
 #[derive(Clone)]
@@ -140,9 +129,6 @@ struct ResourceContainer {
     // Core information about the resource
     header: RwLock<ResourceHeader>,
 
-    // Raw data loaded from the IO-backend.
-    raw: RwLock<ResourceRaw>,
-
     // Data containing the resource
     data: RwLock<ResourceData>,
 
@@ -151,7 +137,7 @@ struct ResourceContainer {
 
 pub struct ResourceManager {
     backend: Mutex<Box<dyn ResourceManagerIO>>,
-    resources: DashMap<ResourceType, DashMap<ResourceId, ResourceContainer>>,
+    resources: DashMap<ResourceType, DashMap<String, ResourceContainer>>,
     factories: DashMap<ResourceType, Arc<dyn ResourceFactory>>,
 }
 
@@ -241,7 +227,7 @@ impl ResourceManager {
     // It is not recommended to call this function too often
     pub fn poll_io(&self) -> Result<bool, ResourceManagerPollError> {
         let updated_resources = {
-            let backend = self.backend.lock().unwrap();
+            let mut backend = self.backend.lock().unwrap();
             if backend.has_updates() {
                 Some(backend.enumerate_resources())
             } else {
@@ -264,7 +250,6 @@ impl ResourceManager {
                 any_updates = true;
                 ResourceContainer {
                     header: RwLock::new(header.clone()),
-                    raw: RwLock::new(ResourceRaw::Dropped),
                     data: RwLock::new(ResourceData::Unloaded),
                     fresh: AtomicBool::new(false),
                 }
@@ -281,29 +266,6 @@ impl ResourceManager {
         }
 
         Ok(any_updates)
-    }
-
-    pub fn load_all(&self) -> Result<(), ResourceManagerLoadError> {
-        let mut backend = self.backend.lock().unwrap();
-        for type_map in self.resources.iter() {
-            for resource_container in type_map.value().iter() {
-                if resource_container.fresh.load(Ordering::Relaxed) {
-                    continue; // Already fresh, skip loading
-                }
-
-                let id = resource_container.key();
-                match backend.load(*id) {
-                    Ok(raw_data) => {
-                        let mut raw = resource_container.raw.write().unwrap();
-                        *raw = ResourceRaw::Loaded(raw_data);
-                        resource_container.fresh.store(true, Ordering::Relaxed);
-                    }
-                    Err(e) => Err(ResourceManagerLoadError::IOError(e))?,
-                }
-            }
-        }
-
-        Ok(())
     }
 
     pub fn finalize_all(&self, resource_type: ResourceType) {
@@ -334,47 +296,58 @@ impl ResourceManager {
         }
     }
 
-    pub fn get_resource(
+    fn parse_resource(
         &self,
-        resource_type: ResourceType,
-        resource_id: ResourceId,
+        container: &ResourceContainer,
     ) -> Result<Resource, ResourceManagerGetError> {
-        let type_map = self
-            .resources
-            .get(&resource_type)
-            .ok_or(ResourceManagerGetError::ResourceNotFound)?;
-        let resource = type_map
-            .get(&resource_id)
-            .ok_or(ResourceManagerGetError::ResourceNotFound)?;
-
-        let mut data = resource.data.write().unwrap();
-        let raw = resource.raw.read().unwrap();
-        let header = resource.header.read().unwrap();
+        // Lock the data and header for reading
+        let mut data = container.data.write().unwrap();
+        let header = container.header.read().unwrap();
         if let ResourceData::Parsed(ref resource) = *data {
             return Ok(resource.clone());
         }
 
-        if let ResourceRaw::Loaded(ref raw_data) = *raw {
-            let factory = match self.factories.get(&resource_type) {
-                Some(factory) => factory,
-                None => return Err(ResourceManagerGetError::NoSuitableFactory),
-            };
+        // Load the raw data from the disk/backend
+        let raw_data = self
+            .backend
+            .lock()
+            .unwrap()
+            .load(header.name.clone())
+            .map_err(|_| ResourceManagerGetError::NoRawDataLoaded)?;
 
-            // Parse the raw data into a usable resource
-            let parsed_resource = factory
-                .parse(&header, raw_data)
-                .map_err(|e| ResourceManagerGetError::ParserFailed(e))?;
+        let factory = match self.factories.get(&header.resource_type) {
+            Some(factory) => factory,
+            None => return Err(ResourceManagerGetError::NoSuitableFactory),
+        };
 
-            // Update the resource data to Parsed state
-            *data = ResourceData::Parsed(parsed_resource.clone());
+        // Parse the raw data into a usable resource
+        let parsed_resource = factory
+            .parse(&header, &raw_data)
+            .map_err(|e| ResourceManagerGetError::ParserFailed(e))?;
 
-            // Mark the resource as fresh
-            resource.fresh.store(true, Ordering::Relaxed);
+        // Update the resource data to Parsed state
+        *data = ResourceData::Parsed(parsed_resource.clone());
 
-            Ok(parsed_resource)
-        } else {
-            Err(ResourceManagerGetError::NoRawDataLoaded)
+        // Mark the resource as fresh
+        container.fresh.store(true, Ordering::Relaxed);
+        Ok(parsed_resource)
+    }
+
+    pub fn get_resource<S>(&self, name: S) -> Result<Resource, ResourceManagerGetError>
+    where
+        S: Into<String> + Copy,
+    {
+        /* Find the resource by name */
+        for type_map in self.resources.iter() {
+            for resource_container in type_map.value().iter() {
+                let header = resource_container.header.read().unwrap();
+                if header.name == name.into() {
+                    return Ok(self.parse_resource(&resource_container.value())?);
+                }
+            }
         }
+
+        Err(ResourceManagerGetError::ResourceNotFound)
     }
 }
 

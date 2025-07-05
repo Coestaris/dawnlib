@@ -26,3 +26,6 @@ mod writer;
 pub use structures::{ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
 pub use writer::write_from_directory;
 pub use writer::WriterError;
+
+pub use reader::read;
+pub use reader::Container;

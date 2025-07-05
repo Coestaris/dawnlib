@@ -140,7 +140,7 @@ mod native_impl {
         1
     }
 
-    pub fn get_cpu_utilization(data: &mut NativeData, native_id: NativeId) -> f32 {
+    pub fn get_cpu_utilization(_: &mut NativeData, _: NativeId) -> f32 {
         // Placeholder for actual CPU utilization retrieval logic
         0.0
     }

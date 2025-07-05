@@ -140,7 +140,7 @@ impl Default for TypeSpecificMetadata {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ResourceMetadata {
     #[serde(default)]
     pub header: ResourceHeader,

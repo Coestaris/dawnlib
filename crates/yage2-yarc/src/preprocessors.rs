@@ -1,6 +1,5 @@
 use crate::structures::{ResourceMetadata, ShaderType, TypeSpecificMetadata};
 use log::{debug, info};
-use std::fs::metadata;
 
 #[derive(Debug)]
 pub enum PreprocessorsError {
@@ -40,20 +39,25 @@ pub type PreProcessor<'a> = fn(
 ) -> Result<ResourceMetadata, PreprocessorsError>;
 
 fn get_glslc_path() -> Option<std::path::PathBuf> {
-    // Placeholder for the actual path to the glslc compiler
-    // In a real implementation, this would return the path to the glslc binary
-    Some(std::path::PathBuf::from("glslc"))
+    if cfg!(target_os = "windows") {
+        Some(std::path::PathBuf::from("glslc"))
+    } else if cfg!(target_os = "linux") {
+        Some(std::path::PathBuf::from("glslc"))
+    } else if cfg!(target_os = "macos") {
+        // Assuming glslc is installed via Homebrew or similar
+        // TODO: Allow user to configure glslc path
+        Some(std::path::PathBuf::from("glslang"))
+    } else {
+        None
+    }
 }
 
 fn get_ffmpeg_path() -> Option<std::path::PathBuf> {
-    // Placeholder for the actual path to the ffmpeg binary
-    // In a real implementation, this would return the path to the ffmpeg binary
     Some(std::path::PathBuf::from("ffmpeg"))
 }
 
 fn get_cache_directory() -> std::path::PathBuf {
-    // Placeholder for the actual cache directory
-    // In a real implementation, this would return the path to the cache directory
+    // TODO: Allow user to configure cache directory
     dirs::data_local_dir().unwrap().join("yage2").join("cache")
 }
 
@@ -103,9 +107,9 @@ macro_rules! cache_me {
             Ok($metadata.clone())
         } else {
             debug!("Cache miss for: {}", $metadata.header.name);
-            let val = $new_value;
+            let val = $new_value?;
             create_cache_entry(&$metadata.header.name, $metadata, $output_path)?;
-            val
+            Ok(val)
         }
     };
 }
@@ -133,11 +137,11 @@ fn compile_glsl_shader_impl<'a>(
     let mut command = std::process::Command::new(glslc_path);
     if let TypeSpecificMetadata::Shader(shader_metadata) = &metadata.type_specific {
         match shader_metadata.shader_type {
-            ShaderType::Vertex => command.arg("-fshader-stage=vert"),
-            ShaderType::Fragment => command.arg("-fshader-stage=frag"),
-            ShaderType::Compute => command.arg("-fshader-stage=camp"),
-            ShaderType::Geometry => command.arg("-fshader-stage=geom"),
-            ShaderType::TessellationControl => command.arg("-fshader-stage=tesscontrol"),
+            ShaderType::Vertex => command.arg("-S").arg("vert"),
+            ShaderType::Fragment => command.arg("-S").arg("frag"),
+            ShaderType::Compute => command.arg("-S").arg("camp"),
+            ShaderType::Geometry => command.arg("-S").arg("geom"),
+            ShaderType::TessellationControl => command.arg("-S").arg("tesscontrol"),
         };
     } else {
         return Err(PreprocessorsError::InvalidMetadata(
@@ -146,9 +150,9 @@ fn compile_glsl_shader_impl<'a>(
     }
     command.arg(path);
     command
+        .arg("-V") // Use Vulkan SPIR-V
         .arg("-o")
-        .arg(output_path)
-        .arg("--target-env=vulkan1.2");
+        .arg(output_path);
 
     // Print the command for debugging
     debug!("Running command: {:?}", command);

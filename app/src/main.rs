@@ -12,8 +12,8 @@ use std::thread::sleep;
 use yage2_app::create_object;
 use yage2_app::engine::application::Application;
 use yage2_core::resources::{
-    ResourceChecksum, ResourceId, ResourceManager, ResourceManagerConfig, ResourceManagerIO,
-    ResourceHeader, ResourceTag, ResourceType,
+    ResourceChecksum, ResourceHeader, ResourceManager, ResourceManagerConfig, ResourceManagerIO,
+    ResourceType,
 };
 use yage2_core::threads::{ThreadManager, ThreadManagerConfig};
 use yage2_core::utils::format_now;
@@ -81,6 +81,10 @@ enum NoteName {
     B,
 }
 
+fn get_current_exe() -> std::path::PathBuf {
+    std::env::current_exe().expect("Failed to get current executable path")
+}
+
 struct Note {
     name: NoteName,
     octave: u8,
@@ -113,37 +117,52 @@ impl Note {
     }
 }
 
-struct ResourcesIO {}
+struct ResourcesIO {
+    containers: HashMap<String, yage2_yarc::Container>,
+}
+
+impl ResourcesIO {
+    fn new() -> ResourcesIO {
+        ResourcesIO {
+            containers: HashMap::new(),
+        }
+    }
+}
 
 impl ResourceManagerIO for ResourcesIO {
     fn has_updates(&self) -> bool {
         true
     }
 
-    fn enumerate_resources(&self) -> Result<HashMap<ResourceId, ResourceHeader>, String> {
-        let mut map = HashMap::new();
-        map.insert(
-            1,
-            ResourceHeader {
-                name: "sample.wav".to_string(),
-                tag: "".to_string(),
-                resource_type: ResourceType::AudioWAV,
-                checksum: ResourceChecksum::default(),
-            },
-        );
+    fn enumerate_resources(&mut self) -> Result<HashMap<String, ResourceHeader>, String> {
+        self.containers =
+            yage2_yarc::read(get_current_exe().parent().unwrap().join("output.yarc"))?;
 
-        Ok(map)
+        info!("Loaded {} resources", self.containers.len());
+        for (name, container) in &self.containers {
+            info!(
+                "Resource: {} (type {:?}). Size: {} bytes)",
+                name,
+                container.metadata.header.resource_type,
+                container.binary.len()
+            );
+        }
+
+        let mut result = HashMap::new();
+        for (name, container) in &self.containers {
+            result.insert(name.clone(), container.metadata.header.clone());
+        }
+
+        Ok(result)
     }
 
-    fn load(&mut self, id: ResourceId) -> Result<Vec<u8>, String> {
-        info!("Loading resource with ID: {}", id);
-
-        let file_1 = "D:\\SAMPLES\\J O E Z Z\\Sample Magic Jazz Hop 2\\loops\\melodic_loops\\jh2_90_clarinet_loop_dusty_cordial_Gmin.wav";
-
-        if id == 1 {
-            std::fs::read(file_1).map_err(|e| e.to_string())
+    fn load(&mut self, name: String) -> Result<Vec<u8>, String> {
+        if let Some(container) = self.containers.get(&name) {
+            info!("Loading resource: {}", name);
+            // TODO: get rid of clone
+            Ok(container.binary.clone())
         } else {
-            Err(format!("Resource with ID {} not found", id))
+            Err(format!("Resource {} not found", name))
         }
     }
 }
@@ -201,10 +220,9 @@ fn main() {
     // app.run(objects).unwrap();
 
     let resource_manager = Arc::new(ResourceManager::new(ResourceManagerConfig {
-        backend: Box::new(ResourcesIO {}),
+        backend: Box::new(ResourcesIO::new()),
     }));
     resource_manager.poll_io().unwrap();
-    resource_manager.load_all().unwrap();
 
     let thread_manager: Arc<ThreadManager> = Arc::new(ThreadManager::new(ThreadManagerConfig {
         profile_handle: Some(profile_threads),
@@ -232,9 +250,7 @@ fn main() {
     let mut audio_manager =
         AudioManager::new(audio_manager_config).expect("Failed to create audio device");
 
-    let clip = resource_manager
-        .get_resource(ResourceType::AudioWAV, 1)
-        .unwrap();
+    let clip = resource_manager.get_resource("loop").unwrap();
 
     audio_manager.start().unwrap();
 

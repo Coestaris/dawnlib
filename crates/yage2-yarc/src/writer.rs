@@ -158,7 +158,7 @@ fn checksum<P: AsRef<std::path::Path>>(
         ChecksumAlgorithm::Md5 => {
             let mut hasher = md5::Context::new();
             hasher.consume(&content);
-            hasher.compute().0
+            hasher.finalize().0
         }
         _ => {
             return Err(WriterError::UnsupportedChecksumAlgorithm(algorithm));
