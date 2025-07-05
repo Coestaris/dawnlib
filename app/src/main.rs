@@ -128,7 +128,7 @@ impl ResourceManagerIO for ResourcesIO {
                 name: "sample.wav".to_string(),
                 tag: "".to_string(),
                 resource_type: ResourceType::AudioWAV,
-                checksum: 0xABABABABABABABAB,
+                checksum: ResourceChecksum::default(),
             },
         );
 

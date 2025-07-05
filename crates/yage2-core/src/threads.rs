@@ -127,6 +127,7 @@ mod native_impl {
 
 #[cfg(target_os = "macos")]
 mod native_impl {
+    use log::debug;
     use crate::threads::ThreadPriority;
 
     pub type NativeId = usize;

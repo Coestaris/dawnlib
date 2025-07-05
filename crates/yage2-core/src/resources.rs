@@ -12,20 +12,20 @@ pub type ResourceTag = usize;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 
-pub struct ResourceChecksum(u64);
+pub struct ResourceChecksum([u8; 16]);
 
 impl ResourceChecksum {
     pub fn from_bytes(bytes: &[u8]) -> ResourceChecksum {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        bytes.hash(&mut hasher);
-        ResourceChecksum(hasher.finish() >> 1) // Shift to reduce the size
+        let mut checksum = [0; 16];
+        let len = bytes.len().min(16);
+        checksum[..len].copy_from_slice(&bytes[..len]);
+        ResourceChecksum(checksum)
     }
 }
 
 impl Default for ResourceChecksum {
     fn default() -> Self {
-        ResourceChecksum(0)
+        ResourceChecksum([0; 16])
     }
 }
 
