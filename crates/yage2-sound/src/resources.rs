@@ -60,7 +60,7 @@ pub(crate) mod wav {
     }
 
     impl ResourceFactory for WAVResourceFactory {
-        fn parse(&self, metadata: &ResourceHeader, raw: &[u8]) -> Result<Resource, String> {
+        fn parse(&self, header: &ResourceHeader, raw: &[u8]) -> Result<Resource, String> {
             let mut buf_reader = std::io::Cursor::new(raw);
             match hound::WavReader::new(&mut buf_reader) {
                 Ok(mut reader) => {
@@ -68,7 +68,7 @@ pub(crate) mod wav {
                     if spec.sample_rate != self.sample_rate {
                         return Err(format!(
                             "WAV {} sample rate mismatch: expected {}, got {}. Resampling is currently not supported.",
-                            metadata.name, self.sample_rate, spec.sample_rate
+                            header.name, self.sample_rate, spec.sample_rate
                         ));
                     }
 
@@ -102,7 +102,7 @@ pub(crate) mod wav {
                         _ => {
                             return Err(format!(
                                 "Unsupported WAV {} format: {:?} with {} bits per sample",
-                                metadata.name, spec.sample_format, spec.bits_per_sample
+                                header.name, spec.sample_format, spec.bits_per_sample
                             ));
                         }
                     };
@@ -115,11 +115,11 @@ pub(crate) mod wav {
                     }))
                 }
 
-                Err(e) => Err(format!("Error parsing WAV {} file: {}", metadata.name, e)),
+                Err(e) => Err(format!("Error parsing WAV {} file: {}", header.name, e)),
             }
         }
 
-        fn finalize(&self, metadata: &ResourceHeader, resource: &Resource) -> Result<(), String> {
+        fn finalize(&self, header: &ResourceHeader, resource: &Resource) -> Result<(), String> {
             Ok(())
         }
     }
@@ -143,16 +143,16 @@ pub(crate) mod flac {
     }
 
     impl ResourceFactory for FLACResourceFactory {
-        fn parse(&self, metadata: &ResourceHeader, raw: &[u8]) -> Result<Resource, String> {
+        fn parse(&self, header: &ResourceHeader, raw: &[u8]) -> Result<Resource, String> {
             // Placeholder for FLAC parsing logic
             // In a real implementation, this would parse the FLAC file and convert it to interleaved samples.
             return Err(format!(
                 "FLAC parsing not implemented for resource: {}",
-                metadata.name
+                header.name
             ));
         }
 
-        fn finalize(&self, metadata: &ResourceHeader, resource: &Resource) -> Result<(), String> {
+        fn finalize(&self, header: &ResourceHeader, resource: &Resource) -> Result<(), String> {
             Ok(())
         }
     }
@@ -176,16 +176,16 @@ pub(crate) mod ogg {
     }
 
     impl ResourceFactory for OGGResourceFactory {
-        fn parse(&self, metadata: &ResourceHeader, raw: &[u8]) -> Result<Resource, String> {
+        fn parse(&self, header: &ResourceHeader, raw: &[u8]) -> Result<Resource, String> {
             // Placeholder for OGG parsing logic
             // In a real implementation, this would parse the OGG file and convert it to interleaved samples.
             return Err(format!(
                 "OGG parsing not implemented for resource: {}",
-                metadata.name
+                header.name
             ));
         }
 
-        fn finalize(&self, metadata: &ResourceHeader, resource: &Resource) -> Result<(), String> {
+        fn finalize(&self, header: &ResourceHeader, resource: &Resource) -> Result<(), String> {
             Ok(())
         }
     }
