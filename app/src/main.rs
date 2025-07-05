@@ -6,6 +6,7 @@ use crate::objects::Point;
 use ansi_term::Colour::{Blue, Cyan, Green, Red, Yellow};
 use log::{info, Level, LevelFilter, Metadata, Record};
 use std::collections::HashMap;
+use std::fs::read;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::sleep;
@@ -136,7 +137,8 @@ impl ResourceManagerIO for ResourcesIO {
 
     fn enumerate_resources(&mut self) -> Result<HashMap<String, ResourceHeader>, String> {
         self.containers =
-            yage2_yarc::read(get_current_exe().parent().unwrap().join("output.yarc"))?;
+            yage2_yarc::read(get_current_exe().parent().unwrap().join("resources.yarc"))
+                .map_err(|e| format!("Failed to read resources: {}", e.to_string()))?;
 
         info!("Loaded {} resources", self.containers.len());
         for (name, container) in &self.containers {
