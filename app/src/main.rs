@@ -21,6 +21,7 @@ use yage2_core::utils::format_now;
 use yage2_sound::backend::BackendSpecificConfig;
 use yage2_sound::control::{AudioController, Controller};
 use yage2_sound::dsp::bus::Bus;
+use yage2_sound::dsp::processors::reverb::LineReverbMessage;
 use yage2_sound::dsp::sources::clip::{ClipMessage, ClipSource};
 use yage2_sound::dsp::sources::group::GroupSource;
 use yage2_sound::dsp::sources::sampler::{SamplerMessage, SamplerSource};
@@ -231,12 +232,12 @@ fn main() {
         profile_handle: Some(profile_threads),
     }));
 
-    let (reverb, reverb_control) = yage2_sound::dsp::processors::reverb::Reverb::new();
+    let (reverb, line_reverb_control) = yage2_sound::dsp::processors::reverb::Reverb::new();
     let (sample_source, sampler_control) = SamplerSource::new();
     let (master_bus, _) = Bus::new()
-        .set_source(SourceType::Sampler(sample_source))
+        .set_source(sample_source)
         .set_volume(0.5)
-        .add_processor(ProcessorType::Reverb(reverb))
+        .add_processor(reverb)
         .set_pan(0.0)
         .build();
 
@@ -268,7 +269,34 @@ fn main() {
         },
     );
 
-    sleep(std::time::Duration::from_millis(15000));
+    sleep(std::time::Duration::from_millis(1000));
+
+    audio_controller.send_and_notify(&sampler_control, SamplerMessage::StopAll);
+
+    sleep(std::time::Duration::from_millis(3000));
+
+    audio_controller.send(&line_reverb_control, LineReverbMessage::SetLineSize(0, 3000));
+    audio_controller.send(&line_reverb_control, LineReverbMessage::SetLineFade(0, 0.9));
+    audio_controller.send(&line_reverb_control, LineReverbMessage::SetWetLevel(0, 0.9));
+
+    audio_controller.send(&line_reverb_control, LineReverbMessage::SetLineSize(1, 10000));
+    audio_controller.send(&line_reverb_control, LineReverbMessage::SetLineFade(1, 0.9));
+    audio_controller.send(&line_reverb_control, LineReverbMessage::SetWetLevel(1, 0.9));
+
+    audio_controller.send(
+        &sampler_control,
+        SamplerMessage::Play {
+            clip: clip.clone(),
+            volume: 0.5,
+            pan: 0.0,
+        },
+    );
+    audio_controller.notify();
+
+    sleep(std::time::Duration::from_millis(1000));
+    audio_controller.send_and_notify(&sampler_control, SamplerMessage::StopAll);
+
+    sleep(std::time::Duration::from_millis(8000));
 
     audio_manager.stop().unwrap();
 

@@ -1,5 +1,5 @@
-use crate::dsp::{BlockInfo, EventDispatcher, Generator};
 use crate::control::{new_control, ControlReceiver, Controller};
+use crate::dsp::{BlockInfo, EventDispatcher, Generator, SourceType};
 use crate::sample::PlanarBlock;
 
 pub enum GroupMessage {}
@@ -12,10 +12,10 @@ pub struct GroupSource {
 }
 
 impl GroupSource {
-    pub fn new(busses: Vec<crate::dsp::bus::Bus>) -> (Self, Controller<GroupMessage>) {
+    pub fn new(busses: Vec<crate::dsp::bus::Bus>) -> (SourceType, Controller<GroupMessage>) {
         let (controller, receiver) = new_control();
         let source = Self { busses, receiver };
-        (source, controller)
+        (SourceType::Group(source), controller)
     }
 }
 

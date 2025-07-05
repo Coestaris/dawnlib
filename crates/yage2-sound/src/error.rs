@@ -1,12 +1,13 @@
+use crate::backend::BackendSpecificError;
+use crate::{ChannelsCount, SampleRate, SamplesCount};
 use std::fmt::{Display, Formatter};
 use yage2_core::threads::ThreadError;
-use crate::backend::BackendSpecificError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioManagerCreationError {
-    InvalidSampleRate(u32),
-    InvalidChannels(u8),
-    InvalidBufferSize(usize),
+    InvalidSampleRate(SampleRate),
+    InvalidChannels(ChannelsCount),
+    InvalidBufferSize(SamplesCount),
     BackendSpecific(BackendSpecificError),
 }
 
@@ -51,7 +52,9 @@ impl Display for AudioManagerStartError {
             AudioManagerStartError::StatisticsThreadSpawnError(err) => {
                 write!(f, "Failed to spawn statistics thread: {}", err)
             }
-            AudioManagerStartError::BackendSpecific(err) => write!(f, "Failed to open device: {}", err),
+            AudioManagerStartError::BackendSpecific(err) => {
+                write!(f, "Failed to open device: {}", err)
+            }
         }
     }
 }
@@ -66,7 +69,9 @@ pub enum AudioManagerStopError {
 impl Display for AudioManagerStopError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            AudioManagerStopError::BackendSpecific(err) => write!(f, "Failed to close device: {}", err),
+            AudioManagerStopError::BackendSpecific(err) => {
+                write!(f, "Failed to close device: {}", err)
+            }
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::control::{new_control, ControlReceiver, Controller};
-use crate::dsp::{BlockInfo, EventDispatcher, Processor};
+use crate::dsp::{BlockInfo, EventDispatcher, Processor, ProcessorType};
 use crate::sample::PlanarBlock;
 
 pub enum LPFMessage {
@@ -15,14 +15,14 @@ pub struct LPF {
 }
 
 impl LPF {
-    pub fn new() -> (Self, Controller<LPFMessage>) {
+    pub fn new() -> (ProcessorType, Controller<LPFMessage>) {
         let (controller, receiver) = new_control();
         let lpf = Self {
             cutoff: 0.5,    // Default value
             resonance: 0.5, // Default value
             receiver,
         };
-        (lpf, controller)
+        (ProcessorType::LPF(lpf), controller)
     }
 }
 

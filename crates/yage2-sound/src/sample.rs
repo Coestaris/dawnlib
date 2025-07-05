@@ -177,7 +177,7 @@ pub(crate) struct PlanarBlock<S>
 where
     S: Sample,
 {
-    pub(crate) samples: [[S; BLOCK_SIZE]; CHANNELS_COUNT as usize],
+    pub(crate) samples: [[S; BLOCK_SIZE]; CHANNELS_COUNT],
 }
 
 impl<S> Default for PlanarBlock<S>
@@ -186,7 +186,7 @@ where
 {
     fn default() -> Self {
         Self {
-            samples: [[S::zero_value(); BLOCK_SIZE]; CHANNELS_COUNT as usize],
+            samples: [[S::zero_value(); BLOCK_SIZE]; CHANNELS_COUNT],
         }
     }
 }
@@ -226,12 +226,12 @@ where
 {
     pub fn new(raw: &'a mut [S]) -> Option<Self> {
         // Check that the length of the raw slice is a multiple of CHANNELS_COUNT
-        if raw.len() % CHANNELS_COUNT as usize != 0 {
+        if raw.len() % CHANNELS_COUNT != 0 {
             return None; // Invalid length for interleaved samples
         }
 
         let ptr = raw.as_mut_ptr() as *mut InterleavedSample<S>;
-        let len = raw.len() / CHANNELS_COUNT as usize;
+        let len = raw.len() / CHANNELS_COUNT;
 
         let casted = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
         Some(Self {

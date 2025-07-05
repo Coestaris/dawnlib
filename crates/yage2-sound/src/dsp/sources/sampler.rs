@@ -1,5 +1,5 @@
 use crate::control::{new_control, ControlReceiver, Controller};
-use crate::dsp::{BlockInfo, EventDispatcher, Generator};
+use crate::dsp::{BlockInfo, EventDispatcher, Generator, SourceType};
 use crate::resources::ClipResource;
 use crate::sample::PlanarBlock;
 use crate::BLOCK_SIZE;
@@ -29,13 +29,13 @@ pub struct SamplerSource {
 }
 
 impl SamplerSource {
-    pub fn new() -> (Self, Controller<SamplerMessage>) {
+    pub fn new() -> (SourceType, Controller<SamplerMessage>) {
         let (controller, receiver) = new_control();
         let source = Self {
             receiver,
             players: vec![],
         };
-        (source, controller)
+        (SourceType::Sampler(source), controller)
     }
 }
 
@@ -76,14 +76,10 @@ impl Generator for SamplerSource {
             player_block.copy_from_planar_vec(&clip.data, player.position, to_copy);
 
             // Apply volume and pan
-            unsafe {
-                player_block.pan_gain_simd(player.pan, player.volume);
-            }
-            
+            player_block.pan_gain_phase_clamp(player.pan, player.volume, false);
+
             // Mix the player's output into the main output
-            unsafe {
-                output.mix_simd(&player_block);
-            }
+            output.mix(&player_block);
 
             // Update the player's position
             player.position += to_copy;

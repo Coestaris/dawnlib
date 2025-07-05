@@ -1,14 +1,15 @@
+use crate::backend::{BackendDeviceTrait, CreateBackendConfig};
 use crate::sample::{InterleavedSampleBuffer, Sample};
+use crate::{ChannelsCount, SampleRate, SamplesCount};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SizedSample;
 use log::{debug, info, warn};
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
-use crate::backend::{BackendDeviceTrait, CreateBackendConfig};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Error {
-    NotSupportedStreamParameters(u32, u8, usize, cpal::SampleFormat),
+    NotSupportedStreamParameters(SampleRate, ChannelsCount, SamplesCount, cpal::SampleFormat),
     FetchConfigFailed(cpal::SupportedStreamConfigsError),
     BuildStreamError(cpal::BuildStreamError),
     StartStreamError(cpal::PlayStreamError),
@@ -99,8 +100,9 @@ where
                 config.buffer_size());
 
             let sample_format_ok = config.sample_format() == required_sample_format;
-            let sample_rate_ok = config.min_sample_rate() <= cpal::SampleRate(cfg.sample_rate)
-                && cpal::SampleRate(cfg.sample_rate) <= config.max_sample_rate();
+            let sample_rate_ok = config.min_sample_rate()
+                <= cpal::SampleRate(cfg.sample_rate as u32)
+                && cpal::SampleRate(cfg.sample_rate as u32) <= config.max_sample_rate();
             let channels_ok = config.channels() == cfg.channels as u16;
             let buffer_size_ok = match config.buffer_size() {
                 cpal::SupportedBufferSize::Range { min, max } => {
@@ -117,7 +119,7 @@ where
             if sample_format_ok && sample_rate_ok && channels_ok && buffer_size_ok {
                 selected_config = Some(cpal::StreamConfig {
                     channels: config.channels(),
-                    sample_rate: cpal::SampleRate(cfg.sample_rate),
+                    sample_rate: cpal::SampleRate(cfg.sample_rate as u32),
                     buffer_size: cpal::BufferSize::Fixed(cfg.buffer_size as u32),
                 });
                 break;

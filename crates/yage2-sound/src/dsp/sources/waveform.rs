@@ -1,5 +1,5 @@
-use crate::dsp::{BlockInfo, EventDispatcher, Generator};
 use crate::control::{new_control, ControlReceiver, Controller};
+use crate::dsp::{BlockInfo, EventDispatcher, Generator, SourceType};
 use crate::sample::PlanarBlock;
 use crate::BLOCK_SIZE;
 use log::debug;
@@ -41,13 +41,13 @@ impl WaveformSource {
 }
 
 impl WaveformControllable {
-    pub fn build(self) -> (WaveformSource, Controller<WaveformMessage>) {
+    pub fn build(self) -> (SourceType, Controller<WaveformMessage>) {
         let (controller, receiver) = new_control();
         let source = WaveformSource {
             controllable: self,
             receiver,
         };
-        (source, controller)
+        (SourceType::Waveform(source), controller)
     }
 
     pub fn set_waveform_type(mut self, waveform_type: WaveformType) -> Self {

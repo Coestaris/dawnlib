@@ -1,5 +1,5 @@
-use crate::dsp::{BlockInfo, EventDispatcher, Processor};
 use crate::control::{new_control, ControlReceiver, Controller};
+use crate::dsp::{BlockInfo, EventDispatcher, Processor, ProcessorType};
 use crate::sample::PlanarBlock;
 
 pub enum DelayMessage {
@@ -15,14 +15,14 @@ pub struct Delay {
 }
 
 impl Delay {
-    pub fn new() -> (Self, Controller<DelayMessage>) {
+    pub fn new() -> (ProcessorType, Controller<DelayMessage>) {
         let (controller, receiver) = new_control();
         let delay = Self {
             delay: 0,      // Default value
             feedback: 0.0, // Default value
             receiver,
         };
-        (delay, controller)
+        (ProcessorType::Delay(delay), controller)
     }
 }
 

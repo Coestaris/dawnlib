@@ -1,5 +1,5 @@
 use crate::control::{new_control, ControlReceiver, Controller};
-use crate::dsp::{BlockInfo, EventDispatcher, Generator};
+use crate::dsp::{BlockInfo, EventDispatcher, Generator, SourceType};
 use crate::resources::ClipResource;
 use crate::sample::{PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
 use crate::BLOCK_SIZE;
@@ -20,14 +20,14 @@ pub struct ClipSource {
 }
 
 impl ClipSource {
-    pub fn new() -> (Self, Controller<ClipMessage>) {
+    pub fn new() -> (SourceType, Controller<ClipMessage>) {
         let (controller, receiver) = new_control();
         let source = Self {
             receiver,
             playing_clip: None,
             position: 0, // Start at the beginning of the clip
         };
-        (source, controller)
+        (SourceType::Clip(source), controller)
     }
 }
 

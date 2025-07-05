@@ -1,51 +1,56 @@
 use crate::control::{new_control, ControlReceiver, Controller};
-use crate::dsp::{BlockInfo, EventDispatcher, Processor};
-use crate::sample::PlanarBlock;
+use crate::dsp::{BlockInfo, EventDispatcher, Processor, ProcessorType};
+use crate::sample::{PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
 use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 
-const DEFAULT_DELAY_SIZE: usize = 20000; // Around of half a second at 44.1 kHz
+const LINES_COUNT: usize = 2;
 
-pub enum ReverbMessage {
-    SetDelaySize(usize),  // Set the size of the delay line
-    SetReverbFactor(f32), // Set the reverb factor
+const DEFAULT_DELAY_SIZE: usize = 20000; // Around of half a second at 44.1 kHz
+const DEFAULT_REVERB_FACTOR: f32 = 0.5; // Default reverb factor
+const DEFAULT_MIX_LEVEL: f32 = 0.5; // Default mix level
+
+pub enum LineReverbMessage {
+    SetLineSize(usize, usize), // Set the size of the delay line
+    SetLineFade(usize, f32),   // Set the fade factor for the delay line
+    SetWetLevel(usize, f32),   // Set the dry level for the delay line
 }
 
 struct DelayLine {
-    samples: Vec<f32>, // Delay line buffer
-    index: usize,      // Current index in the delay line
+    samples: [Vec<f32>; CHANNELS_COUNT], // Delay line buffer
+    index: usize,                        // Current index in the delay line
+    size: usize,                         // Size of the delay line
+    fade: f32,
+    mix_level: f32,
 }
 
 impl Default for DelayLine {
     fn default() -> Self {
         Self {
-            samples: vec![0.0; DEFAULT_DELAY_SIZE],
+            samples: [
+                vec![0.0; DEFAULT_DELAY_SIZE], // Left channel
+                vec![0.0; DEFAULT_DELAY_SIZE], // Right channel
+            ],
             index: 0,
+            size: DEFAULT_DELAY_SIZE,
+            fade: DEFAULT_REVERB_FACTOR,
+            mix_level: DEFAULT_MIX_LEVEL,
         }
     }
 }
 
 pub struct Reverb {
-    delay_size: usize,  // Size of the delay line (in samples)
-    reverb_factor: f32, // Factor to apply to the reverb effect
-
-    delay_lines: [DelayLine; CHANNELS_COUNT as usize], // Delay line buffer
-
-    receiver: ControlReceiver<ReverbMessage>,
+    delay_lines: [DelayLine; LINES_COUNT],
+    receiver: ControlReceiver<LineReverbMessage>,
 }
 
 impl Reverb {
-    pub fn new() -> (Self, Controller<ReverbMessage>) {
+    pub fn new() -> (ProcessorType, Controller<LineReverbMessage>) {
         let (controller, receiver) = new_control();
         let reverb = Self {
-            delay_size: DEFAULT_DELAY_SIZE, // 1 second delay at 44.1 kHz
-            reverb_factor: 0.5,             // Default reverb factor
             receiver,
-            delay_lines: [
-                DelayLine::default(), // Left channel
-                DelayLine::default(), // Right channel
-            ],
+            delay_lines: [DelayLine::default(), DelayLine::default()],
         };
-        (reverb, controller)
+        (ProcessorType::Reverb(reverb), controller)
     }
 }
 
@@ -53,58 +58,66 @@ impl EventDispatcher for Reverb {
     fn dispatch_events(&mut self) {
         while let Some(message) = self.receiver.receive() {
             match message {
-                ReverbMessage::SetDelaySize(size) => {
-                    if size > 0 {
-                        self.delay_size = size;
-                        for delay_line in &mut self.delay_lines {
-                            delay_line.samples.resize(size, 0.0);
-                            delay_line.index = 0; // Reset index
-                        }
+                LineReverbMessage::SetLineSize(line, size) => {
+                    if line < LINES_COUNT {
+                        self.delay_lines[line].size = size.max(1); // Ensure size is at least 1
+                        self.delay_lines[line].samples = [vec![0.0; size], vec![0.0; size]];
+                        self.delay_lines[line].index = 0; // Reset index
                     }
                 }
-                ReverbMessage::SetReverbFactor(factor) => {
-                    self.reverb_factor = factor.clamp(0.0, 1.0); // Limit to [0.0, 1.0]
+                LineReverbMessage::SetLineFade(line, fade) => {
+                    if line < LINES_COUNT {
+                        self.delay_lines[line].fade = fade.clamp(0.0, 1.0); // Limit to [0.0, 1.0]
+                    }
+                }
+                LineReverbMessage::SetWetLevel(line, mix) => {
+                    if line < LINES_COUNT {
+                        self.delay_lines[line].mix_level = mix.clamp(0.0, 1.0); // Limit to [0.0, 1.0]
+                    }
                 }
             }
         }
     }
 }
 
-fn process_channel(
-    input: &[f32],
-    output: &mut [f32],
-    delay_line: &mut DelayLine,
-    reverb_factor: f32,
-) {
+fn add_line(input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, delay_line: &mut DelayLine) {
     // TODO: Implement some batch processing logic
-    for (i, &sample) in input.iter().enumerate() {
+    for i in 0..BLOCK_SIZE {
         // Read from the delay line
-        let delayed_sample = delay_line.samples[delay_line.index];
+        let delayed_left = delay_line.samples[LEFT_CHANNEL][delay_line.index];
+        let delayed_right = delay_line.samples[RIGHT_CHANNEL][delay_line.index];
+
+        let left = input.samples[LEFT_CHANNEL][i];
+        let right = input.samples[RIGHT_CHANNEL][i];
 
         // Write the current sample to the delay line
-        delay_line.samples[delay_line.index] = sample + delayed_sample * reverb_factor;
+        delay_line.samples[LEFT_CHANNEL][delay_line.index] = left + delayed_left * delay_line.fade;
+        delay_line.samples[RIGHT_CHANNEL][delay_line.index] =
+            right + delayed_right * delay_line.fade;
 
         // Update the index for the next sample
-        delay_line.index = (delay_line.index + 1) % delay_line.samples.len();
+        delay_line.index = (delay_line.index + 1) % delay_line.size;
 
         // Output the processed sample
-        output[i] = delayed_sample;
+        output.samples[LEFT_CHANNEL][i] +=
+            left * (1.0 - delay_line.mix_level) + delayed_left * delay_line.mix_level;
+        output.samples[RIGHT_CHANNEL][i] +=
+            right * (1.0 - delay_line.mix_level) + delayed_right * delay_line.mix_level;
     }
 }
 
 impl Processor for Reverb {
     fn process(&mut self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, _: &BlockInfo) {
-        for channel in 0..CHANNELS_COUNT as usize {
-            let input_channel = &input.samples[channel];
-            let output_channel = &mut output.samples[channel];
-
-            // Process each channel with the delay line
-            process_channel(
-                input_channel,
-                output_channel,
-                &mut self.delay_lines[channel as usize],
-                self.reverb_factor,
-            );
+        // Process each delay line
+        for delay_line in &mut self.delay_lines {
+            add_line(input, output, delay_line);
+        }
+        
+        // Ensure output is clamped to prevent overflow
+        for channel in 0..CHANNELS_COUNT {
+            for sample in &mut output.samples[channel] {
+                *sample /= LINES_COUNT as f32;
+            }
         }
     }
 }

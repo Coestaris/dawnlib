@@ -6,14 +6,15 @@ pub mod backend_impl {
     pub type BackendSpecificError = crate::cpal::Error;
 }
 
+use crate::{ChannelsCount, SampleRate, SamplesCount};
 pub use backend_impl::*;
 
 #[allow(dead_code)]
 pub(crate) struct CreateBackendConfig {
     pub backend_specific: BackendSpecificConfig,
-    pub sample_rate: u32,
-    pub channels: u8,
-    pub buffer_size: usize,
+    pub sample_rate: SampleRate,
+    pub channels: ChannelsCount,
+    pub buffer_size: SamplesCount,
 }
 
 pub(crate) trait BackendDeviceTrait<S>

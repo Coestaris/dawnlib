@@ -1,11 +1,11 @@
 use crate::sample::Sample;
-use crate::CHANNELS_COUNT;
+use crate::{ChannelsCount, SampleRate, SamplesCount, CHANNELS_COUNT};
 
 // Converts interleaved raw audio samples to planar f32 samples.
 fn to_planar_f32<F>(
     interleaved_raw: Vec<F>,
-    raw_channels: usize,
-) -> [Vec<f32>; CHANNELS_COUNT as usize]
+    raw_channels: ChannelsCount,
+) -> [Vec<f32>; CHANNELS_COUNT]
 where
     F: Sample + Copy,
 {
@@ -20,7 +20,7 @@ where
         // can be less or greater than the input channels.
         // In case of fewer channels, we will just copy last sample to the rest of the channels.
         // In case of more channels, we will just ignore the extra channels.
-        for j in 0..CHANNELS_COUNT as usize {
+        for j in 0..CHANNELS_COUNT {
             let val = if j < raw_channels {
                 F::to_f32(interleaved_raw[i + j])
             } else {
@@ -38,25 +38,24 @@ where
 }
 
 pub struct ClipResource {
-    pub sample_rate: u32,
-    pub len: usize, // Length in interleaved samples
-    pub channels: u16,
-    pub data: [Vec<f32>; CHANNELS_COUNT as usize],
+    pub sample_rate: SampleRate,
+    pub len: SamplesCount,
+    pub channels: ChannelsCount,
+    pub data: [Vec<f32>; CHANNELS_COUNT],
 }
 
 #[cfg(feature = "resources-wav")]
 pub(crate) mod wav {
     use crate::resources::{to_planar_f32, ClipResource};
-    use crate::CHANNELS_COUNT;
-    use log::{error, warn};
+    use crate::{ChannelsCount, SampleRate, CHANNELS_COUNT};
     use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};
 
     pub(crate) struct WAVResourceFactory {
-        sample_rate: u32,
+        sample_rate: SampleRate,
     }
 
     impl WAVResourceFactory {
-        pub fn new(sample_rate: u32) -> Self {
+        pub fn new(sample_rate: SampleRate) -> Self {
             WAVResourceFactory { sample_rate }
         }
     }
@@ -67,7 +66,7 @@ pub(crate) mod wav {
             match hound::WavReader::new(&mut buf_reader) {
                 Ok(mut reader) => {
                     let spec = reader.spec();
-                    if spec.sample_rate != self.sample_rate {
+                    if spec.sample_rate as SampleRate != self.sample_rate {
                         return Err(format!(
                             "WAV {} sample rate mismatch: expected {}, got {}. Resampling is currently not supported.",
                             header.name, self.sample_rate, spec.sample_rate
@@ -78,24 +77,24 @@ pub(crate) mod wav {
                         (hound::SampleFormat::Float, 32) => {
                             let samples: Vec<f32> =
                                 reader.samples::<f32>().map(|s| s.unwrap()).collect();
-                            to_planar_f32(samples, spec.channels as usize)
+                            to_planar_f32(samples, spec.channels as ChannelsCount)
                         }
                         (hound::SampleFormat::Int, 16) => {
                             let samples: Vec<i16> =
                                 reader.samples::<i16>().map(|s| s.unwrap()).collect();
-                            to_planar_f32(samples, spec.channels as usize)
+                            to_planar_f32(samples, spec.channels as ChannelsCount)
                         }
                         (hound::SampleFormat::Int, 24) => {
                             let samples: Vec<i24::i24> = reader
                                 .samples::<i32>()
                                 .map(|s| i24::i24::try_from_i32(s.unwrap()).unwrap())
                                 .collect();
-                            to_planar_f32(samples, spec.channels as usize)
+                            to_planar_f32(samples, spec.channels as ChannelsCount)
                         }
                         (hound::SampleFormat::Int, 32) => {
                             let samples: Vec<i32> =
                                 reader.samples::<i32>().map(|s| s.unwrap()).collect();
-                            to_planar_f32(samples, spec.channels as usize)
+                            to_planar_f32(samples, spec.channels as ChannelsCount)
                         }
                         _ => {
                             return Err(format!(
@@ -108,7 +107,7 @@ pub(crate) mod wav {
                     Ok(Resource::new(ClipResource {
                         sample_rate: self.sample_rate,
                         len: data[0].len(),
-                        channels: CHANNELS_COUNT as u16,
+                        channels: CHANNELS_COUNT,
                         data,
                     }))
                 }
@@ -126,16 +125,16 @@ pub(crate) mod wav {
 #[cfg(feature = "resources-flac")]
 pub(crate) mod flac {
     use crate::resources::{to_planar_f32, ClipResource};
-    use crate::CHANNELS_COUNT;
+    use crate::{SampleRate, CHANNELS_COUNT};
     use log::{error, warn};
     use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};
 
     pub(crate) struct FLACResourceFactory {
-        sample_rate: u32,
+        sample_rate: SampleRate,
     }
 
     impl FLACResourceFactory {
-        pub fn new(sample_rate: u32) -> Self {
+        pub fn new(sample_rate: SampleRate) -> Self {
             FLACResourceFactory { sample_rate }
         }
     }
@@ -159,16 +158,16 @@ pub(crate) mod flac {
 #[cfg(feature = "resources-ogg")]
 pub(crate) mod ogg {
     use crate::resources::{to_planar_f32, ClipResource};
-    use crate::CHANNELS_COUNT;
+    use crate::{SampleRate, CHANNELS_COUNT};
     use log::{error, warn};
     use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};
 
     pub(crate) struct OGGResourceFactory {
-        sample_rate: u32,
+        sample_rate: SampleRate,
     }
 
     impl OGGResourceFactory {
-        pub fn new(sample_rate: u32) -> Self {
+        pub fn new(sample_rate: SampleRate) -> Self {
             OGGResourceFactory { sample_rate }
         }
     }

@@ -7,6 +7,7 @@ use crate::dsp::sources::group::GroupSource;
 use crate::dsp::sources::sampler::SamplerSource;
 use crate::dsp::sources::waveform::WaveformSource;
 use crate::sample::PlanarBlock;
+use crate::{SampleRate, SamplesCount};
 
 pub mod bus;
 mod math;
@@ -14,12 +15,12 @@ pub mod processors;
 pub mod sources;
 
 pub(crate) struct BlockInfo {
-    pub(crate) sample_index: usize,
-    pub(crate) sample_rate: u32,
+    pub(crate) sample_index: SamplesCount,
+    pub(crate) sample_rate: SampleRate,
 }
 
 impl BlockInfo {
-    fn time(&self, i: usize) -> f32 {
+    fn time(&self, i: SamplesCount) -> f32 {
         (self.sample_index as f32 + i as f32) / self.sample_rate as f32
     }
 }
@@ -29,7 +30,12 @@ pub(crate) trait EventDispatcher {
 }
 
 pub(crate) trait Processor {
-    fn process(&mut self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, info: &BlockInfo);
+    fn process(
+        &mut self,
+        input: &PlanarBlock<f32>,
+        output: &mut PlanarBlock<f32>,
+        info: &BlockInfo,
+    );
 }
 
 pub enum ProcessorType {
@@ -48,7 +54,12 @@ impl Default for ProcessorType {
 
 impl Processor for ProcessorType {
     #[inline(always)]
-    fn process(&mut self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
+    fn process(
+        &mut self,
+        input: &PlanarBlock<f32>,
+        output: &mut PlanarBlock<f32>,
+        info: &BlockInfo,
+    ) {
         match self {
             ProcessorType::NoProcessor => {
                 // No processor, just copy input to output

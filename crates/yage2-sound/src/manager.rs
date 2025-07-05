@@ -7,14 +7,17 @@ use crate::dsp::{BlockInfo, EventDispatcher, Generator};
 use crate::error::{AudioManagerCreationError, AudioManagerStartError, AudioManagerStopError};
 use crate::ringbuf::RingBuffer;
 use crate::sample::{InterleavedSample, InterleavedSampleBuffer, PlanarBlock, Sample};
-use crate::{SampleType, BLOCK_SIZE, CHANNELS_COUNT, DEVICE_BUFFER_SIZE, RING_BUFFER_SIZE};
+use crate::{
+    ChannelsCount, SampleRate, SampleType, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT,
+    DEVICE_BUFFER_SIZE, RING_BUFFER_SIZE,
+};
 use log::{debug, info, warn};
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
 use yage2_core::profile::{MinMaxProfiler, PeriodProfiler, TickProfiler};
 use yage2_core::resources::{ResourceManager, ResourceType};
 use yage2_core::threads::{ThreadManager, ThreadPriority};
 
-const WATERMARK_THRESHOLD: usize = RING_BUFFER_SIZE / 4;
+const WATERMARK_THRESHOLD: SamplesCount = RING_BUFFER_SIZE / 4;
 
 const GENERATOR_THREAD_NAME: &str = "aud_gen";
 const GENERATOR_THREAD_PRIORITY: ThreadPriority = ThreadPriority::High;
@@ -32,7 +35,7 @@ pub struct AudioManagerConfig {
     pub backend_specific: BackendSpecificConfig,
     pub master_bus: Arc<Mutex<Bus>>,
     pub controller: Arc<AudioController>,
-    pub sample_rate: u32,
+    pub sample_rate: SampleRate,
 
     pub profiler_handler: Option<fn(&ProfileFrame)>,
 }
@@ -98,10 +101,10 @@ pub struct ProfileFrame {
     pub reader_tps_max: f32,
 
     // Manager parameters
-    pub sample_rate: u32,
-    pub buffer_size: usize,
-    pub channels: u8,
-    pub block_size: usize,
+    pub sample_rate: SampleRate,
+    pub buffer_size: SamplesCount,
+    pub channels: ChannelsCount,
+    pub block_size: SamplesCount,
 }
 
 pub struct AudioManager {
@@ -119,7 +122,7 @@ pub struct AudioManager {
     master_bus: Arc<Mutex<Bus>>,
 
     // The sample-rate of the audio device and all the audio processing
-    sample_rate: u32,
+    sample_rate: SampleRate,
 
     // The controller that allows user to control buses and more
     controller: Arc<AudioController>,
@@ -200,13 +203,13 @@ impl AudioManager {
         let master = Arc::clone(&self.master_bus);
         let sample_rate = self.sample_rate;
         let profiler = Arc::clone(&self.profilers);
-        let tick = move |sample_index: usize| {
+        let tick = move |sample_index: SamplesCount| {
             profiler.gen_tps.tick(1);
 
             // Generate a block of planar samples
             // All the processing is done in f32 format
             let mut planar_block = PlanarBlock::<f32> {
-                samples: [[0.0; BLOCK_SIZE]; CHANNELS_COUNT as usize],
+                samples: [[0.0; BLOCK_SIZE]; CHANNELS_COUNT],
             };
             let block_info = BlockInfo {
                 sample_index,
@@ -225,7 +228,7 @@ impl AudioManager {
             let mut interleaved_samples: [InterleavedSample<SampleType>; BLOCK_SIZE] =
                 [InterleavedSample::default(); BLOCK_SIZE];
             for i in 0..BLOCK_SIZE {
-                for channel in 0..CHANNELS_COUNT as usize {
+                for channel in 0..CHANNELS_COUNT {
                     let sample = planar_block.samples[channel][i];
                     interleaved_samples[i].channels[channel] = SampleType::from_f32(sample);
                 }

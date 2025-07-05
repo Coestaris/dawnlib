@@ -1,4 +1,4 @@
-use crate::dsp::{BlockInfo, EventDispatcher, Processor};
+use crate::dsp::{BlockInfo, EventDispatcher, Processor, ProcessorType};
 use crate::control::{new_control, ControlReceiver, Controller};
 use crate::sample::PlanarBlock;
 
@@ -15,14 +15,14 @@ pub struct HPF {
 }
 
 impl HPF {
-    pub fn new() -> (Self, Controller<HPFMessage>) {
+    pub fn new() -> (ProcessorType, Controller<HPFMessage>) {
         let (controller, receiver) = new_control();
         let hpf = Self {
             cutoff: 0.5,    // Default value
             resonance: 0.5, // Default value
             receiver,
         };
-        (hpf, controller)
+        (ProcessorType::HPF(hpf), controller)
     }
 }
 
