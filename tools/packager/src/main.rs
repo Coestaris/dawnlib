@@ -2,7 +2,7 @@ use ansi_term::Color::{Blue, Cyan, Green, Red, Yellow};
 use clap::{command, Parser};
 use log::{Level, Metadata, Record};
 use yage2_core::utils::format_now;
-use yage2_yarc::structures::{ChecksumAlgorithm, Compression, ReadMode, YARCWriteOptions};
+use yage2_yarc::{ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
 
 struct SimpleLogger;
 
@@ -92,7 +92,7 @@ fn main() {
 
     yage2_yarc::write_from_directory(
         cli.input,
-        YARCWriteOptions {
+        WriteOptions {
             compression: if cli.compression.unwrap_or(true) {
                 Compression::Gzip
             } else {

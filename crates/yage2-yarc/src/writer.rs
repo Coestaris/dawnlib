@@ -3,11 +3,10 @@ use crate::preprocessors::{
     resample_wav_file, PreProcessor, PreprocessorsError,
 };
 use crate::structures::{
-    ChecksumAlgorithm, Compression, ReadMode, ResourceMetadata, TypeSpecificMetadata, YARCManifest,
-    YARCWriteOptions,
+    ChecksumAlgorithm, Compression, Manifest, ReadMode, ResourceMetadata, TypeSpecificMetadata,
+    WriteOptions,
 };
 use log::{debug, info};
-use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use tempdir::TempDir;
@@ -17,7 +16,6 @@ use yage2_core::utils::format_now;
 #[derive(Debug)]
 struct Container {
     binary_path: std::path::PathBuf,
-    resource_type: ResourceType,
     metadata_path: std::path::PathBuf,
     metadata: ResourceMetadata,
 }
@@ -170,18 +168,18 @@ fn checksum<P: AsRef<std::path::Path>>(
     Ok(ResourceChecksum::from_bytes(&hash))
 }
 
-fn create_manifest(create_options: YARCWriteOptions, containers: &[Container]) -> YARCManifest {
-    let mut manifest_resource = Vec::new();
-    for resource in containers {
-        manifest_resource.push(resource.metadata.common.clone());
+fn create_manifest(create_options: WriteOptions, containers: &[Container]) -> Manifest {
+    let mut headers = Vec::new();
+    for container in containers {
+        headers.push(container.metadata.header.clone());
     }
 
-    YARCManifest {
+    Manifest {
         tool_created: "Yage2 Packager".to_string(),
         tool_version: "0.1.0".to_string(), // TODO: Get from Cargo.toml
         date_created: format_now().unwrap(),
         write_options: create_options,
-        resources: manifest_resource,
+        headers,
     }
 }
 
@@ -195,16 +193,16 @@ fn validate_metadata<P: AsRef<std::path::Path>>(
     let mut metadata: ResourceMetadata = toml::from_str(&metadata_content)
         .map_err(|e| WriterError::ParseMetadataFailed(name.to_string(), e))?;
 
-    // If some fields are missing, the serde will fill them with defaults
+    // If some fields are missing, the serde will fill them with defaults, 
     // But we need to ensure that the resource type matches
-    if metadata.common.resource_type == ResourceType::Unknown {
-        metadata.common.resource_type = resource_type;
-    } else if metadata.common.resource_type != resource_type {
+    if metadata.header.resource_type == ResourceType::Unknown {
+        metadata.header.resource_type = resource_type;
+    } else if metadata.header.resource_type != resource_type {
         return Err(WriterError::ValidateMetadataFailed(
             name.to_string(),
             format!(
                 "Resource type mismatch: expected {:?}, found {:?}",
-                resource_type, metadata.common.resource_type
+                resource_type, metadata.header.resource_type
             ),
         ));
     }
@@ -228,9 +226,9 @@ fn validate_metadata<P: AsRef<std::path::Path>>(
         }
     };
 
-    // If name is empty, use the provided name
-    if metadata.common.name.is_empty() {
-        metadata.common.name = name.to_string();
+    // If the name is empty, use the provided name
+    if metadata.header.name.is_empty() {
+        metadata.header.name = name.to_string();
     }
 
     Ok(metadata)
@@ -240,15 +238,12 @@ fn create_metadata<P: AsRef<std::path::Path>>(
     resource_type: ResourceType,
     name: &str,
 ) -> Result<ResourceMetadata, WriterError> {
-    let common_metadata = ResourceHeader {
-        name: name.to_string(),
-        tag: String::new(),
-        resource_type,
-        checksum: ResourceChecksum::default(),
-    };
+    let mut header = ResourceHeader::default();
+    header.name = name.to_string();
+    header.resource_type = resource_type;
 
     Ok(ResourceMetadata {
-        common: common_metadata,
+        header,
         type_specific: TypeSpecificMetadata::default_for(resource_type),
     })
 }
@@ -270,11 +265,11 @@ fn split_path(path: &std::path::Path) -> (String, String) {
 
 fn prepare_files<P: AsRef<std::path::Path>>(
     input_files: &Vec<std::path::PathBuf>,
-    options: &YARCWriteOptions,
+    options: &WriteOptions,
     directory: &TempDir,
 ) -> Result<Vec<std::path::PathBuf>, WriterError> {
-    let mut resources = Vec::new();
-    for mut file in input_files {
+    let mut containers = Vec::new();
+    for file in input_files {
         let (we, ext) = split_path(&file);
 
         if ext == "toml" {
@@ -297,7 +292,7 @@ fn prepare_files<P: AsRef<std::path::Path>>(
         };
 
         // Calculate the checksum, in case the preprocessor wants to use it
-        metadata.common.checksum = checksum(&file, options.checksum_algorithm)?;
+        metadata.header.checksum = checksum(&file, options.checksum_algorithm)?;
         // Preprocessor is responsible for modifying the file and metadata
         // and copying the file to the temp directory
         let dest_path = directory.path().join(&name);
@@ -307,9 +302,9 @@ fn prepare_files<P: AsRef<std::path::Path>>(
             preprocessor(file, &metadata, &dest_path).map_err(WriterError::PreprocessorFailed)?;
 
         // If a user / preprocessor changed the name, we need to update it
-        name = metadata.common.name.clone();
+        name = metadata.header.name.clone();
         // Update the metadata with the checksum
-        metadata.common.checksum = checksum(&dest_path, options.checksum_algorithm)?;
+        metadata.header.checksum = checksum(&dest_path, options.checksum_algorithm)?;
         // Write the metadata to a temporary file
         let metadata_path = directory.path().join(&name).with_extension("toml");
         let metadata_content =
@@ -317,34 +312,29 @@ fn prepare_files<P: AsRef<std::path::Path>>(
         std::fs::write(&metadata_path, metadata_content).map_err(WriterError::IoError)?;
 
         // Create the resource entry
-        resources.push(Container {
+        containers.push(Container {
             binary_path: dest_path,
-            resource_type,
             metadata_path,
             metadata,
         });
     }
 
     // Create the manifest
-    let manifest = create_manifest(options.clone(), &resources);
-
+    let manifest = create_manifest(options.clone(), &containers);
     // Write the manifest to a temporary file
     let manifest_path = directory.path().join(".manifest.toml");
     let manifest_content = toml::to_string(&manifest).map_err(WriterError::FormatMetadataFailed)?;
     std::fs::write(&manifest_path, manifest_content).map_err(WriterError::IoError)?;
 
     // Make sure that manifest is the first file in the archive
-    let mut resources_with_manifest = vec![manifest_path];
-    for resource in resources {
-        resources_with_manifest.push(resource.binary_path);
-        // Also include the metadata file
-        resources_with_manifest.push(resource.metadata_path);
+    let mut files_to_archive = vec![manifest_path];
+    for container in containers {
+        files_to_archive.push(container.binary_path);
+        files_to_archive.push(container.metadata_path);
     }
-    info!(
-        "Created manifest with {} resources",
-        resources_with_manifest.len()
-    );
-    Ok(resources_with_manifest)
+
+    info!("Created manifest with {} resources", files_to_archive.len());
+    Ok(files_to_archive)
 }
 
 fn add_files<W>(
@@ -365,11 +355,12 @@ where
 }
 
 /// Implementation of creating a YARC from a directory
-/// This will involve reading files, normalizing names, and writing to a .tar or .tar.gz archive
-/// with the specified compression and checksum algorithm.
+/// This will involve reading files, normalizing names, and writing to a 
+/// .tar or .tar.gz archive with the specified compression and checksum algorithm.
+/// Optionally, for some file types, a preprocessor can be applied (e.g., resampling audio files).
 pub fn write_from_directory<P: AsRef<std::path::Path>>(
     input_dir: P,
-    options: YARCWriteOptions,
+    options: WriteOptions,
     output: P,
 ) -> Result<(), WriterError> {
     // Read the directory and collect files based on the read mode

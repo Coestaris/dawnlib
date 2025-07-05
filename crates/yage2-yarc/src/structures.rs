@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use yage2_core::resources::{ResourceHeader, ResourceType};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) enum ShaderType {
+pub enum ShaderType {
     Fragment,
     Geometry,
     Vertex,
@@ -17,9 +17,9 @@ impl Default for ShaderType {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) struct ShaderMetadata {
+pub struct ShaderMetadata {
     #[serde(default)]
-    pub(crate) shader_type: ShaderType,
+    pub shader_type: ShaderType,
     #[serde(default)]
     compile_options: Vec<String>,
 }
@@ -34,7 +34,7 @@ impl Default for ShaderMetadata {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) struct AudioMetadata {}
+pub struct AudioMetadata {}
 
 impl Default for AudioMetadata {
     fn default() -> Self {
@@ -43,7 +43,7 @@ impl Default for AudioMetadata {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) struct ImageMetadata {}
+pub struct ImageMetadata {}
 
 impl Default for ImageMetadata {
     fn default() -> Self {
@@ -52,7 +52,7 @@ impl Default for ImageMetadata {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) struct FontMetadata {}
+pub struct FontMetadata {}
 
 impl Default for FontMetadata {
     fn default() -> Self {
@@ -61,7 +61,7 @@ impl Default for FontMetadata {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) struct ModelMetadata {}
+pub struct ModelMetadata {}
 
 impl Default for ModelMetadata {
     fn default() -> Self {
@@ -70,7 +70,7 @@ impl Default for ModelMetadata {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) enum TypeSpecificMetadata {
+pub enum TypeSpecificMetadata {
     Unknown,
     Shader(ShaderMetadata),
     Audio(AudioMetadata),
@@ -141,11 +141,11 @@ impl Default for TypeSpecificMetadata {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) struct ResourceMetadata {
+pub struct ResourceMetadata {
     #[serde(default)]
-    pub(crate) common: ResourceHeader,
+    pub header: ResourceHeader,
     #[serde(default)]
-    pub(crate) type_specific: TypeSpecificMetadata,
+    pub type_specific: TypeSpecificMetadata,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -167,17 +167,17 @@ pub enum ChecksumAlgorithm {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct YARCWriteOptions {
+pub struct WriteOptions {
     pub compression: Compression,
     pub read_mode: ReadMode,
     pub checksum_algorithm: ChecksumAlgorithm,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub(crate) struct YARCManifest {
+pub struct Manifest {
     pub tool_created: String,
     pub tool_version: String,
     pub date_created: String,
-    pub write_options: YARCWriteOptions,
-    pub resources: Vec<ResourceHeader>,
+    pub write_options: WriteOptions,
+    pub headers: Vec<ResourceHeader>,
 }
