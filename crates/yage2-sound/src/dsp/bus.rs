@@ -121,7 +121,7 @@ impl Generator for Bus {
             let mut block_b = PlanarBlock::default();
             let mut use_a = true;
 
-            for processor in &self.controllable.processors {
+            for processor in &mut self.controllable.processors {
                 if use_a {
                     processor.process(output, &mut block_b, info);
                 } else {

@@ -22,8 +22,9 @@ use yage2_sound::control::{AudioController, Controller};
 use yage2_sound::dsp::bus::Bus;
 use yage2_sound::dsp::sources::clip::{ClipMessage, ClipSource};
 use yage2_sound::dsp::sources::group::GroupSource;
+use yage2_sound::dsp::sources::sampler::{SamplerMessage, SamplerSource};
 use yage2_sound::dsp::sources::waveform::{WaveformMessage, WaveformSource};
-use yage2_sound::dsp::SourceType;
+use yage2_sound::dsp::{ProcessorType, SourceType};
 use yage2_sound::manager::{AudioManager, AudioManagerConfig};
 
 struct SimpleLogger;
@@ -136,7 +137,7 @@ impl ResourceManagerIO for ResourcesIO {
 
     fn enumerate_resources(&mut self) -> Result<HashMap<String, ResourceHeader>, String> {
         self.containers =
-            yage2_yarc::read(get_current_exe().parent().unwrap().join("output.yarc"))?;
+            yage2_yarc::read(get_current_exe().parent().unwrap().join("resources.yarc"))?;
 
         info!("Loaded {} resources", self.containers.len());
         for (name, container) in &self.containers {
@@ -228,10 +229,12 @@ fn main() {
         profile_handle: Some(profile_threads),
     }));
 
-    let (clip_source, clip_control) = ClipSource::new();
+    let (reverb, reverb_control) = yage2_sound::dsp::processors::reverb::Reverb::new();
+    let (sample_source, sampler_control) = SamplerSource::new();
     let (master_bus, _) = Bus::new()
-        .set_source(SourceType::Clip(clip_source))
+        .set_source(SourceType::Sampler(sample_source))
         .set_volume(0.5)
+        .add_processor(ProcessorType::Reverb(reverb))
         .set_pan(0.0)
         .build();
 
@@ -254,7 +257,14 @@ fn main() {
 
     audio_manager.start().unwrap();
 
-    audio_controller.send_and_notify(&clip_control, ClipMessage::Play(clip.clone()));
+    audio_controller.send_and_notify(
+        &sampler_control,
+        SamplerMessage::Play {
+            clip: clip.clone(),
+            volume: 0.5,
+            pan: 0.0,
+        },
+    );
 
     sleep(std::time::Duration::from_millis(15000));
 

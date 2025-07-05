@@ -43,7 +43,7 @@ impl EventDispatcher for HPF {
 }
 
 impl Processor for HPF {
-    fn process(&self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, _: &BlockInfo) {
+    fn process(&mut self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, _: &BlockInfo) {
         // Bypass for now, just copy input to output
         output.copy_from(input);
     }

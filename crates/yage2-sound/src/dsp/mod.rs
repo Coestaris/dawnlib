@@ -29,7 +29,7 @@ pub(crate) trait EventDispatcher {
 }
 
 pub(crate) trait Processor {
-    fn process(&self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, info: &BlockInfo);
+    fn process(&mut self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, info: &BlockInfo);
 }
 
 pub enum ProcessorType {
@@ -47,7 +47,8 @@ impl Default for ProcessorType {
 }
 
 impl Processor for ProcessorType {
-    fn process(&self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
+    #[inline(always)]
+    fn process(&mut self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
         match self {
             ProcessorType::NoProcessor => {
                 // No processor, just copy input to output
@@ -63,6 +64,7 @@ impl Processor for ProcessorType {
 }
 
 impl EventDispatcher for ProcessorType {
+    #[inline(always)]
     fn dispatch_events(&mut self) {
         match self {
             ProcessorType::NoProcessor => {

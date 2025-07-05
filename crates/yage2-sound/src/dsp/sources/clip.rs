@@ -61,12 +61,7 @@ impl Generator for ClipSource {
             let to_copy = (clip.len as usize - self.position).min(BLOCK_SIZE);
 
             // Copy audio data from the clip resource to the output block
-            for i in 0..to_copy {
-                // TODO: Implement some kind of batch processing
-                let sample = clip.data[self.position + i];
-                output.samples[LEFT_CHANNEL][i] = sample.channels[LEFT_CHANNEL];
-                output.samples[RIGHT_CHANNEL][i] = sample.channels[RIGHT_CHANNEL];
-            }
+            output.copy_from_planar_vec(&clip.data, self.position, to_copy);
 
             self.position += to_copy;
             if self.position >= clip.len as usize {

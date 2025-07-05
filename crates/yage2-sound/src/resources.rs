@@ -1,35 +1,37 @@
-use crate::sample::{InterleavedSample, Sample};
+use crate::sample::Sample;
 use crate::CHANNELS_COUNT;
 
-fn to_interleaved_f32<F>(
+// Converts interleaved raw audio samples to planar f32 samples.
+fn to_planar_f32<F>(
     interleaved_raw: Vec<F>,
     raw_channels: usize,
-) -> Vec<InterleavedSample<f32>>
+) -> [Vec<f32>; CHANNELS_COUNT as usize]
 where
     F: Sample + Copy,
 {
-    let mut output = Vec::with_capacity(interleaved_raw.len());
+    let mut output = [
+        Vec::with_capacity(interleaved_raw.len() / raw_channels),
+        Vec::with_capacity(interleaved_raw.len() / raw_channels),
+    ];
+
     let mut i = 0;
     while i < interleaved_raw.len() {
-        let mut sample = InterleavedSample::<f32>::default();
-
         // Our interleaved sample has a fixed number of channels that
         // can be less or greater than the input channels.
         // In case of fewer channels, we will just copy last sample to the rest of the channels.
         // In case of more channels, we will just ignore the extra channels.
         for j in 0..CHANNELS_COUNT as usize {
-            if j < raw_channels {
-                sample.channels[j] = F::to_f32(interleaved_raw[i + j]);
+            let val = if j < raw_channels {
+                F::to_f32(interleaved_raw[i + j])
             } else {
                 // If we have fewer channels, copy the last sample to the rest of the channels
-                sample.channels[j] = sample.channels[raw_channels - 1];
-            }
+                F::to_f32(interleaved_raw[i + raw_channels - 1])
+            };
+            output[j].push(val);
         }
 
         // Stride the input by the number of channels
         i += raw_channels;
-
-        output.push(sample);
     }
 
     output
@@ -39,12 +41,12 @@ pub struct ClipResource {
     pub sample_rate: u32,
     pub len: usize, // Length in interleaved samples
     pub channels: u16,
-    pub data: Vec<InterleavedSample<f32>>,
+    pub data: [Vec<f32>; CHANNELS_COUNT as usize],
 }
 
 #[cfg(feature = "resources-wav")]
 pub(crate) mod wav {
-    use crate::resources::{to_interleaved_f32, ClipResource};
+    use crate::resources::{to_planar_f32, ClipResource};
     use crate::CHANNELS_COUNT;
     use log::{error, warn};
     use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};
@@ -76,28 +78,24 @@ pub(crate) mod wav {
                         (hound::SampleFormat::Float, 32) => {
                             let samples: Vec<f32> =
                                 reader.samples::<f32>().map(|s| s.unwrap()).collect();
-
-                            to_interleaved_f32(samples, spec.channels as usize)
+                            to_planar_f32(samples, spec.channels as usize)
                         }
                         (hound::SampleFormat::Int, 16) => {
                             let samples: Vec<i16> =
                                 reader.samples::<i16>().map(|s| s.unwrap()).collect();
-
-                            to_interleaved_f32(samples, spec.channels as usize)
+                            to_planar_f32(samples, spec.channels as usize)
                         }
                         (hound::SampleFormat::Int, 24) => {
                             let samples: Vec<i24::i24> = reader
                                 .samples::<i32>()
                                 .map(|s| i24::i24::try_from_i32(s.unwrap()).unwrap())
                                 .collect();
-
-                            to_interleaved_f32(samples, spec.channels as usize)
+                            to_planar_f32(samples, spec.channels as usize)
                         }
                         (hound::SampleFormat::Int, 32) => {
                             let samples: Vec<i32> =
                                 reader.samples::<i32>().map(|s| s.unwrap()).collect();
-
-                            to_interleaved_f32(samples, spec.channels as usize)
+                            to_planar_f32(samples, spec.channels as usize)
                         }
                         _ => {
                             return Err(format!(
@@ -109,7 +107,7 @@ pub(crate) mod wav {
 
                     Ok(Resource::new(ClipResource {
                         sample_rate: self.sample_rate,
-                        len: data.len(),
+                        len: data[0].len(),
                         channels: CHANNELS_COUNT as u16,
                         data,
                     }))
@@ -127,7 +125,7 @@ pub(crate) mod wav {
 
 #[cfg(feature = "resources-flac")]
 pub(crate) mod flac {
-    use crate::resources::{to_interleaved_f32, ClipResource};
+    use crate::resources::{to_planar_f32, ClipResource};
     use crate::CHANNELS_COUNT;
     use log::{error, warn};
     use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};
@@ -160,7 +158,7 @@ pub(crate) mod flac {
 
 #[cfg(feature = "resources-ogg")]
 pub(crate) mod ogg {
-    use crate::resources::{to_interleaved_f32, ClipResource};
+    use crate::resources::{to_planar_f32, ClipResource};
     use crate::CHANNELS_COUNT;
     use log::{error, warn};
     use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};

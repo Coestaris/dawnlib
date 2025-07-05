@@ -276,7 +276,6 @@ impl AudioManager {
             controller.wait_for_update();
 
             // Process events in the main bus
-            debug!("Processing events in the main bus");
             let mut bus_guard = master.lock().unwrap();
             profiler.events.start();
             bus_guard.dispatch_events();
