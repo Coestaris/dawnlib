@@ -118,7 +118,7 @@ pub struct ResourceHeader {
     #[serde(default)]
     pub name: String,
     #[serde(default)]
-    pub tag: String,
+    pub tags: Vec<String>,
     #[serde(default)]
     pub resource_type: ResourceType,
     #[serde(default)]
@@ -129,7 +129,7 @@ impl Default for ResourceHeader {
     fn default() -> Self {
         ResourceHeader {
             name: String::new(),
-            tag: String::new(),
+            tags: Vec::new(),
             resource_type: ResourceType::Unknown,
             checksum: ResourceChecksum::default(),
         }
@@ -158,7 +158,7 @@ pub struct ResourceManager {
 impl PartialEq<ResourceHeader> for &ResourceHeader {
     fn eq(&self, other: &ResourceHeader) -> bool {
         self.name == other.name
-            && self.tag == other.tag
+            && self.tags == other.tags
             && self.resource_type == other.resource_type
             && self.checksum == other.checksum
     }

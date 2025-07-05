@@ -7,7 +7,7 @@ use crate::structures::{
     YARCWriteOptions,
 };
 use log::{debug, info};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use tempdir::TempDir;
@@ -171,9 +171,9 @@ fn checksum<P: AsRef<std::path::Path>>(
 }
 
 fn create_manifest(create_options: YARCWriteOptions, containers: &[Container]) -> YARCManifest {
-    let mut manifest_resource = Vec::new();
-    for resource in containers {
-        manifest_resource.push(resource.metadata.common.clone());
+    let mut headers = Vec::new();
+    for container in containers {
+        headers.push(container.metadata.header.clone());
     }
 
     YARCManifest {
@@ -181,7 +181,7 @@ fn create_manifest(create_options: YARCWriteOptions, containers: &[Container]) -
         tool_version: "0.1.0".to_string(), // TODO: Get from Cargo.toml
         date_created: format_now().unwrap(),
         write_options: create_options,
-        resources: manifest_resource,
+        headers,
     }
 }
 
@@ -197,14 +197,14 @@ fn validate_metadata<P: AsRef<std::path::Path>>(
 
     // If some fields are missing, the serde will fill them with defaults
     // But we need to ensure that the resource type matches
-    if metadata.common.resource_type == ResourceType::Unknown {
-        metadata.common.resource_type = resource_type;
-    } else if metadata.common.resource_type != resource_type {
+    if metadata.header.resource_type == ResourceType::Unknown {
+        metadata.header.resource_type = resource_type;
+    } else if metadata.header.resource_type != resource_type {
         return Err(WriterError::ValidateMetadataFailed(
             name.to_string(),
             format!(
                 "Resource type mismatch: expected {:?}, found {:?}",
-                resource_type, metadata.common.resource_type
+                resource_type, metadata.header.resource_type
             ),
         ));
     }
@@ -229,8 +229,8 @@ fn validate_metadata<P: AsRef<std::path::Path>>(
     };
 
     // If name is empty, use the provided name
-    if metadata.common.name.is_empty() {
-        metadata.common.name = name.to_string();
+    if metadata.header.name.is_empty() {
+        metadata.header.name = name.to_string();
     }
 
     Ok(metadata)
@@ -240,15 +240,12 @@ fn create_metadata<P: AsRef<std::path::Path>>(
     resource_type: ResourceType,
     name: &str,
 ) -> Result<ResourceMetadata, WriterError> {
-    let common_metadata = ResourceHeader {
-        name: name.to_string(),
-        tag: String::new(),
-        resource_type,
-        checksum: ResourceChecksum::default(),
-    };
+    let mut header = ResourceHeader::default();
+    header.name = name.to_string();
+    header.resource_type = resource_type;
 
     Ok(ResourceMetadata {
-        common: common_metadata,
+        header,
         type_specific: TypeSpecificMetadata::default_for(resource_type),
     })
 }
@@ -297,7 +294,7 @@ fn prepare_files<P: AsRef<std::path::Path>>(
         };
 
         // Calculate the checksum, in case the preprocessor wants to use it
-        metadata.common.checksum = checksum(&file, options.checksum_algorithm)?;
+        metadata.header.checksum = checksum(&file, options.checksum_algorithm)?;
         // Preprocessor is responsible for modifying the file and metadata
         // and copying the file to the temp directory
         let dest_path = directory.path().join(&name);
@@ -307,9 +304,9 @@ fn prepare_files<P: AsRef<std::path::Path>>(
             preprocessor(file, &metadata, &dest_path).map_err(WriterError::PreprocessorFailed)?;
 
         // If a user / preprocessor changed the name, we need to update it
-        name = metadata.common.name.clone();
+        name = metadata.header.name.clone();
         // Update the metadata with the checksum
-        metadata.common.checksum = checksum(&dest_path, options.checksum_algorithm)?;
+        metadata.header.checksum = checksum(&dest_path, options.checksum_algorithm)?;
         // Write the metadata to a temporary file
         let metadata_path = directory.path().join(&name).with_extension("toml");
         let metadata_content =

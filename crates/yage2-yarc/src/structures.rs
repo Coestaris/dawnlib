@@ -143,7 +143,7 @@ impl Default for TypeSpecificMetadata {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct ResourceMetadata {
     #[serde(default)]
-    pub(crate) common: ResourceHeader,
+    pub(crate) header: ResourceHeader,
     #[serde(default)]
     pub(crate) type_specific: TypeSpecificMetadata,
 }
@@ -179,5 +179,5 @@ pub(crate) struct YARCManifest {
     pub tool_version: String,
     pub date_created: String,
     pub write_options: YARCWriteOptions,
-    pub resources: Vec<ResourceHeader>,
+    pub headers: Vec<ResourceHeader>,
 }

@@ -97,14 +97,14 @@ fn create_cache_entry(
 /// If the file does not exist, create it and return the path to the file.
 macro_rules! cache_me {
     ($metadata:expr, $output_path:expr, $new_value:expr) => {
-        if let Some(cache_path) = is_cache_exists(&$metadata.common.name, &$metadata) {
-            debug!("Cache hit for: {}", $metadata.common.name);
+        if let Some(cache_path) = is_cache_exists(&$metadata.header.name, &$metadata) {
+            debug!("Cache hit for: {}", $metadata.header.name);
             std::fs::copy(cache_path, $output_path).map_err(|e| PreprocessorsError::IOError(e))?;
             Ok($metadata.clone())
         } else {
-            debug!("Cache miss for: {}", $metadata.common.name);
+            debug!("Cache miss for: {}", $metadata.header.name);
             let val = $new_value;
-            create_cache_entry(&$metadata.common.name, $metadata, $output_path)?;
+            create_cache_entry(&$metadata.header.name, $metadata, $output_path)?;
             val
         }
     };
@@ -115,7 +115,7 @@ pub fn dummy_preprocessor<'a>(
     metadata: &ResourceMetadata,
     output_path: &'a std::path::PathBuf,
 ) -> Result<ResourceMetadata, PreprocessorsError> {
-    info!("Copying file: {}", metadata.common.name);
+    info!("Copying file: {}", metadata.header.name);
 
     std::fs::copy(path, output_path).map_err(|e| PreprocessorsError::IOError(e))?;
 
@@ -127,7 +127,7 @@ fn compile_glsl_shader_impl<'a>(
     metadata: &ResourceMetadata,
     output_path: &'a std::path::PathBuf,
 ) -> Result<ResourceMetadata, PreprocessorsError> {
-    info!("Compiling GLSL shader: {}", metadata.common.name);
+    info!("Compiling GLSL shader: {}", metadata.header.name);
 
     let glslc_path = get_glslc_path().ok_or(PreprocessorsError::GlslCompilerNotFound)?;
     let mut command = std::process::Command::new(glslc_path);
@@ -218,7 +218,7 @@ pub fn resample_ogg_file<'a>(
     metadata: &ResourceMetadata,
     output_path: &'a std::path::PathBuf,
 ) -> Result<ResourceMetadata, PreprocessorsError> {
-    info!("Resampling OGG file: {}", metadata.common.name);
+    info!("Resampling OGG file: {}", metadata.header.name);
     cache_me!(
         metadata,
         output_path,
@@ -231,7 +231,7 @@ pub fn resample_flac_file<'a>(
     metadata: &ResourceMetadata,
     output_path: &'a std::path::PathBuf,
 ) -> Result<ResourceMetadata, PreprocessorsError> {
-    info!("Resampling FLAC file: {}", metadata.common.name);
+    info!("Resampling FLAC file: {}", metadata.header.name);
     cache_me!(
         metadata,
         output_path,
@@ -244,7 +244,7 @@ pub fn resample_wav_file<'a>(
     metadata: &ResourceMetadata,
     output_path: &'a std::path::PathBuf,
 ) -> Result<ResourceMetadata, PreprocessorsError> {
-    info!("Resampling WAV file: {}", metadata.common.name);
+    info!("Resampling WAV file: {}", metadata.header.name);
     cache_me!(
         metadata,
         output_path,

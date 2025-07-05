@@ -15,6 +15,7 @@
 pub(crate) mod preprocessors;
 pub mod structures;
 mod writer;
+mod reader;
 
 pub use writer::write_from_directory;
 pub use writer::WriterError;
