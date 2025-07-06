@@ -1,3 +1,5 @@
+// #![feature(test)]
+
 pub mod backend;
 pub mod control;
 mod cpal;
@@ -35,4 +37,4 @@ const RING_BUFFER_SIZE: SamplesCount = DEVICE_BUFFER_SIZE * 2;
 
 /// Minimal operation block size for audio processing.
 /// The Unit is an interleaved sample.
-const BLOCK_SIZE: SamplesCount = 128;
+const BLOCK_SIZE: SamplesCount = 256;

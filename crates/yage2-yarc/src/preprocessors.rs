@@ -137,11 +137,13 @@ fn compile_glsl_shader_impl<'a>(
     let mut command = std::process::Command::new(glslc_path);
     if let TypeSpecificMetadata::Shader(shader_metadata) = &metadata.type_specific {
         match shader_metadata.shader_type {
-            ShaderType::Vertex => command.arg("-S").arg("vert"),
-            ShaderType::Fragment => command.arg("-S").arg("frag"),
-            ShaderType::Compute => command.arg("-S").arg("camp"),
-            ShaderType::Geometry => command.arg("-S").arg("geom"),
-            ShaderType::TessellationControl => command.arg("-S").arg("tesscontrol"),
+            ShaderType::Vertex => command.arg("-fshader-stage=vertex"),
+            ShaderType::Fragment => command.arg("-fshader-stage=fragment"),
+            ShaderType::Compute => command.arg("-fshader-stage=compute"),
+            ShaderType::Geometry => command.arg("-fshader-stage=geometry"),
+            ShaderType::TessellationControl => {
+                command.arg("-fshader-stage=tessellation_control")
+            }
         };
     } else {
         return Err(PreprocessorsError::InvalidMetadata(
@@ -150,7 +152,7 @@ fn compile_glsl_shader_impl<'a>(
     }
     command.arg(path);
     command
-        .arg("-V") // Use Vulkan SPIR-V
+        .arg("--target-env=vulkan1.2") // Assuming Vulkan 1.2 as the target environment
         .arg("-o")
         .arg(output_path);
 

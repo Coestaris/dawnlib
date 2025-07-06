@@ -102,7 +102,8 @@ pub struct ProfileFrame {
 
     // Manager parameters
     pub sample_rate: SampleRate,
-    pub buffer_size: SamplesCount,
+    pub device_buffer_size: SamplesCount,
+    pub ring_buffer_size: SamplesCount,
     pub channels: ChannelsCount,
     pub block_size: SamplesCount,
 }
@@ -360,7 +361,8 @@ impl AudioManager {
                 reader_tps_av,
                 reader_tps_max,
                 sample_rate,
-                buffer_size: DEVICE_BUFFER_SIZE,
+                device_buffer_size: DEVICE_BUFFER_SIZE,
+                ring_buffer_size: RING_BUFFER_SIZE,
                 channels: CHANNELS_COUNT,
                 block_size: BLOCK_SIZE,
             };

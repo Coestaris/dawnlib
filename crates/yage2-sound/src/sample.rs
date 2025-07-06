@@ -172,6 +172,7 @@ pub const RIGHT_CHANNEL: usize = 1;
 /// Used in audio processing chains - for example, in generators.
 /// The Amount of samples in the buffer is equal to `BLOCK_SIZE`.
 #[repr(C)]
+#[repr(align(32))]
 #[derive(Debug)]
 pub(crate) struct PlanarBlock<S>
 where
