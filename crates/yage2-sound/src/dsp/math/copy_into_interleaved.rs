@@ -74,7 +74,38 @@ pub unsafe fn avx512_block_m32(input: &PlanarBlock<f32>, output: &mut Interleave
 #[target_feature(enable = "avx2")]
 pub unsafe fn avx2_block_m32(input: &PlanarBlock<f32>, output: &mut InterleavedBlock<f32>) {
     use core::arch::x86_64::*;
-    todo!();
+
+    let mut ch0 = input.samples[LEFT_CHANNEL].as_ptr();
+    let mut ch1 = input.samples[RIGHT_CHANNEL].as_ptr();
+    let mut out_ptr = output.samples.as_mut_ptr() as *mut f32;
+
+    let mut i = 0;
+    while i < BLOCK_SIZE {
+        // a.0, a.1, a.2, a.3, a.4, a.5, a.6, a.7
+        let a = _mm256_loadu_ps(ch0);
+        ch0 = ch0.add(8);
+
+        // b.0, b.1, b.2, b.3, b.4, b.5, b.6, b.7
+        let b = _mm256_loadu_ps(ch1);
+        ch1 = ch1.add(8);
+
+        // a0 b0 a1 b1 | a4 b4 a5 b5
+        let lo = _mm256_unpacklo_ps(a, b);
+        // a2 b2 a3 b3 | a6 b6 a7 b7
+        let hi = _mm256_unpackhi_ps(a, b);
+
+        // a0 b0 a1 b1 | a2 b2 a3 b3
+        let interleaved_1 = _mm256_permute2f128_ps::<0b00100000>(lo, hi);
+        // a4 b4 a5 b5 | a6 b6 a7 b7
+        let interleaved_2 = _mm256_permute2f128_ps::<0b00110001>(lo, hi);
+
+        _mm256_storeu_ps(out_ptr, interleaved_1);
+        out_ptr = out_ptr.add(8);
+        _mm256_storeu_ps(out_ptr, interleaved_2);
+        out_ptr = out_ptr.add(8);
+
+        i += 8; // Process 8 samples at a time
+    }
 }
 
 #[inline(never)]

@@ -31,7 +31,7 @@ pub unsafe fn avx512_block_m32(input: &PlanarBlock<f32>, output: &mut PlanarBloc
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 // Note, that block adrress MUST be aligned to 32 bytes
-//       and BLOCK_SIZE must be a multiple of 8
+//       and BLOCK_SIZE must be a multiple of 32
 pub unsafe fn avx2_block_m32(input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>) {
     // AVX2 intrinsics for x86_64 architecture
     use core::arch::x86_64::*;
