@@ -1,5 +1,5 @@
 use crate::backend::{BackendDeviceTrait, CreateBackendConfig};
-use crate::sample::{InterleavedSampleBuffer, Sample};
+use crate::sample::{MappedInterleavedBuffer, Sample};
 use crate::{ChannelsCount, SampleRate, SamplesCount};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SizedSample;
@@ -142,7 +142,7 @@ where
 
     fn open<F>(&mut self, mut raw_fn: F) -> Result<(), Error>
     where
-        F: FnMut(&mut InterleavedSampleBuffer<S>) + Send + 'static,
+        F: FnMut(&mut MappedInterleavedBuffer<S>) + Send + 'static,
     {
         if self.stream.is_some() {
             return Err(Error::AlreadyOpened);
@@ -164,7 +164,7 @@ where
                 &self.stream_config,
                 move |data: &mut [S], _: &cpal::OutputCallbackInfo| {
                     // Warp raw buffer into interleaved sample buffer
-                    match InterleavedSampleBuffer::<S>::new(data) {
+                    match MappedInterleavedBuffer::<S>::new(data) {
                         Some(mut interleaved_buffer) => {
                             // Call the user-provided function with the interleaved sample buffer
                             raw_fn(&mut interleaved_buffer);

@@ -3,10 +3,13 @@ use crate::backend::{
 };
 use crate::control::AudioController;
 use crate::dsp::bus::Bus;
+use crate::dsp::math::detect_features;
 use crate::dsp::{BlockInfo, EventDispatcher, Generator};
 use crate::error::{AudioManagerCreationError, AudioManagerStartError, AudioManagerStopError};
 use crate::ringbuf::RingBuffer;
-use crate::sample::{InterleavedSample, InterleavedSampleBuffer, PlanarBlock, Sample};
+use crate::sample::{
+    InterleavedBlock, InterleavedSample, MappedInterleavedBuffer, PlanarBlock, Sample,
+};
 use crate::{
     ChannelsCount, SampleRate, SampleType, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT,
     DEVICE_BUFFER_SIZE, RING_BUFFER_SIZE,
@@ -160,6 +163,8 @@ impl AudioManager {
         let backend = AudioBackend::<SampleType>::new(backend_config)
             .map_err(AudioManagerCreationError::BackendSpecific)?;
 
+        detect_features();
+
         #[cfg(feature = "resources-wav")]
         config.resource_manager.register_factory(
             ResourceType::AudioWAV,
@@ -209,9 +214,7 @@ impl AudioManager {
 
             // Generate a block of planar samples
             // All the processing is done in f32 format
-            let mut planar_block = PlanarBlock::<f32> {
-                samples: [[0.0; BLOCK_SIZE]; CHANNELS_COUNT],
-            };
+            let mut planar_block = PlanarBlock::default();
             let block_info = BlockInfo {
                 sample_index,
                 sample_rate,
@@ -226,19 +229,13 @@ impl AudioManager {
 
             // Convert planar samples to interleaved format
             // Convert to the SampleType if necessary
-            let mut interleaved_samples: [InterleavedSample<SampleType>; BLOCK_SIZE] =
-                [InterleavedSample::default(); BLOCK_SIZE];
-            for i in 0..BLOCK_SIZE {
-                for channel in 0..CHANNELS_COUNT {
-                    let sample = planar_block.samples[channel][i];
-                    interleaved_samples[i].channels[channel] = SampleType::from_f32(sample);
-                }
-            }
+            let mut interleaved_block = InterleavedBlock::default();
+            planar_block.copy_into_interleaved(&mut interleaved_block);
 
             // Write interleaved samples to the ring buffer
             profiler.write_bulk.start();
             let guard = buffer.write_bulk_wait(BLOCK_SIZE);
-            guard.write_samples(&interleaved_samples);
+            guard.write_samples(&interleaved_block.samples);
             profiler.write_bulk.end();
         };
 
@@ -398,7 +395,7 @@ impl AudioManager {
     fn spawn_reader(&mut self) -> Result<(), AudioManagerStartError> {
         let reader_profiler = Arc::clone(&self.profilers);
         let reader_buffer = Arc::clone(&self.ring_buffer);
-        let func = move |buffer: &mut InterleavedSampleBuffer<SampleType>| {
+        let func = move |buffer: &mut MappedInterleavedBuffer<SampleType>| {
             reader_profiler.reader_tps.tick(1);
 
             let guard = reader_buffer.read_bulk();

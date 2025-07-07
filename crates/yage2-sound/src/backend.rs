@@ -1,4 +1,4 @@
-use crate::sample::{InterleavedSampleBuffer, Sample};
+use crate::sample::{MappedInterleavedBuffer, Sample};
 
 pub mod backend_impl {
     pub type BackendSpecificConfig = crate::cpal::DeviceConfig;
@@ -27,7 +27,7 @@ where
 
     fn open<F>(&mut self, raw_fn: F) -> Result<(), BackendSpecificError>
     where
-        F: FnMut(&mut InterleavedSampleBuffer<S>) + Send + 'static;
+        F: FnMut(&mut MappedInterleavedBuffer<S>) + Send + 'static;
 
     fn close(&mut self) -> Result<(), BackendSpecificError>;
 }

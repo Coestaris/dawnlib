@@ -10,7 +10,7 @@ use crate::sample::PlanarBlock;
 use crate::{SampleRate, SamplesCount};
 
 pub mod bus;
-mod math;
+pub(crate) mod math;
 pub mod processors;
 pub mod sources;
 
@@ -108,6 +108,7 @@ impl Default for SourceType {
 }
 
 impl Generator for SourceType {
+    #[inline(always)]
     fn generate(&mut self, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
         match self {
             SourceType::NoSource => {
@@ -124,6 +125,7 @@ impl Generator for SourceType {
 }
 
 impl EventDispatcher for SourceType {
+    #[inline(always)]
     fn dispatch_events(&mut self) {
         match self {
             SourceType::NoSource => {

@@ -10,3 +10,11 @@ yage2-app = { path = "../crates/yage2-app" }
 yage2-core = { path = "../crates/yage2-core" }
 yage2-yarc = { path = "../crates/yage2-yarc" }
 yage2-sound = { path = "../crates/yage2-sound" }
+
+[profile.release]
+lto = true
+opt-level = 3
+
+[profile.dev]
+lto = false
+opt-level = 1

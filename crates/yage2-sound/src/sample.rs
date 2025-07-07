@@ -154,6 +154,7 @@ impl_sample!(f32, SampleCode::F32);
 impl_sample!(f64, SampleCode::F64);
 
 #[repr(C)]
+#[repr(packed)]
 #[derive(Debug, Default, Copy, Clone)]
 pub(crate) struct InterleavedSample<S>
 where
@@ -205,15 +206,32 @@ where
     }
 }
 
-/// This struct represents a buffer of interleaved samples.
-/// It is used to store audio samples in a format where
-/// each sample contains data for all channels interleaved together.
-/// For example: r.0, l.0, r.1, l.1, r.2, l.2, ...
-/// Used for endpoint audio processing - passing data to the audio device.
-/// The Amount of samples in the buffer is equal to `DEVICE_BUFFER_SIZE`.
+#[repr(C)]
+#[repr(align(32))]
+#[derive(Debug)]
+pub(crate) struct InterleavedBlock<S>
+where
+    S: Sample,
+{
+    pub(crate) samples: [InterleavedSample<S>; BLOCK_SIZE],
+}
+
+impl<S> Default for InterleavedBlock<S>
+where
+    S: Sample,
+{
+    fn default() -> Self {
+        Self {
+            samples: [InterleavedSample {
+                channels: [S::zero_value(); CHANNELS_COUNT as usize],
+            }; BLOCK_SIZE],
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Default)]
-pub(crate) struct InterleavedSampleBuffer<'a, S>
+pub(crate) struct MappedInterleavedBuffer<'a, S>
 where
     S: Sample,
 {
@@ -221,7 +239,7 @@ where
     pub(crate) len: usize,
 }
 
-impl<'a, S> InterleavedSampleBuffer<'a, S>
+impl<'a, S> MappedInterleavedBuffer<'a, S>
 where
     S: Sample,
 {
