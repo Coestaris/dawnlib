@@ -1,11 +1,8 @@
-use crate::structures::{Manifest, ResourceMetadata};
+use crate::structures::ResourceMetadata;
 use log::info;
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::io::Read;
-use std::option::Option;
 use tar::Archive;
-use yage2_core::resources::Resource;
 
 #[derive(Default)]
 pub struct Container {
@@ -59,7 +56,11 @@ where
                 .and_then(|f| f.to_str())
                 .unwrap()
                 .to_string();
-            let extension = path.extension().unwrap_or_default().to_string_lossy().to_string();
+            let extension = path
+                .extension()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
 
             let container = containers
                 .entry(we.clone())

@@ -1,0 +1,11 @@
+[package]
+name = "demo-sound"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+common = { path = "../common" }
+yage2-core = { path = "../../crates/yage2-core" }
+yage2-yarc = { path = "../../crates/yage2-yarc" }
+yage2-sound = { path = "../../crates/yage2-sound" }
+log = "0.4.27"

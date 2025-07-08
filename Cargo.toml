@@ -1,8 +1,10 @@
 [workspace]
 resolver = "2"
 members = [
-    "app",
-    "tools/packager",
+    "apps/demo-app",
+    "apps/demo-sound",
+    "apps/packager",
+
     "crates/yage2-core",
     "crates/yage2-app",
     "crates/yage2-sound",

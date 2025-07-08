@@ -1,7 +1,6 @@
 use crate::dsp::math::basic::{pan_gain_fallback, phase_clamp};
 use crate::sample::PlanarBlock;
 use crate::{SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
-use log::info;
 use std::arch::is_aarch64_feature_detected;
 
 mod mix {
@@ -44,7 +43,7 @@ mod mix {
 
 mod basic {
     use crate::sample::{PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
-    use crate::{BLOCK_SIZE, CHANNELS_COUNT};
+    use crate::BLOCK_SIZE;
 
     #[inline(never)]
     #[target_feature(enable = "neon")]
