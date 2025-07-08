@@ -112,7 +112,7 @@ impl Processor for Reverb {
         for delay_line in &mut self.delay_lines {
             add_line(input, output, delay_line);
         }
-        
+
         // Ensure output is clamped to prevent overflow
         for channel in 0..CHANNELS_COUNT {
             for sample in &mut output.samples[channel] {

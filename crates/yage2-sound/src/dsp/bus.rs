@@ -1,5 +1,5 @@
-use crate::dsp::{BlockInfo, EventDispatcher, Generator, Processor, ProcessorType, SourceType};
 use crate::control::{new_control, ControlReceiver, Controller};
+use crate::dsp::{BlockInfo, EventDispatcher, Generator, Processor, ProcessorType, SourceType};
 use crate::sample::PlanarBlock;
 
 #[derive(Debug)]
@@ -138,9 +138,11 @@ impl Generator for Bus {
             }
         }
 
-        // Apply pan and volume p
-        let panning = self.controllable.pan.clamp(-1.0, 1.0);
-        let volume = self.controllable.volume.clamp(0.0, 1.0);
-        output.pan_gain_phase_clamp(panning, volume, self.controllable.invert_phase);
+        // Apply pan and volume and phase inversion
+        output.pan_gain_phase_clamp(
+            self.controllable.pan,
+            self.controllable.volume,
+            self.controllable.invert_phase,
+        );
     }
 }
