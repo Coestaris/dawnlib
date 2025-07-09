@@ -8,6 +8,9 @@ mod pan_gain_phase_clamp;
 mod copy_into_interleaved;
 #[cfg(test)]
 mod tests;
+mod soft_clip;
+mod soft_limit;
+mod fir;
 
 #[cfg(target_arch = "x86_64")]
 mod features {
@@ -180,4 +183,55 @@ impl PlanarBlock<f32> {
         // Fallback to the basic implementation if no SIMD is available
         fallback(self, pan, gain, invert_phase);
     }
+
+    #[inline(always)]
+    pub(crate) fn soft_clip(&mut self) {
+        macro_rules! accelerated(
+            ($arch:expr, $align:expr, $condvar:ident, $func:expr) => {
+                call_accelerated!(
+                    $arch,
+                    $align,
+                    $condvar,
+                    $func,
+                    self
+                );
+            }
+        );
+
+        // use soft_clip::*;
+        // accelerated!("aarch64", 4, ARM_HAS_NEON, neon_block_m4);
+        // accelerated!("aarch64", 4, ARM_HAS_SVE, sve_block_m4);
+        // accelerated!("x86_64", 32, X86_HAS_AVX512, avx512_block_m32);
+        // accelerated!("x86_64", 32, X86_HAS_AVX2, avx2_block_m32);
+        // accelerated!("x86_64", 32, X86_HAS_AVX, avx_block_m32);
+        // accelerated!("x86_64", 32, X86_HAS_SSE42, sse42_block_m32);
+        //
+        // // Fallback to the basic implementation if no SIMD is available
+        // fallback(self);
+    }
 }
+
+// let mut dry = AudioBlock::zero();
+// let mut wet = AudioBlock::zero();
+//
+// // UI, FX, Music → dry микс
+// self.ui.process(&mut dry);
+// self.fx.process(&mut dry);
+// self.music.process(&mut dry);
+//
+// // Создаем send из dry (или его копии)
+// let send = SendTap {
+//     src: &dry,
+//     gain: 0.5, // громкость посыла в реверб
+// };
+// send.send_to(&mut self.reverb_input);
+//
+// // Обработка реверберации
+// self.reverb.process(&mut wet);
+//
+// // Сумма dry + wet
+// out.mix_from(&dry, 1.0);
+// out.mix_from(&wet, 1.0);
+
+// let send_fx = SendTap { src: &fx_output, gain: 0.7 };
+// send_fx.send_to(&mut self.reverb_input);
