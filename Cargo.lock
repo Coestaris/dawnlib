@@ -114,18 +114,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
-name = "app"
-version = "0.1.0"
-dependencies = [
- "ansi_term",
- "log",
- "yage2-app",
- "yage2-core",
- "yage2-sound",
- "yage2-yarc",
-]
-
-[[package]]
 name = "ash"
 version = "0.38.0+1.3.281"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -277,6 +265,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "common"
+version = "0.1.0"
+dependencies = [
+ "ansi_term",
+ "log",
+ "yage2-core",
+ "yage2-yarc",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -356,6 +354,29 @@ name = "dasp_sample"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c87e182de0887fd5361989c677c4e8f5000cd9491d6d563161a8f3a5519fc7f"
+
+[[package]]
+name = "demo-app"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "yage2-app",
+ "yage2-core",
+ "yage2-sound",
+ "yage2-yarc",
+]
+
+[[package]]
+name = "demo-sound"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "yage2-core",
+ "yage2-sound",
+ "yage2-yarc",
+]
 
 [[package]]
 name = "deranged"
@@ -892,8 +913,8 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 name = "packager"
 version = "0.1.0"
 dependencies = [
- "ansi_term",
  "clap",
+ "common",
  "log",
  "yage2-core",
  "yage2-yarc",

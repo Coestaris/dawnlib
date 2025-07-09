@@ -1,7 +1,7 @@
 use crate::control::{new_control, ControlReceiver, Controller};
 use crate::dsp::{BlockInfo, EventDispatcher, Generator, SourceType};
 use crate::resources::ClipResource;
-use crate::sample::{PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
+use crate::sample::PlanarBlock;
 use crate::BLOCK_SIZE;
 use yage2_core::resources::Resource;
 

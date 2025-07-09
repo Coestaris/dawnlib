@@ -208,6 +208,7 @@ impl Display for ThreadError {
 }
 
 impl std::error::Error for ThreadError {}
+
 struct Feedback {
     native_id: (Condvar, Mutex<NativeId>),
 }
