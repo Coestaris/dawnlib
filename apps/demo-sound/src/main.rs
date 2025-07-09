@@ -17,18 +17,37 @@ use yage2_sound::dsp::sources::sampler::{SamplerMessage, SamplerSource};
 use yage2_sound::manager::{AudioManager, AudioManagerConfig};
 
 fn profile_audio(frame: &yage2_sound::manager::ProfileFrame) {
+    // Calculate the time in milliseconds, the generator thread
+    // is maximally allowed to take to fill the device buffer.
+    let allowed_time = 1000.0
+        / ((frame.sample_rate as usize * (frame.device_buffer_size / frame.block_size))
+            / (frame.device_buffer_size)) as f32;
+
+    // Calculate the average load of the generator thread
+    let proc_load_precent = frame.gen_av / allowed_time * 100.0;
+
+    // When no events are processed, we cannot calculate the load
+    // (since the thread is not running).
+    // Assume that events thread has the same maximum allowed time
+    // as the generator thread.
+    let events_load_precent = if frame.events_tps_av == 0.0 {
+        0.0
+    } else {
+        frame.events_av / allowed_time * 100.0
+    };
+
+    // Buffer health is the ratio of available samples in the ring buffer.
+    // Zero means that the buffer is empty and the audio device is starving.
+    // One means that the buffer is full and the audio device has some samples in reserve.
+    let buffer_health_precent = frame.available_av / frame.ring_buffer_size as f32 * 100.0;
+
     info!(
-        "Gen: {:.1}/{:.1} (of {:.1}) ({:.0}). Ev: {:.1} ({:.0}). Buffer: {:}/{:}/{:}",
-        frame.gen_av,
-        frame.write_bulk_av,
-        1000.0
-            / ((frame.sample_rate as usize * (frame.buffer_size / frame.block_size))
-                / (frame.buffer_size)) as f32,
-        frame.gen_tps_av,
-        frame.events_av,
+        "Gen load: {:.1}%. Ev load {:.1}% ({:.0}). Buffer health: {:.1}% ({}/{})",
+        proc_load_precent,
+        events_load_precent,
         frame.events_tps_av,
+        buffer_health_precent,
         frame.available_min,
-        frame.available_av,
         frame.available_max
     );
 }

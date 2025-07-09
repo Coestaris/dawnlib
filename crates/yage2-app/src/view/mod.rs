@@ -1,5 +1,8 @@
 #[cfg(target_os = "macos")]
 mod darwin;
+#[cfg(target_os = "linux")]
+// TODO: Support for Wayland
+mod x11;
 
 use crate::event::Event;
 use crate::vulkan::objects::surface::Surface;
@@ -9,13 +12,22 @@ use std::sync::mpsc::Sender;
 pub mod view_impl {
     use crate::view::darwin;
 
-    pub type PlatformSpecificViewConfig = darwin::ViewConfig;
+    pub type PlatformSpecificViewConfig = darwin::PlatformSpecificViewConfig;
     pub type ViewError = darwin::ViewError;
     pub(crate) type View = darwin::View;
 }
 
-pub use view_impl::*;
+#[cfg(target_os = "linux")]
+pub mod view_impl {
+    use crate::view::x11;
+
+    pub type PlatformSpecificViewConfig = x11::PlatformSpecificViewConfig;
+    pub type ViewError = x11::ViewError;
+    pub(crate) type View = x11::View;
+}
+
 use crate::vulkan::GraphicsError;
+pub use view_impl::*;
 
 #[derive(Debug, Clone)]
 pub struct ViewConfig {

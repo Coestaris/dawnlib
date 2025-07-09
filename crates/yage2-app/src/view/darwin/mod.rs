@@ -6,7 +6,7 @@ use ash::{Entry, Instance};
 use std::sync::mpsc::Sender;
 
 #[derive(Debug, Clone)]
-pub struct ViewConfig {}
+pub struct PlatformSpecificViewConfig {}
 
 #[derive(Debug)]
 pub enum ViewError {}

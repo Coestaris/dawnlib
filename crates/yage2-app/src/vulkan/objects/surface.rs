@@ -1,8 +1,15 @@
-use crate::vulkan::{VkObject, GraphicsError, SURFACE_EXTENSION_NAME};
+use crate::vulkan::{GraphicsError, VkObject, SURFACE_EXTENSION_NAME};
 use ash::vk::SurfaceKHR;
 use ash::{vk, Device, Instance};
 use log::debug;
 use std::ffi::c_char;
+
+#[cfg(target_os = "macos")]
+use crate::vulkan::MACOS_SURFACE_EXTENSION_NAME;
+#[cfg(target_os = "windows")]
+use crate::vulkan::WIN32_SURFACE_EXTENSION_NAME;
+#[cfg(target_os = "linux")]
+use crate::vulkan::XLIB_SURFACE_EXTENSION_NAME;
 
 pub(crate) struct Surface {
     pub(crate) vk_surface: SurfaceKHR,

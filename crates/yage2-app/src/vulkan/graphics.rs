@@ -12,6 +12,7 @@ use ash::vk::{CommandBufferResetFlags, CommandPoolCreateFlags};
 use ash::{vk, Device, Instance};
 use log::{debug, info, warn};
 use std::ffi::c_char;
+use std::thread::sleep;
 
 #[derive(Clone)]
 pub struct GraphicsConfig {}
@@ -444,13 +445,13 @@ impl Graphics {
             let shader1 = Shader::new_from_file(
                 ShaderType::Vertex,
                 &device,
-                "D:\\Coding\\yage2\\app\\resources\\shaders\\triangle.vert.spv",
+                "/home/taris/work/yage2/target/vert",
                 Some("triangle_vert".to_string()),
             )?;
             let shader2 = Shader::new_from_file(
                 ShaderType::Fragment,
                 &device,
-                "D:\\Coding\\yage2\\app\\resources\\shaders\\triangle.frag.spv",
+                "/home/taris/work/yage2/target/frag",
                 Some("triangle_frag".to_string()),
             )?;
             let stages = [
@@ -507,6 +508,9 @@ impl Graphics {
     }
 
     pub(crate) fn tick(&mut self, renderables: &[Renderable]) -> Result<GraphicsTickResult, GraphicsError> {
+        sleep(std::time::Duration::from_millis(16)); // Simulate a frame time of ~60 FPS
+        return Ok(GraphicsTickResult{ drawn_triangles: 0 });
+
         // Acquire the next image from the swapchain
         self.image_index = {
             loop {

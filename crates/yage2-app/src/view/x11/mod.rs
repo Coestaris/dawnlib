@@ -1,13 +1,10 @@
-use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
-use crate::engine::event::Event;
-use crate::engine::graphics::Graphics;
-use crate::engine::vulkan::graphics::{Graphics, VulkanGraphicsInitArgs};
-use crate::engine::vulkan::objects::surface::Surface;
-use crate::engine::vulkan::GraphicsError;
-use crate::engine::window::{Window, WindowConfig, WindowFactory};
-use ash::vk;
+use crate::event::Event;
+use crate::view::{TickResult, ViewConfig, ViewTrait};
+use crate::vulkan::objects::surface::Surface;
+use crate::vulkan::GraphicsError;
+use ash::{vk, Entry, Instance};
 use log::{debug, info};
-use std::ffi::c_char;
+use std::ffi::{c_char, c_uint};
 use std::ptr::addr_of_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
@@ -16,72 +13,55 @@ use std::thread;
 use x11::xlib;
 use x11::xlib::{
     Atom, ButtonPressMask, ButtonReleaseMask, CWEventMask, ClientMessage, CopyFromParent,
-    CurrentTime, Display, ExposureMask, InputOutput, KeyPressMask, KeyReleaseMask, NoEventMask, PointerMotionMask, XAutoRepeatOff, XClearWindow, XCloseDisplay,
-    XCreateWindow, XDefaultScreen, XDestroyWindow, XEvent, XFlush, XInternAtom, XMapRaised,
-    XNextEvent, XOpenDisplay, XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes,
-    XStoreName, XSync,
+    CurrentTime, Display, ExposureMask, InputOutput, KeyPressMask, KeyReleaseMask, NoEventMask,
+    PointerMotionMask, XAutoRepeatOff, XClearWindow, XCloseDisplay, XCreateWindow, XDefaultScreen,
+    XDestroyWindow, XEvent, XFlush, XInternAtom, XMapRaised, XNextEvent, XOpenDisplay, XRootWindow,
+    XSendEvent, XSetWMProtocols, XSetWindowAttributes, XStoreName, XSync,
 };
 
 mod input;
 
+#[derive(Clone, Debug)]
+pub struct PlatformSpecificViewConfig {}
+
 #[derive(Debug)]
 #[allow(dead_code)]
-pub enum X11Error {
+pub enum ViewError {
     OpenDisplayError,
     CreateWindowError,
     SpawnEventsThreadError,
     JoinEventsThreadError,
-    GraphicsCreateError(GraphicsError),
-    VulkanCreateSurfaceError(vk::Result),
-    VulkanUpdateSurfaceError(GraphicsError),
 }
 
-pub struct X11Window {
+impl std::fmt::Display for ViewError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ViewError::OpenDisplayError => write!(f, "Failed to open X11 display"),
+            ViewError::CreateWindowError => write!(f, "Failed to create X11 window"),
+            ViewError::SpawnEventsThreadError => write!(f, "Failed to spawn events thread"),
+            ViewError::JoinEventsThreadError => write!(f, "Failed to join events thread"),
+        }
+    }
+}
+
+impl std::error::Error for ViewError {}
+
+pub(crate) struct View {
     display: *mut Display,
     window: xlib::Window,
-    graphics: Graphics,
 
     delete_message: Atom,
 
     /* A signal to stop the event handling thread */
     stop_signal: Arc<AtomicBool>,
-    events_thread: Option<thread::JoinHandle<Result<(), X11Error>>>,
-}
-
-pub struct X11Application {
-    window_factory: X11WindowFactory,
-}
-
-impl Application<X11Window, X11Error, Graphics, GraphicsError> for X11Application {
-    fn new(
-        config: ApplicationConfig,
-    ) -> Result<X11Application, ApplicationError<X11Error, GraphicsError>>
-    where
-        Self: Sized,
-    {
-        info!("Creating X11 application with config: {:?}", config);
-        let window_factory =
-            X11WindowFactory::new(config.window_config).map_err(ApplicationError::InitError)?;
-        Ok(X11Application { window_factory })
-    }
-
-    fn get_window_factory(
-        &self,
-    ) -> Arc<dyn WindowFactory<X11Window, X11Error, Graphics> + Send + Sync> {
-        Arc::new(self.window_factory.clone())
-    }
-}
-
-#[derive(Clone, Debug)]
-struct X11WindowFactory {
-    config: WindowConfig,
+    events_thread: Option<thread::JoinHandle<Result<(), ViewError>>>,
 }
 
 fn process_events_sync(
     display: *mut Display,
     close_atom: Atom,
     events_sender: &Sender<Event>,
-) -> Result<bool, X11Error> {
+) -> Result<bool, ViewError> {
     let event = unsafe {
         let mut event: XEvent = std::mem::zeroed();
         XNextEvent(display, &mut event);
@@ -157,21 +137,13 @@ fn process_events_sync(
     Ok(true)
 }
 
-impl WindowFactory<X11Window, X11Error, Graphics> for X11WindowFactory {
-    fn new(config: WindowConfig) -> Result<Self, X11Error>
-    where
-        Self: Sized,
-    {
-        info!("Creating X11 window factory with config: {:?}", config);
-        Ok(X11WindowFactory { config })
-    }
-
-    fn create_window(&self, events_sender: Sender<Event>) -> Result<X11Window, X11Error> {
+impl ViewTrait for View {
+    fn open(cfg: ViewConfig, events_sender: Sender<Event>) -> Result<Self, ViewError> {
         unsafe {
             debug!("Opening X11 display");
             let display = XOpenDisplay(std::ptr::null());
             if display.is_null() {
-                return Err(X11Error::OpenDisplayError);
+                return Err(ViewError::OpenDisplayError);
             }
 
             debug!("Creating X11 window");
@@ -203,8 +175,8 @@ impl WindowFactory<X11Window, X11Error, Graphics> for X11WindowFactory {
                 XRootWindow(display, screen_id),
                 0,
                 0,
-                self.config.width,
-                self.config.height,
+                cfg.width as c_uint,
+                cfg.height as c_uint,
                 0,
                 CopyFromParent as i32,
                 InputOutput as u32,
@@ -213,33 +185,15 @@ impl WindowFactory<X11Window, X11Error, Graphics> for X11WindowFactory {
                 addr_of_mut!(window_attributes),
             );
             if window == 0 {
-                return Err(X11Error::CreateWindowError);
+                return Err(ViewError::CreateWindowError);
             }
 
             debug!("Setting up X11 window attributes");
-            XStoreName(display, window, self.config.title.as_ptr() as *const c_char);
+            XStoreName(display, window, cfg.title.as_ptr() as *const c_char);
             XSync(display, 0);
             XAutoRepeatOff(display);
             XClearWindow(display, window);
             XMapRaised(display, window);
-
-            debug!("Creating Vulkan graphics");
-            let graphics = Graphics::new(VulkanGraphicsInitArgs {
-                instance_extensions: vec![ash::khr::xlib_surface::NAME.as_ptr() as *const c_char],
-                device_extensions: vec![],
-                layers: vec![],
-                surface_constructor: Box::new(|entry, instance| {
-                    debug!("Creating X11 Vulkan surface");
-                    Surface::new(
-                        entry,
-                        instance,
-                        display as *mut vk::Display,
-                        window as vk::Window,
-                        Some("x11_surface".to_string()),
-                    )
-                }),
-            })
-            .map_err(X11Error::GraphicsCreateError)?;
 
             let delete_message =
                 XInternAtom(display, b"WM_DELETE_WINDOW\0".as_ptr() as *const c_char, 0);
@@ -249,6 +203,8 @@ impl WindowFactory<X11Window, X11Error, Graphics> for X11WindowFactory {
 
             let signal_stop = stop_signal.clone();
             let display_ptr = display.addr();
+
+            // TODO: Use thread manager
             let events_thread = thread::Builder::new()
                 .name("X11Events".to_string())
                 .spawn(move || {
@@ -275,51 +231,53 @@ impl WindowFactory<X11Window, X11Error, Graphics> for X11WindowFactory {
                 })
                 .map_err(|e| {
                     debug!("Failed to spawn X11 events thread: {:?}", e);
-                    X11Error::SpawnEventsThreadError
+                    ViewError::SpawnEventsThreadError
                 })?;
 
             info!("X11 Window with Vulkan graphics created successfully");
-            Ok(X11Window {
+            Ok(View {
                 display,
                 window,
-                graphics,
                 delete_message,
                 stop_signal: stop_signal.clone(),
                 events_thread: Some(events_thread),
             })
         }
     }
-}
 
-impl Drop for X11Window {
-    fn drop(&mut self) {
-        debug!("Dropping X11Window");
-        unsafe {
-            debug!("Destroying X11 window");
-            XDestroyWindow(self.display, self.window);
-
-            if !self.display.is_null() {
-                debug!("Closing X11 display");
-                XCloseDisplay(self.display);
-            }
-        }
+    fn create_surface(&self, entry: &Entry, instance: &Instance) -> Result<Surface, GraphicsError> {
+        Surface::new(
+            entry,
+            instance,
+            self.display as *mut vk::Display,
+            self.window as vk::Window,
+            Some("x11_surface".to_string()),
+        )
     }
-}
 
-impl Window<X11Error, Graphics> for X11Window {
-    fn tick(&mut self) -> Result<bool, X11Error> {
+    fn tick(&mut self) -> TickResult {
         /* if the events thread is dead, we need to stop as well */
         if let Some(ref thread) = self.events_thread {
             if thread.is_finished() {
                 debug!("X11 events thread is dead, stopping window tick");
-                return Ok(false);
+                return TickResult::Closed;
             }
         }
 
-        Ok(true)
+        TickResult::Continue
     }
 
-    fn kill(&mut self) -> Result<(), X11Error> {
+    fn set_size(&self, width: usize, height: usize) {
+        todo!()
+    }
+
+    fn set_title(&self, title: &str) {
+        todo!()
+    }
+}
+
+impl Drop for View {
+    fn drop(&mut self) {
         /* If the events thread is running,
          * signal it to stop */
         if let Some(thread) = self.events_thread.take() {
@@ -355,15 +313,18 @@ impl Window<X11Error, Graphics> for X11Window {
 
             /* Wait for the events thread to finish */
             debug!("Waiting for X11 events thread to finish");
-            thread
-                .join()
-                .map_err(|_| X11Error::JoinEventsThreadError)??;
+            let _ = thread.join().map_err(|_| ViewError::JoinEventsThreadError);
         }
 
-        Ok(())
-    }
+        debug!("Dropping X11Window");
+        unsafe {
+            debug!("Destroying X11 window");
+            XDestroyWindow(self.display, self.window);
 
-    fn get_graphics(&mut self) -> &mut Graphics {
-        &mut self.graphics
+            if !self.display.is_null() {
+                debug!("Closing X11 display");
+                XCloseDisplay(self.display);
+            }
+        }
     }
 }
