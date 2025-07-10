@@ -152,6 +152,14 @@ pub unsafe fn neon_block_m4(input: &PlanarBlock<f32>, output: &mut InterleavedBl
     }
 }
 
+#[inline(never)]
+#[cfg(target_arch = "aarch64")]
+#[target_feature(enable = "sve")]
+pub(crate) fn sve_block_m4(input: &PlanarBlock<f32>, output: &mut InterleavedBlock<f32>) {
+    todo!()
+}
+
+
 #[inline(always)]
 pub(crate) fn fallback(input: &PlanarBlock<f32>, output: &mut InterleavedBlock<f32>) {
     for i in 0..BLOCK_SIZE {

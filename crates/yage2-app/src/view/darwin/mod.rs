@@ -1,8 +1,5 @@
 use crate::event::Event;
-use crate::view::{TickResult, ViewTrait};
-use crate::vulkan::objects::surface::Surface;
-use crate::vulkan::GraphicsError;
-use ash::{Entry, Instance};
+use crate::view::{TickResult, ViewHandle, ViewTrait};
 use std::sync::mpsc::Sender;
 
 #[derive(Debug, Clone)]
@@ -21,9 +18,10 @@ impl ViewTrait for View {
         todo!()
     }
 
-    fn create_surface(&self, entry: &Entry, instance: &Instance) -> Result<Surface, GraphicsError> {
+    fn get_handle(&self) -> ViewHandle {
         todo!()
     }
+
 
     fn tick(&mut self) -> TickResult {
         todo!()

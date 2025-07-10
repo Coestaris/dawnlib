@@ -122,7 +122,7 @@ fn renderer_inner(
 
     let mut graphics = Graphics::open(
         cfg.graphics_config,
-        |entry: &ash::Entry, instance: &ash::Instance| view.create_surface(entry, instance),
+        view.get_handle(),
     )
     .map_err(RendererThreadError::GraphicsCreateError)?;
 

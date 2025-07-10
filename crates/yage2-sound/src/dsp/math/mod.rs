@@ -38,6 +38,8 @@ mod features {
 
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
 mod features {
+    use log::debug;
+
     pub static ARM_HAS_NEON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     pub static ARM_HAS_SVE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 

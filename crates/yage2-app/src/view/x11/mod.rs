@@ -1,6 +1,6 @@
 use crate::event::Event;
 use crate::view::{TickResult, ViewConfig, ViewTrait};
-use crate::vulkan::objects::surface::Surface;
+use crate::vulkan::objects::surface::{Surface, ViewHandle};
 use crate::vulkan::GraphicsError;
 use ash::{vk, Entry, Instance};
 use log::{debug, info};
@@ -245,14 +245,11 @@ impl ViewTrait for View {
         }
     }
 
-    fn create_surface(&self, entry: &Entry, instance: &Instance) -> Result<Surface, GraphicsError> {
-        Surface::new(
-            entry,
-            instance,
-            self.display as *mut vk::Display,
-            self.window as vk::Window,
-            Some("x11_surface".to_string()),
-        )
+    fn get_handle(&self) -> ViewHandle {
+        ViewHandle::X11 {
+            display: self.display as *mut vk::Display,
+            window: self.window as vk::Window,
+        }
     }
 
     fn tick(&mut self) -> TickResult {

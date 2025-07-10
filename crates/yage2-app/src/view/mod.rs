@@ -5,8 +5,8 @@ mod darwin;
 mod x11;
 
 use crate::event::Event;
-use crate::vulkan::objects::surface::Surface;
 use std::sync::mpsc::Sender;
+use ash::vk;
 
 #[cfg(target_os = "macos")]
 pub mod view_impl {
@@ -26,8 +26,20 @@ pub mod view_impl {
     pub(crate) type View = x11::View;
 }
 
-use crate::vulkan::GraphicsError;
 pub use view_impl::*;
+
+pub(crate) enum ViewHandle {
+    Darwin {},
+    Windows {
+        hinstance: vk::HINSTANCE,
+        hwnd: vk::HWND,
+    },
+    X11 {
+        display: *mut vk::Display,
+        window: vk::Window,
+    },
+    Wayland,
+}
 
 #[derive(Debug, Clone)]
 pub struct ViewConfig {
@@ -48,11 +60,7 @@ pub(crate) trait ViewTrait {
     where
         Self: Sized;
 
-    fn create_surface(
-        &self,
-        entry: &ash::Entry,
-        instance: &ash::Instance,
-    ) -> Result<Surface, GraphicsError>;
+    fn get_handle(&self) -> ViewHandle;
 
     fn tick(&mut self) -> TickResult;
 

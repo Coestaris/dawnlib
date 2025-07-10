@@ -1,4 +1,5 @@
 use crate::object::Renderable;
+use crate::view::ViewHandle;
 use crate::vulkan::device::{get_device_extensions, get_physical_device};
 use crate::vulkan::instance::{get_instance_extensions, get_layers, setup_debug};
 use crate::vulkan::objects::command_buffer::CommandBuffer;
@@ -245,7 +246,7 @@ impl Graphics {
 impl Graphics {
     pub(crate) fn open(
         config: GraphicsConfig,
-        surface_constructor: impl Fn(&ash::Entry, &Instance) -> Result<Surface, GraphicsError>,
+        view_handle: ViewHandle,
     ) -> Result<Self, GraphicsError>
     where
         Self: Sized,
@@ -291,7 +292,12 @@ impl Graphics {
             let physical_device = get_physical_device(&instance)?;
             let device_extensions = get_device_extensions(&instance, physical_device)?;
             let device_extensions_array = device_extensions.as_slice();
-            let surface = surface_constructor(&entry, &instance)?;
+            let surface = Surface::new(
+                &entry,
+                &instance,
+                view_handle,
+                Some("main_surface".to_string()),
+            )?;
 
             let graphics_queue_family_index =
                 get_graphics_queue_family_index(&instance, physical_device)?;
@@ -507,9 +513,12 @@ impl Graphics {
         }
     }
 
-    pub(crate) fn tick(&mut self, renderables: &[Renderable]) -> Result<GraphicsTickResult, GraphicsError> {
+    pub(crate) fn tick(
+        &mut self,
+        renderables: &[Renderable],
+    ) -> Result<GraphicsTickResult, GraphicsError> {
         sleep(std::time::Duration::from_millis(16)); // Simulate a frame time of ~60 FPS
-        return Ok(GraphicsTickResult{ drawn_triangles: 0 });
+        return Ok(GraphicsTickResult { drawn_triangles: 0 });
 
         // Acquire the next image from the swapchain
         self.image_index = {

@@ -3,7 +3,7 @@ use ash::vk::SurfaceKHR;
 use ash::{vk, Device, Instance};
 use log::debug;
 use std::ffi::c_char;
-
+use crate::view::ViewHandle;
 #[cfg(target_os = "macos")]
 use crate::vulkan::MACOS_SURFACE_EXTENSION_NAME;
 #[cfg(target_os = "windows")]
@@ -20,53 +20,41 @@ pub(crate) struct Surface {
 }
 
 impl Surface {
-    #[cfg(target_os = "windows")]
     pub fn new(
         entry: &ash::Entry,
         instance: &Instance,
-        hinstance: vk::HINSTANCE,
-        hwnd: vk::HWND,
+        handle: ViewHandle,
         name: Option<String>,
     ) -> Result<Self, GraphicsError> {
         debug!("Creating surface with name: {:?}", name);
 
-        let surface_loader = ash::khr::win32_surface::Instance::new(entry, instance);
-        let create_info = ash::vk::Win32SurfaceCreateInfoKHR::default()
-            .hinstance(hinstance)
-            .hwnd(hwnd);
+        let vk_surface = match handle {
+            ViewHandle::X11 { display, window } => {
+                let surface_loader = ash::khr::xlib_surface::Instance::new(entry, instance);
+                let create_info = vk::XlibSurfaceCreateInfoKHR::default()
+                    .dpy(display)
+                    .window(window);
 
-        let vk_surface = unsafe {
-            surface_loader
-                .create_win32_surface(&create_info, None)
-                .map_err(GraphicsError::SurfaceCreateError)?
-        };
+                unsafe {
+                    surface_loader
+                        .create_xlib_surface(&create_info, None)
+                        .map_err(GraphicsError::SurfaceCreateError)?
+                }
+            }
+            ViewHandle::Windows { hinstance, hwnd } => {
+                let surface_loader = ash::khr::win32_surface::Instance::new(entry, instance);
+                let create_info = ash::vk::Win32SurfaceCreateInfoKHR::default()
+                    .hinstance(hinstance)
+                    .hwnd(hwnd);
 
-        Ok(Surface {
-            vk_surface,
-            surface_loader: ash::khr::surface::Instance::new(entry, instance),
-            name,
-        })
-    }
-
-    #[cfg(target_os = "linux")]
-    pub fn new(
-        entry: &ash::Entry,
-        instance: &Instance,
-        xlib_display: *mut vk::Display,
-        xlib_window: vk::Window,
-        name: Option<String>,
-    ) -> Result<Self, GraphicsError> {
-        debug!("Creating surface with name: {:?}", name);
-
-        let surface_loader = ash::khr::xlib_surface::Instance::new(entry, instance);
-        let create_info = vk::XlibSurfaceCreateInfoKHR::default()
-            .dpy(xlib_display)
-            .window(xlib_window);
-
-        let vk_surface = unsafe {
-            surface_loader
-                .create_xlib_surface(&create_info, None)
-                .map_err(GraphicsError::SurfaceCreateError)?
+                unsafe {
+                    surface_loader
+                        .create_win32_surface(&create_info, None)
+                        .map_err(GraphicsError::SurfaceCreateError)?
+                }
+            }
+            
+            _ => todo!()
         };
 
         Ok(Surface {

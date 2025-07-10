@@ -77,6 +77,7 @@ pub(crate) const VALIDATION_LAYER_NAME: *const c_char =
     unsafe { CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0") }.as_ptr()
         as *const c_char;
 pub(crate) const SURFACE_EXTENSION_NAME: *const c_char = ash::khr::surface::NAME.as_ptr() as *const c_char;
+pub(crate) const MACOS_SURFACE_EXTENSION_NAME: *const c_char = ash::mvk::macos_surface::NAME.as_ptr() as *const c_char;
 pub(crate) const WIN32_SURFACE_EXTENSION_NAME: *const c_char =
     ash::khr::win32_surface::NAME.as_ptr() as *const c_char;
 pub(crate) const XLIB_SURFACE_EXTENSION_NAME: *const c_char =

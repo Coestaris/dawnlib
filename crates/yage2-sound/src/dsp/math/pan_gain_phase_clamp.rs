@@ -4,7 +4,7 @@ use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 #[inline(never)]
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
 #[target_feature(enable = "neon")]
-pub unsafe fn neon_block_m4(block: &mut PlanarBlock<f32>, pan: f32, gain: f32) {
+pub unsafe fn neon_block_m4(block: &mut PlanarBlock<f32>, pan: f32, gain: f32, invert_phase: bool) {
     use core::arch::aarch64::*;
 
     let left_gain = gain * (1.0 - pan).sqrt();
@@ -33,6 +33,13 @@ pub unsafe fn neon_block_m4(block: &mut PlanarBlock<f32>, pan: f32, gain: f32) {
 
         i += 4; // Process 4 samples at a time
     }
+}
+
+#[inline(never)]
+#[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
+#[target_feature(enable = "sve")]
+pub unsafe fn sve_block_m4(block: &mut PlanarBlock<f32>, pan: f32, gain: f32, invert_phase: bool) {
+    todo!()
 }
 
 #[inline(never)]
