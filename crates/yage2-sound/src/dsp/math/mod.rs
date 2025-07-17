@@ -6,11 +6,11 @@ mod mix;
 mod pan_gain_phase_clamp;
 
 mod copy_into_interleaved;
-#[cfg(test)]
-mod tests;
+mod fir;
 mod soft_clip;
 mod soft_limit;
-mod fir;
+#[cfg(test)]
+mod tests;
 
 #[cfg(target_arch = "x86_64")]
 mod features {
@@ -90,6 +90,15 @@ impl PlanarBlock<f32> {
 
     #[inline(always)]
     pub(crate) fn copy_from(&mut self, input: &PlanarBlock<f32>) {
+        // If the input and self are the same, we can skip copying
+        // (check if they are the same reference)
+        let addr_self = self as *const _;
+        let addr_input = input as *const _;
+        if addr_self == addr_input {
+            return;
+        }
+
+        // Copy samples from input to self for each channel
         for channel in 0..CHANNELS_COUNT {
             let src_ptr = input.samples[channel].as_ptr();
             let dst_ptr = self.samples[channel].as_mut_ptr();

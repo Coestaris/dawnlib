@@ -9,6 +9,7 @@ pub mod manager;
 mod resources;
 mod ringbuf;
 mod sample;
+mod entities;
 
 pub type SamplesCount = usize;
 pub type SampleRate = usize;
