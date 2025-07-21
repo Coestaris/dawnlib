@@ -38,7 +38,7 @@ impl Generator for GroupSource {
         for bus in &mut self.busses {
             let mut bus_output = PlanarBlock::default();
             bus.generate(&mut bus_output, info);
-            output.mix(&bus_output);
+            output.mix(&bus_output, 1.0);
         }
     }
 }

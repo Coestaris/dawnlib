@@ -1,4 +1,4 @@
-use crate::control::{new_control, ControlReceiver, Controller};
+ use crate::control::{new_control, ControlReceiver, Controller};
 use crate::dsp::{BlockInfo, EventDispatcher, Generator, SourceType};
 use crate::resources::ClipResource;
 use crate::sample::PlanarBlock;
@@ -79,7 +79,7 @@ impl Generator for SamplerSource {
             player_block.pan_gain_phase_clamp(player.pan, player.volume, false);
 
             // Mix the player's output into the main output
-            output.mix(&player_block);
+            output.mix(&player_block, 1.0);
 
             // Update the player's position
             player.position += to_copy;
