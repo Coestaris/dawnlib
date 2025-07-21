@@ -140,7 +140,7 @@ impl PlanarBlock<f32> {
     }
 
     #[inline(always)]
-    pub(crate) fn mix(&mut self, input: &PlanarBlock<f32>) {
+    pub(crate) fn mix(&mut self, input: &PlanarBlock<f32>, mix: f32) {
         macro_rules! accelerated(
             ($arch:expr, $align:expr, $condvar:ident, $func:expr) => {
                 call_accelerated!(

@@ -140,7 +140,7 @@ mod tests {
             }
         }
 
-        block1.mix(&block2);
+        block1.mix(&block2, 1.0);
 
         for channel in 0..CHANNELS_COUNT {
             for i in 0..BLOCK_SIZE {
@@ -170,7 +170,7 @@ mod tests {
         }
 
         b.iter(|| {
-            block1.mix(&block2);
+            block1.mix(&block2, 1.0);
         });
     }
 
