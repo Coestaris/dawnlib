@@ -1,7 +1,10 @@
-use crate::entities::multiplexers::MultiplexerSource;
-use crate::entities::{Effect, Event, EventTarget, EventTargetId, NodeRef, Source};
+use crate::entities::{BlockInfo, Effect, Event, EventTarget, EventTargetId, NodeRef, Source};
 use crate::sample::PlanarBlock;
 use log::debug;
+
+pub enum BusEvent {
+    ChangeGain(f32),
+}
 
 pub struct Bus<'a, E, S>
 where
@@ -24,17 +27,17 @@ where
     bus.dispatch(event);
 }
 
-impl<E, S> Bus<'_, E, S>
+impl<'a, E, S> Bus<'a, E, S>
 where
     E: Effect,
     S: Source,
 {
-    pub fn new(gain: f32, effect: &E, source: &S) -> Self {
+    pub fn new(gain: f32, effect: &'a E, source: &'a S) -> Self {
         Bus {
             id: EventTargetId::new(),
             gain,
-            effect: NodeRef::new(unsafe { &*(effect as *const E) }),
-            source: NodeRef::new(unsafe { &*(source as *const S) }),
+            effect: NodeRef::<'a>::new(effect),
+            source: NodeRef::<'a>::new(source),
             output: PlanarBlock::default(),
         }
     }
@@ -44,11 +47,7 @@ where
     }
 
     fn create_event_target(&self) -> EventTarget {
-        EventTarget {
-            id: self.id,
-            dispatcher: dispatch_bus::<E, S>,
-            ptr: self as *const _ as *mut u8,
-        }
+        EventTarget::new(dispatch_bus::<E, S>, self.id, self)
     }
 }
 
@@ -64,13 +63,9 @@ where
         targets
     }
 
-    fn frame_start(&mut self) {
-        self.source.as_mut().frame_start();
-    }
-
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::ChangeBusGain(gain) => {
+            Event::Bus(BusEvent::ChangeGain(gain)) => {
                 debug!("ChangeBusGain of bus {} to {}", self.id, self.gain);
                 self.gain = *gain;
             }
@@ -79,14 +74,19 @@ where
         }
     }
 
-    fn render(&mut self) -> &PlanarBlock<f32> {
+    fn frame_start(&mut self) {
+        self.source.as_mut().frame_start();
+    }
+
+    #[inline(always)]
+    fn render(&mut self, info: &BlockInfo) -> &PlanarBlock<f32> {
         // Render the source
-        let input = self.source.as_mut().render();
+        let input = self.source.as_mut().render(info);
 
         // Apply the effect
         let effect = self.effect.as_mut();
         if !effect.bypass() {
-            effect.process(input, &mut self.output);
+            effect.render(input, &mut self.output, info);
         } else {
             self.output.copy_from(input);
         }

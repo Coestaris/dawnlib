@@ -1,7 +1,8 @@
-use log::{debug, info};
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread::JoinHandle;
+use std::thread;
+use std::thread::{Scope, ScopedJoinHandle};
+use log::{error, info};
 
 #[cfg(target_os = "linux")]
 mod native_impl {
@@ -96,8 +97,8 @@ mod native_impl {
 
 #[cfg(target_os = "windows")]
 mod native_impl {
-    use log::debug;
     use crate::threads::ThreadPriority;
+    use log::debug;
 
     pub type NativeId = usize;
 
@@ -127,8 +128,8 @@ mod native_impl {
 
 #[cfg(target_os = "macos")]
 mod native_impl {
-    use log::debug;
     use crate::threads::ThreadPriority;
+    use log::debug;
 
     pub type NativeId = usize;
 
@@ -159,7 +160,21 @@ mod native_impl {
 use native_impl::*;
 
 pub struct ThreadManagerConfig {
-    pub profile_handle: Option<fn(&ProfileFrame)>,
+    profile_handle: Option<fn(&ProfileFrame)>,
+}
+
+impl ThreadManagerConfig {
+    pub fn new(profile_handle: Option<fn(&ProfileFrame)>) -> Self {
+        ThreadManagerConfig { profile_handle }
+    }
+}
+
+impl Default for ThreadManagerConfig {
+    fn default() -> Self {
+        ThreadManagerConfig {
+            profile_handle: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -168,13 +183,6 @@ pub enum ThreadPriority {
     Normal,
     High,
     Realtime,
-}
-
-struct ThreadWrapper {
-    join: JoinHandle<()>,
-    native_id: NativeId,
-    native_data: NativeData,
-    name: String,
 }
 
 pub struct ProfileThreadFrame {
@@ -187,9 +195,16 @@ pub struct ProfileFrame {
     pub threads: Vec<ProfileThreadFrame>,
 }
 
-pub struct ThreadManager {
-    threads: Mutex<Vec<ThreadWrapper>>,
-    profile_handle: Option<fn(&ProfileFrame)>,
+struct ThreadWrapper<'scope> {
+    join: ScopedJoinHandle<'scope, ()>,
+    native_id: NativeId,
+    native_data: NativeData,
+    name: String,
+}
+
+pub struct ThreadManager<'scope, 'env: 'scope> {
+    threads: Arc<Mutex<Vec<ThreadWrapper<'scope>>>>,
+    scope: &'scope Scope<'scope, 'env>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -239,108 +254,179 @@ impl Feedback {
     }
 }
 
-impl ThreadManager {
-    pub fn new(config: ThreadManagerConfig) -> Self {
-        Self {
-            threads: Mutex::new(Vec::new()),
-            profile_handle: config.profile_handle,
+fn join_all(threads: Arc<Mutex<Vec<ThreadWrapper>>>, profile_handle: Option<fn(&ProfileFrame)>) {
+    let mut threads_guard = threads.lock().unwrap();
+    for thread in threads_guard.drain(..) {
+        if let Err(e) = thread.join.join() {
+            eprintln!("Thread '{}' panicked: {:?}", thread.name, e);
         }
     }
+}
 
-    pub fn spawn(
+pub fn scoped<'env, F>(cfg: ThreadManagerConfig, f: F) -> Result<(), ThreadError>
+where
+    F: for<'scope> FnOnce(ThreadManager<'scope, 'env>) -> (),
+{
+    thread::scope(|s| {
+        let threads = Arc::new(Mutex::new(Vec::new()));
+        let manager = ThreadManager {
+            threads: Arc::clone(&threads),
+            scope: s,
+        };
+
+        f(manager);
+
+        join_all(Arc::clone(&threads), cfg.profile_handle);
+    });
+
+    Ok(())
+}
+
+impl<'scope, 'env: 'scope> ThreadManager<'scope, 'env> {
+    pub fn spawn<F>(
         &self,
         name: String,
         priority: ThreadPriority,
-        thread_fn: impl FnOnce() + Send + 'static,
-    ) -> Result<(), ThreadError> {
+        thread_fn: F,
+    ) -> Result<(), ThreadError>
+    where
+        F: FnOnce() + Send + 'scope,
+    {
         let feedback = Arc::new(Feedback::new());
         let feedback_clone = Arc::clone(&feedback);
         let name_clone = name.clone();
-        let handle = std::thread::Builder::new()
-            .name(name.clone())
-            .spawn(move || {
-                // Set thread priority
-                set_my_priority(priority);
 
-                // Get native thread ID
+        let handle = thread::Builder::new()
+            .name(name.clone())
+            .spawn_scoped(self.scope, move || {
+                set_my_priority(priority);
                 let native_id = get_thread_native_id();
                 feedback_clone.post(native_id);
 
-                info!("Thread {} started (priority: {:?})", name_clone, priority);
-
-                // Run the thread function
+                info!("Thread {} started", name_clone);
                 thread_fn();
-
-                info!("Thread {} finished execution", name_clone);
+                info!("Thread {} finished", name_clone);
             })
             .map_err(|e| {
                 ThreadError::SpawnError(format!("Failed to spawn thread {}: {}", name, e))
             })?;
 
-        // Wait for the thread to be ready and get its native ID
         let native_id = feedback.wait();
-        debug!("Thread {} has native ID: {}", name, native_id);
-
-        // Store the thread information
         let thread_wrapper = ThreadWrapper {
             join: handle,
-            native_data: NativeData::default(),
             native_id,
+            native_data: NativeData::default(),
             name,
         };
-        let mut threads = self.threads.lock().unwrap();
-        threads.push(thread_wrapper);
 
+        self.threads.lock().unwrap().push(thread_wrapper);
         Ok(())
     }
 
-    pub fn join_all(&self) {
-        info!("Joining all threads");
+    fn join_all(&self) {
+        let mut threads = self.threads.lock().unwrap();
+        for thread in threads.drain(..) {
+            if let Err(e) = thread.join.join() {
+                error!("Thread '{}' panicked: {:?}", thread.name, e);
+            }
+        }
+    }
+}
 
-        // Join all threads and clear the list
-        // While waiting for threads to finish, print threads count and their cpu utilization
-        loop {
-            let mut threads = self.threads.lock().unwrap();
-            let mut all_finished = true;
-            for thread in &*threads {
-                if !thread.join.is_finished() {
-                    all_finished = false;
-                    break;
-                }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn std_scope() {
+        let mut a = vec![1, 2, 3];
+        let mut x = 0;
+
+        thread::scope(|s| {
+            s.spawn(|| {
+                println!("hello from the first scoped thread");
+                // We can borrow `a` here.
+                dbg!(&a);
+            });
+            s.spawn(|| {
+                println!("hello from the second scoped thread");
+                // We can even mutably borrow `x` here,
+                // because no other threads are using it.
+                x += a[0] + a[2];
+            });
+            println!("hello from the main thread");
+        });
+
+        // After the scope, we can modify and access our variables again:
+        a.push(4);
+        assert_eq!(x, a.len());
+    }
+
+    #[test]
+    fn thread_manager_scope() {
+        let mut a = vec![1, 2, 3];
+        let mut x = 0;
+
+        let cfg = ThreadManagerConfig::default();
+        let _ = scoped(cfg, |mgr| {
+            let _ = mgr.spawn("Thread1".to_string(), ThreadPriority::Low, || {
+                println!("hello from the first scoped thread");
+                dbg!(&a);
+            });
+
+            let _ = mgr.spawn("Thread2".to_string(), ThreadPriority::Low, || {
+                println!("hello from the second scoped thread");
+                x += a[0] + a[2];
+            });
+        });
+
+        a.push(4);
+        assert_eq!(x, a.len());
+    }
+
+    #[test]
+    fn thread_manager_scope_by_reference() {
+        struct Spawner1<'r, 'scope, 'env: 'scope> {
+            manager: &'r ThreadManager<'scope, 'env>,
+        }
+        impl<'r, 'scope, 'env: 'scope> Spawner1<'r, 'scope, 'env> {
+            fn new(manager: &'r ThreadManager<'scope, 'env>) -> Self {
+                Spawner1 { manager }
             }
 
-            if all_finished {
-                break;
-            }
-
-            // Collect profile information
-            if let Some(profile_handle) = &self.profile_handle {
-                let mut frames = Vec::new();
-                for thread in &mut *threads {
-                    if thread.join.is_finished() {
-                        continue; // Skip finished threads
-                    }
-
-                    let cpu_utilization =
-                        get_cpu_utilization(&mut thread.native_data, thread.native_id);
-                    frames.push(ProfileThreadFrame {
-                        name: thread.name.clone(),
-                        running: !thread.join.is_finished(),
-                        cpu_utilization,
+            fn spawn(&self) {
+                let _ = self
+                    .manager
+                    .spawn("Thead1".to_string(), ThreadPriority::Low, || {
+                        println!("hello from the first scoped thread");
                     });
-                }
-
-                let profile_frame = ProfileFrame { threads: frames };
-                profile_handle(&profile_frame);
             }
-
-            // Release the lock before sleeping
-            drop(threads);
-
-            // Wait for a short duration to avoid busy waiting
-            std::thread::sleep(std::time::Duration::from_millis(1000));
         }
 
-        info!("All threads have finished execution");
+        struct Spawner2<'r, 'scope, 'env: 'scope> {
+            manager: &'r ThreadManager<'scope, 'env>,
+        }
+        impl<'r, 'scope, 'env: 'scope> Spawner2<'r, 'scope, 'env> {
+            fn new(manager: &'r ThreadManager<'scope, 'env>) -> Self {
+                Spawner2 { manager }
+            }
+
+            fn spawn(&self) {
+                let _ = self
+                    .manager
+                    .spawn("Thead2".to_string(), ThreadPriority::Low, || {
+                        println!("hello from the second scoped thread");
+                    });
+            }
+        }
+
+        let cfg = ThreadManagerConfig::default();
+        let _ = scoped(cfg, |mgr| {
+            let spawner1 = Spawner1::new(&mgr);
+            let spawner2 = Spawner2::new(&mgr);
+
+            spawner1.spawn();
+            spawner2.spawn();
+        });
     }
 }
