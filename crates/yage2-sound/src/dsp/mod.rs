@@ -2,9 +2,8 @@ use crate::sample::{InterleavedBlock, InterleavedSample, PlanarBlock};
 use crate::{SampleType, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
 use log::{debug, info};
 
-mod mix;
-mod pan_gain_phase_clamp;
-
+mod add;
+mod addm;
 mod copy_into_interleaved;
 mod fir;
 mod soft_clip;
@@ -89,6 +88,17 @@ impl PlanarBlock<f32> {
     }
 
     #[inline(always)]
+    pub(crate) fn silence(&mut self) {
+        // Fill each channel with zeros
+        for channel in 0..CHANNELS_COUNT {
+            let dst_ptr = self.samples[channel].as_mut_ptr();
+            unsafe {
+                std::ptr::write_bytes(dst_ptr, 0, BLOCK_SIZE);
+            }
+        }
+    }
+
+    #[inline(always)]
     pub(crate) fn copy_from(&mut self, input: &PlanarBlock<f32>) {
         // If the input and self are the same, we can skip copying
         // (check if they are the same reference)
@@ -140,7 +150,7 @@ impl PlanarBlock<f32> {
     }
 
     #[inline(always)]
-    pub(crate) fn mix(&mut self, input: &PlanarBlock<f32>, mix: f32) {
+    pub(crate) fn add(&mut self, input: &PlanarBlock<f32>) {
         macro_rules! accelerated(
             ($arch:expr, $align:expr, $condvar:ident, $func:expr) => {
                 call_accelerated!(
@@ -154,7 +164,7 @@ impl PlanarBlock<f32> {
             }
         );
 
-        use mix::*;
+        use add::*;
         accelerated!("aarch64", 4, ARM_HAS_NEON, neon_block_m4);
         accelerated!("aarch64", 4, ARM_HAS_SVE, sve_block_m4);
         accelerated!("x86_64", 32, X86_HAS_AVX512, avx512_block_m32);
@@ -167,7 +177,7 @@ impl PlanarBlock<f32> {
     }
 
     #[inline(always)]
-    pub(crate) fn pan_gain_phase_clamp(&mut self, pan: f32, gain: f32, invert_phase: bool) {
+    pub(crate) fn addm(&mut self, input: &PlanarBlock<f32>, k: f32) {
         macro_rules! accelerated(
             ($arch:expr, $align:expr, $condvar:ident, $func:expr) => {
                 call_accelerated!(
@@ -175,15 +185,14 @@ impl PlanarBlock<f32> {
                     $align,
                     $condvar,
                     $func,
+                    &input,
                     self,
-                    pan,
-                    gain,
-                    invert_phase
+                    k
                 );
             }
         );
 
-        use pan_gain_phase_clamp::*;
+        use addm::*;
         accelerated!("aarch64", 4, ARM_HAS_NEON, neon_block_m4);
         accelerated!("aarch64", 4, ARM_HAS_SVE, sve_block_m4);
         accelerated!("x86_64", 32, X86_HAS_AVX512, avx512_block_m32);
@@ -191,8 +200,8 @@ impl PlanarBlock<f32> {
         accelerated!("x86_64", 32, X86_HAS_AVX, avx_block_m32);
         accelerated!("x86_64", 32, X86_HAS_SSE42, sse42_block_m32);
 
-        // Fallback to the basic implementation if no SIMD is available
-        fallback(self, pan, gain, invert_phase);
+        // Fallback to the basic implementation if SIMD is not available
+        fallback(input, self, k);
     }
 
     #[inline(always)]
@@ -221,28 +230,3 @@ impl PlanarBlock<f32> {
         // fallback(self);
     }
 }
-
-// let mut dry = AudioBlock::zero();
-// let mut wet = AudioBlock::zero();
-//
-// // UI, FX, Music → dry микс
-// self.ui.process(&mut dry);
-// self.fx.process(&mut dry);
-// self.music.process(&mut dry);
-//
-// // Создаем send из dry (или его копии)
-// let send = SendTap {
-//     src: &dry,
-//     gain: 0.5, // громкость посыла в реверб
-// };
-// send.send_to(&mut self.reverb_input);
-//
-// // Обработка реверберации
-// self.reverb.process(&mut wet);
-//
-// // Сумма dry + wet
-// out.mix_from(&dry, 1.0);
-// out.mix_from(&wet, 1.0);
-
-// let send_fx = SendTap { src: &fx_output, gain: 0.7 };
-// send_fx.send_to(&mut self.reverb_input);

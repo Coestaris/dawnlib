@@ -193,19 +193,6 @@ where
     }
 }
 
-impl<S> PlanarBlock<S>
-where
-    S: Sample,
-{
-    pub(crate) fn silence(&mut self) {
-        for channel in self.samples.iter_mut() {
-            for sample in channel.iter_mut() {
-                *sample = S::zero_value();
-            }
-        }
-    }
-}
-
 #[repr(C)]
 #[repr(align(32))]
 #[derive(Debug)]

@@ -1,10 +1,15 @@
-use yage2_core::vec3::Vec3;
 use crate::entities::bus::BusEvent;
 use crate::entities::sources::actor::ActorsSourceEvent;
 use crate::entities::sources::multiplexer::MultiplexerSourceEvent;
+use crate::entities::sources::TestSourceEvent;
 use crate::entities::sources::waveform::WaveformSourceEvent;
 
-pub(crate) enum Event {
+pub struct EventBox {
+    pub target_id: EventTargetId,
+    pub event: Event,
+}
+
+pub enum Event {
     // General events
     Mute,
     Unmute,
@@ -14,6 +19,7 @@ pub(crate) enum Event {
     Waveform(WaveformSourceEvent),
     Actors(ActorsSourceEvent),
     Multiplexer(MultiplexerSourceEvent),
+    Test(TestSourceEvent),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

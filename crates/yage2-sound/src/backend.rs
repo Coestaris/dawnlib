@@ -27,7 +27,7 @@ where
 
     fn open<F>(&mut self, raw_fn: F) -> Result<(), BackendSpecificError>
     where
-        F: FnMut(&mut InterleavedBlock<f32>) + Send + 'static;
+        F: FnMut(&mut MappedInterleavedBuffer<f32>) + Send + 'static;
 
     fn close(&mut self) -> Result<(), BackendSpecificError>;
 }

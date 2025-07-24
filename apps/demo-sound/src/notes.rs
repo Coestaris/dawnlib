@@ -1,4 +1,4 @@
-enum NoteName {
+pub enum NoteName {
     C,
     CSharp,
     D,
@@ -13,20 +13,20 @@ enum NoteName {
     B,
 }
 
-struct Note {
+pub struct Note {
     name: NoteName,
     octave: u8,
 }
 
 impl Note {
-    fn new(name: NoteName, octave: u8) -> Self {
+    pub(crate) fn new(name: NoteName, octave: u8) -> Self {
         if octave < 0 || octave > 8 {
             panic!("Octave must be between 0 and 8");
         }
         Note { name, octave }
     }
 
-    fn frequency(&self) -> f32 {
+    pub(crate) fn frequency(&self) -> f32 {
         let base_frequency = match self.name {
             NoteName::C => 261.63,
             NoteName::CSharp => 277.18,

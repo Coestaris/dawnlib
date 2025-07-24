@@ -12,3 +12,9 @@ impl Effect for BypassEffect {
         unreachable!()
     }
 }
+
+impl BypassEffect {
+    pub fn new() -> Self {
+        BypassEffect {}
+    }
+}

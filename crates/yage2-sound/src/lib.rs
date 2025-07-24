@@ -1,4 +1,5 @@
 #![feature(test)]
+#![feature(maybe_uninit_slice)]
 
 pub mod backend;
 mod cpal;
@@ -24,4 +25,4 @@ const CHANNELS_COUNT: ChannelsCount = 2;
 
 /// Hardcoded size of the audio block.
 /// This is the number of samples processed in one block.
-const BLOCK_SIZE: SamplesCount = 256;
+const BLOCK_SIZE: SamplesCount = 512;
