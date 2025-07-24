@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     extern crate test;
-    use crate::dsp::math::detect_features;
+    use crate::dsp::detect_features;
     use crate::sample::InterleavedBlock;
     use std::panic;
     use test::Bencher;

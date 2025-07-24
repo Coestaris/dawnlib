@@ -1,24 +1,13 @@
-use crate::entities::{Effect, Event, EventTarget, EventTargetId, Source};
+use crate::entities::{BlockInfo, Event, EventTarget, EventTargetId, Source};
 use crate::sample::PlanarBlock;
+use yage2_core::vec3::Vec3;
 
 const MAX_ACTORS: usize = 1024;
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-struct Vec3 {
-    x: f32,
-    y: f32,
-    z: f32,
-}
-
-impl Vec3 {
-    fn zero() -> Self {
-        Vec3 {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        }
-    }
+pub enum ActorsSourceEvent {
+    AddActor { pos: Vec3, id: usize, gain: f32 },
+    RemoveActors(usize),
+    ChangeListenerPosition(Vec3),
 }
 
 pub struct ActorsSource {
@@ -52,11 +41,7 @@ impl ActorsSource {
     }
 
     fn create_event_target(&self) -> EventTarget {
-        EventTarget {
-            id: self.id,
-            dispatcher: dispatch_actors,
-            ptr: self as *const _ as *mut u8,
-        }
+        EventTarget::new(dispatch_actors, self.id, self)
     }
 }
 
@@ -67,13 +52,13 @@ impl Source for ActorsSource {
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::AddActor { id, gain } => {
+            Event::Actors(ActorsSourceEvent::AddActor { pos, id, gain }) => {
                 // TODO: Implement logic to add an actor
             }
-            Event::RemoveActors(id) => {
+            Event::Actors(ActorsSourceEvent::RemoveActors(id)) => {
                 // TODO: Implement logic to remove an actor
             }
-            Event::ChangeListenerPosition {} => {}
+            Event::Actors(ActorsSourceEvent::ChangeListenerPosition(pos)) => {}
 
             _ => {
                 // Handle other events if needed
@@ -85,7 +70,7 @@ impl Source for ActorsSource {
         self.cached = false;
     }
 
-    fn render(&mut self) -> &PlanarBlock<f32> {
+    fn render(&mut self, info: &BlockInfo) -> &PlanarBlock<f32> {
         if self.cached {
             return &self.output;
         };

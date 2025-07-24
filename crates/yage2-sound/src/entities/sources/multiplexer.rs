@@ -1,6 +1,10 @@
-use crate::entities::{Event, EventDispatcher, EventTarget, EventTargetId, NodeRef, Source};
+use crate::entities::{BlockInfo, Event, EventTarget, EventTargetId, NodeRef, Source};
 use crate::sample::PlanarBlock;
 use log::debug;
+
+pub enum MultiplexerSourceEvent {
+    ChangeMix(usize, f32),
+}
 
 /// Multiplexer for 1 source (with the same type)
 pub struct Multiplexer1Source<'a, T1: Source> {
@@ -83,11 +87,7 @@ impl<'a, T: Source, const N: usize> MultiplexerSource<'a, T, N> {
     }
 
     fn create_event_target(&self) -> EventTarget {
-        EventTarget {
-            id: self.id,
-            dispatcher: dispatch_multiplexer::<T, N>,
-            ptr: self as *const _ as *mut u8,
-        }
+        EventTarget::new(dispatch_multiplexer::<T, N>, self.id, self)
     }
 }
 
@@ -101,7 +101,7 @@ impl<'a, T: Source, const N: usize> Source for MultiplexerSource<'a, T, N> {
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::ChangeMultiplexerSourceMix(index, mix) if *index < N => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(index, mix)) if *index < N => {
                 debug!("ChangeMultiplexerSourceMix of muxN {} to {}", self.id, *mix);
                 self.mix[*index] = *mix;
             }
@@ -121,7 +121,7 @@ impl<'a, T: Source, const N: usize> Source for MultiplexerSource<'a, T, N> {
     }
 
     #[inline(always)]
-    fn render(&mut self) -> &PlanarBlock<f32> {
+    fn render(&mut self, info: &BlockInfo) -> &PlanarBlock<f32> {
         if self.cached {
             return &self.output;
         }
@@ -129,7 +129,7 @@ impl<'a, T: Source, const N: usize> Source for MultiplexerSource<'a, T, N> {
         self.output.silence();
         // TODO: Make sure that loop unrolling is done by the compiler
         for i in 0..N {
-            let input = self.sources[i].as_mut().render();
+            let input = self.sources[i].as_mut().render(info);
             self.output.mix(input, self.mix[i]);
         }
         self.cached = true;
@@ -159,11 +159,7 @@ impl<'a, T1: Source> Multiplexer1Source<'a, T1> {
     }
 
     fn create_event_target(&self) -> EventTarget {
-        EventTarget {
-            id: self.id,
-            dispatcher: dispatch_multiplexer1::<T1>,
-            ptr: self as *const _ as *mut u8,
-        }
+        EventTarget::new(dispatch_multiplexer1::<T1>, self.id, self)
     }
 }
 
@@ -176,7 +172,7 @@ impl<'a, T1: Source> Source for Multiplexer1Source<'a, T1> {
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::ChangeMultiplexerSourceMix(0, mix) => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(0, mix)) => {
                 debug!(
                     "ChangeMultiplexerSourceMix of mux1:0 {} to {}",
                     self.id, *mix
@@ -194,12 +190,12 @@ impl<'a, T1: Source> Source for Multiplexer1Source<'a, T1> {
     }
 
     #[inline(always)]
-    fn render(&mut self) -> &PlanarBlock<f32> {
+    fn render(&mut self, info: &BlockInfo) -> &PlanarBlock<f32> {
         if self.cached {
             return &self.output;
         }
 
-        let input = self.source1.as_mut().render();
+        let input = self.source1.as_mut().render(info);
         self.output.silence();
         self.output.mix(input, self.mix1);
         self.cached = true;
@@ -231,11 +227,7 @@ impl<'a, T1: Source, T2: Source> Multiplexer2Source<'a, T1, T2> {
     }
 
     fn create_event_target(&self) -> EventTarget {
-        EventTarget {
-            id: self.id,
-            dispatcher: dispatch_multiplexer2::<T1, T2>,
-            ptr: self as *const _ as *mut u8,
-        }
+        EventTarget::new(dispatch_multiplexer2::<T1, T2>, self.id, self)
     }
 }
 
@@ -249,14 +241,14 @@ impl<'a, T1: Source, T2: Source> Source for Multiplexer2Source<'a, T1, T2> {
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::ChangeMultiplexerSourceMix(0, mix) => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(0, mix)) => {
                 debug!(
                     "ChangeMultiplexerSourceMix of mux2:0 {} to {}",
                     self.id, *mix
                 );
                 self.mix1 = *mix;
             }
-            Event::ChangeMultiplexerSourceMix(1, mix) => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(1, mix)) => {
                 debug!(
                     "ChangeMultiplexerSourceMix of mux2:1 {} to {}",
                     self.id, *mix
@@ -275,13 +267,13 @@ impl<'a, T1: Source, T2: Source> Source for Multiplexer2Source<'a, T1, T2> {
     }
 
     #[inline(always)]
-    fn render(&mut self) -> &PlanarBlock<f32> {
+    fn render(&mut self, info: &BlockInfo) -> &PlanarBlock<f32> {
         if self.cached {
             return &self.output;
         }
 
-        let input1 = self.source1.as_mut().render();
-        let input2 = self.source2.as_mut().render();
+        let input1 = self.source1.as_mut().render(info);
+        let input2 = self.source2.as_mut().render(info);
         self.output.silence();
         self.output.mix(input1, self.mix1);
         self.output.mix(input2, self.mix2);
@@ -323,11 +315,7 @@ impl<'a, T1: Source, T2: Source, T3: Source> Multiplexer3Source<'a, T1, T2, T3> 
     }
 
     fn create_event_target(&self) -> EventTarget {
-        EventTarget {
-            id: self.id,
-            dispatcher: dispatch_multiplexer3::<T1, T2, T3>,
-            ptr: self as *const _ as *mut u8,
-        }
+        EventTarget::new(dispatch_multiplexer3::<T1, T2, T3>, self.id, self)
     }
 }
 
@@ -342,21 +330,21 @@ impl<'a, T1: Source, T2: Source, T3: Source> Source for Multiplexer3Source<'a, T
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::ChangeMultiplexerSourceMix(0, mix) => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(0, mix)) => {
                 debug!(
                     "ChangeMultiplexerSourceMix of mux3:0 {} to {}",
                     self.id, *mix
                 );
                 self.mix1 = *mix;
             }
-            Event::ChangeMultiplexerSourceMix(1, mix) => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(1, mix)) => {
                 debug!(
                     "ChangeMultiplexerSourceMix of mux3:1 {} to {}",
                     self.id, *mix
                 );
                 self.mix2 = *mix;
             }
-            Event::ChangeMultiplexerSourceMix(2, mix) => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(2, mix)) => {
                 debug!(
                     "ChangeMultiplexerSourceMix of mux3:2 {} to {}",
                     self.id, *mix
@@ -376,14 +364,14 @@ impl<'a, T1: Source, T2: Source, T3: Source> Source for Multiplexer3Source<'a, T
     }
 
     #[inline(always)]
-    fn render(&mut self) -> &PlanarBlock<f32> {
+    fn render(&mut self, info: &BlockInfo) -> &PlanarBlock<f32> {
         if self.cached {
             return &self.output;
         }
 
-        let input1 = self.source1.as_mut().render();
-        let input2 = self.source2.as_mut().render();
-        let input3 = self.source3.as_mut().render();
+        let input1 = self.source1.as_mut().render(info);
+        let input2 = self.source2.as_mut().render(info);
+        let input3 = self.source3.as_mut().render(info);
         self.output.silence();
         self.output.mix(input1, self.mix1);
         self.output.mix(input2, self.mix2);
@@ -433,11 +421,7 @@ impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Multiplexer4Source<'a, 
     }
 
     fn create_event_target(&self) -> EventTarget {
-        EventTarget {
-            id: self.id,
-            dispatcher: dispatch_multiplexer3::<T1, T2, T3>,
-            ptr: self as *const _ as *mut u8,
-        }
+        EventTarget::new(dispatch_multiplexer4::<T1, T2, T3, T4>, self.id, self)
     }
 }
 
@@ -455,28 +439,28 @@ impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Source
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::ChangeMultiplexerSourceMix(0, mix) => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(0, mix)) => {
                 debug!(
                     "ChangeMultiplexerSourceMix of mux4:0 {} to {}",
                     self.id, *mix
                 );
                 self.mix1 = *mix;
             }
-            Event::ChangeMultiplexerSourceMix(1, mix) => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(1, mix)) => {
                 debug!(
                     "ChangeMultiplexerSourceMix of mux4:1 {} to {}",
                     self.id, *mix
                 );
                 self.mix2 = *mix;
             }
-            Event::ChangeMultiplexerSourceMix(2, mix) => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(2, mix)) => {
                 debug!(
                     "ChangeMultiplexerSourceMix of mux4:2 {} to {}",
                     self.id, *mix
                 );
                 self.mix3 = *mix;
             }
-            Event::ChangeMultiplexerSourceMix(3, mix) => {
+            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(3, mix)) => {
                 debug!(
                     "ChangeMultiplexerSourceMix of mux4:3 {} to {}",
                     self.id, *mix
@@ -497,15 +481,15 @@ impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Source
     }
 
     #[inline(always)]
-    fn render(&mut self) -> &PlanarBlock<f32> {
+    fn render(&mut self, info: &BlockInfo) -> &PlanarBlock<f32> {
         if self.cached {
             return &self.output;
         }
 
-        let input1 = self.source1.as_mut().render();
-        let input2 = self.source2.as_mut().render();
-        let input3 = self.source3.as_mut().render();
-        let input4 = self.source4.as_mut().render();
+        let input1 = self.source1.as_mut().render(info);
+        let input2 = self.source2.as_mut().render(info);
+        let input3 = self.source3.as_mut().render(info);
+        let input4 = self.source4.as_mut().render(info);
         self.output.silence();
         self.output.mix(input1, self.mix1);
         self.output.mix(input2, self.mix2);
