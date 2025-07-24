@@ -2,7 +2,7 @@ use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 use i24;
 
 #[derive(Debug)]
-pub(crate) enum SampleCode {
+pub enum SampleCode {
     I8,
     I16,
     I24,
@@ -14,7 +14,7 @@ pub(crate) enum SampleCode {
 }
 
 #[allow(dead_code)]
-pub(crate) trait Sample: Copy + Clone + PartialOrd + PartialEq + Default {
+pub trait Sample: Copy + Clone + PartialOrd + PartialEq + Default {
     fn from_f32(value: f32) -> Self;
     fn to_f32(self) -> f32;
 
@@ -175,7 +175,7 @@ pub const RIGHT_CHANNEL: usize = 1;
 #[repr(C)]
 #[repr(align(32))]
 #[derive(Debug)]
-pub(crate) struct PlanarBlock<S>
+pub struct PlanarBlock<S>
 where
     S: Sample,
 {

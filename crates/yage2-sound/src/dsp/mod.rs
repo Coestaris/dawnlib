@@ -1,6 +1,5 @@
-use crate::sample::{InterleavedBlock, InterleavedSample, PlanarBlock};
-use crate::{SampleType, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
-use log::{debug, info};
+use crate::sample::{InterleavedBlock, PlanarBlock};
+use crate::{SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
 
 mod add;
 mod addm;
@@ -44,12 +43,8 @@ mod features {
 
     pub fn detect_features() {
         use std::arch::is_aarch64_feature_detected;
-        ARM_HAS_NEON
-            .set(is_aarch64_feature_detected!("neon"))
-            .unwrap();
-        ARM_HAS_SVE
-            .set(is_aarch64_feature_detected!("sve"))
-            .unwrap();
+        let _ = ARM_HAS_NEON.set(is_aarch64_feature_detected!("neon"));
+        let _ = ARM_HAS_SVE.set(is_aarch64_feature_detected!("sve"));
 
         debug!("Detecting ARM features (by priority):");
         debug!("SVE: {}", ARM_HAS_SVE.get().unwrap());
@@ -138,8 +133,8 @@ impl PlanarBlock<f32> {
         );
 
         use copy_into_interleaved::*;
-        accelerated!("aarch64", 4, ARM_HAS_NEON, neon_block_m4);
-        accelerated!("aarch64", 4, ARM_HAS_SVE, sve_block_m4);
+        // accelerated!("aarch64", 4, ARM_HAS_NEON, neon_block_m4);
+        // accelerated!("aarch64", 4, ARM_HAS_SVE, sve_block_m4);
         accelerated!("x86_64", 32, X86_HAS_AVX512, avx512_block_m32);
         accelerated!("x86_64", 32, X86_HAS_AVX2, avx2_block_m32);
         accelerated!("x86_64", 32, X86_HAS_AVX, avx_block_m32);

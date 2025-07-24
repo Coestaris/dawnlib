@@ -76,22 +76,26 @@ pub unsafe fn avx2_block_m32(input: &PlanarBlock<f32>, output: &mut PlanarBlock<
 #[inline(never)]
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
 #[target_feature(enable = "neon")]
-pub unsafe fn neon_block_m4(input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32, k: f32>) {
+pub unsafe fn neon_block_m4(input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, k: f32) {
     // NEON intrinsics for ARM architecture
     use core::arch::aarch64::*;
 
-    todo!();
     const _: () = assert!(
         BLOCK_SIZE % 4 == 0,
         "BLOCK_SIZE must be a multiple of 4 for NEON"
     );
+
+    let mul = vdupq_n_f32(k);
 
     for channel in 0..CHANNELS_COUNT {
         let mut i = 0;
         while i < BLOCK_SIZE {
             // Load 8 samples from both blocks (16 bytes)
             let a = vld1q_f32(input.samples[channel].as_ptr().add(i));
-            let b = vld1q_f32(input.samples[channel].as_ptr().add(i));
+            let b = vld1q_f32(output.samples[channel].as_ptr().add(i));
+
+            // Multiply the input samples by the constant
+            let a = vmulq_f32(a, mul);
 
             // Add the samples
             let result = vaddq_f32(a, b);

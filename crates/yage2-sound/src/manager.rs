@@ -2,17 +2,14 @@ use crate::backend::{
     AudioBackend, BackendDeviceTrait, BackendSpecificConfig, CreateBackendConfig,
 };
 use crate::dsp::detect_features;
-use crate::entities::bus::Bus;
 use crate::entities::sinks::InterleavedSink;
-use crate::entities::{BlockInfo, Effect, NodeRef, Source};
-use crate::error::{AudioManagerCreationError, AudioManagerStartError, AudioManagerStopError};
-use crate::sample::{
-    InterleavedBlock, InterleavedSample, MappedInterleavedBuffer, PlanarBlock, Sample,
-};
+use crate::entities::Source;
+use crate::error::{AudioManagerCreationError, AudioManagerStartError};
+use crate::sample::MappedInterleavedBuffer;
 use crate::{ChannelsCount, SampleRate, SampleType, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
 use log::{debug, info, warn};
-use std::sync::{atomic::AtomicBool, Arc, Mutex};
-use yage2_core::profile::{MinMaxProfiler, PeriodProfiler, TickProfiler};
+use std::sync::{atomic::AtomicBool, Arc};
+use yage2_core::profile::{PeriodProfiler, TickProfiler};
 use yage2_core::resources::{ResourceManager, ResourceType};
 use yage2_core::threads::{ThreadManager, ThreadPriority};
 

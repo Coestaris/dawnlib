@@ -48,7 +48,7 @@ impl<T: Source> InterleavedSink<T> {
     /// Render works as a kind of ring-buffer, so we can render only by BLOCK_SIZE samples
     pub(crate) fn render(&mut self, output: &mut MappedInterleavedBuffer<f32>) {
         if output.len > BLOCK_SIZE {
-            panic!("InterleavedSink: Output buffer length exceeds BLOCK_SIZE");
+            panic!("InterleavedSink: Output buffer length exceeds ({} > {})", output.len, BLOCK_SIZE);
         }
 
         // If theres not enough samples in the ring buffer, we need to fill it
@@ -79,7 +79,7 @@ mod tests {
     use crate::dsp::detect_features;
     use crate::entities::bus::Bus;
     use crate::entities::effects::bypass::BypassEffect;
-    use crate::entities::sources::{TestSource, TestSourceEvent};
+    use crate::entities::sources::{TestSource};
 
     #[test]
     fn sink_test() {

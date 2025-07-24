@@ -1,10 +1,9 @@
 use crate::backend::{BackendDeviceTrait, CreateBackendConfig};
-use crate::sample::{InterleavedBlock, MappedInterleavedBuffer, PlanarBlock, Sample, SampleCode};
-use crate::{ChannelsCount, SampleRate, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
+use crate::sample::{MappedInterleavedBuffer, Sample, SampleCode};
+use crate::{ChannelsCount, SampleRate, SamplesCount};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SizedSample;
 use log::{debug, info, warn};
-use std::cmp::min;
 use std::fmt::{Debug, Display, Formatter};
 use std::marker::PhantomData;
 
@@ -90,6 +89,16 @@ where
 
         let mut selected_config: Option<cpal::StreamConfig> = None;
         let required_sample_format = sample_code_to_cpal_format::<S>();
+
+        #[cfg(target_os = "macos")]
+        // In some reason I can't explain, on macOS the buffer size is some
+        // random value bigger than the requested one, so we limit it to
+        // 80% of the requested size. In the other case, the upper level code
+        // will panic.
+        let max_buf_size = (cfg.buffer_size as f32 * 0.8) as usize;
+        #[cfg(not(target_os = "macos"))]
+        let max_buf_size = cfg.buffer_size as usize;
+
         for config in supported_configs {
             // Log the supported config details
             debug!(
@@ -107,7 +116,7 @@ where
             let channels_ok = config.channels() == cfg.channels as u16;
             let buffer_size_ok = match config.buffer_size() {
                 cpal::SupportedBufferSize::Range { min, max } => {
-                    cfg.buffer_size >= *min as usize && cfg.buffer_size <= *max as usize
+                    max_buf_size >= *min as usize && max_buf_size <= *max as usize
                 }
                 cpal::SupportedBufferSize::Unknown => continue,
             };
@@ -121,7 +130,7 @@ where
                 selected_config = Some(cpal::StreamConfig {
                     channels: config.channels(),
                     sample_rate: cpal::SampleRate(cfg.sample_rate as u32),
-                    buffer_size: cpal::BufferSize::Fixed(cfg.buffer_size as u32),
+                    buffer_size: cpal::BufferSize::Fixed(max_buf_size as u32),
                 });
                 break;
             }
@@ -179,18 +188,20 @@ where
                 todo!()
             }
             SampleCode::F32 => {
-                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    match MappedInterleavedBuffer::<f32>::new(data) {
-                        Some(mut mapped_buffer) => {
-                            raw_fn(&mut mapped_buffer);
-                        }
-                        None => {
-                            warn!(
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| match MappedInterleavedBuffer::<
+                    f32,
+                >::new(
+                    data
+                ) {
+                    Some(mut mapped_buffer) => {
+                        raw_fn(&mut mapped_buffer);
+                    }
+                    None => {
+                        warn!(
                                 "Failed to create interleaved sample buffer: expected {} samples, got {}",
                                 samples_count,
                                 data.len()
                             );
-                        }
                     }
                 }
             }

@@ -96,6 +96,7 @@ impl<'a, T: Source, const N: usize> Source for MultiplexerSource<'a, T, N> {
         self.sources
             .iter()
             .flat_map(|source| source.as_ref().get_targets())
+            .chain(std::iter::once(self.create_event_target()))
             .collect()
     }
 

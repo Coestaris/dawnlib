@@ -1,4 +1,4 @@
-use crate::sample::{InterleavedBlock, MappedInterleavedBuffer, Sample};
+use crate::sample::{MappedInterleavedBuffer, Sample};
 
 pub mod backend_impl {
     pub type BackendSpecificConfig = crate::cpal::DeviceConfig;
@@ -11,9 +11,13 @@ pub use backend_impl::*;
 
 #[allow(dead_code)]
 pub(crate) struct CreateBackendConfig {
+    /// Backend-specific configuration
     pub backend_specific: BackendSpecificConfig,
+    /// Sample rate of the audio stream
     pub sample_rate: SampleRate,
+    /// Number of channels in the audio stream
     pub channels: ChannelsCount,
+    /// Maximum number of samples in a single block 
     pub buffer_size: SamplesCount,
 }
 

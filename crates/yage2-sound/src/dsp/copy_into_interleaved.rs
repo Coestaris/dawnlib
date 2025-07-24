@@ -1,6 +1,4 @@
-use crate::sample::{
-    InterleavedBlock, InterleavedSample, PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL,
-};
+use crate::sample::{InterleavedBlock, PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
 use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 
 #[inline(never)]
@@ -158,7 +156,6 @@ pub unsafe fn neon_block_m4(input: &PlanarBlock<f32>, output: &mut InterleavedBl
 pub(crate) fn sve_block_m4(input: &PlanarBlock<f32>, output: &mut InterleavedBlock<f32>) {
     todo!()
 }
-
 
 #[inline(always)]
 pub(crate) fn fallback(input: &PlanarBlock<f32>, output: &mut InterleavedBlock<f32>) {
