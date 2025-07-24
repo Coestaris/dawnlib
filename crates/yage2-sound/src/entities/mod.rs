@@ -1,14 +1,12 @@
-use crate::entities::events::{Event, EventBox, EventTarget, EventTargetId};
-use crate::sample::{InterleavedSample, PlanarBlock};
-use crate::{SampleRate, SamplesCount, BLOCK_SIZE};
-use std::cell::UnsafeCell;
-use std::collections::HashMap;
+use crate::entities::events::{Event, EventTarget, EventTargetId};
+use crate::sample::PlanarBlock;
+use crate::{SampleRate, SamplesCount};
 
 pub mod bus;
 pub mod effects;
 pub mod events;
-pub mod sources;
 pub mod sinks;
+pub mod sources;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -45,7 +43,7 @@ impl<'a, T> NodeRef<'a, T> {
     }
 }
 
-pub(crate) trait Effect {
+pub trait Effect {
     fn get_targets(&self) -> Vec<EventTarget> {
         // Default implementation returns an empty vector
         vec![]
@@ -59,11 +57,12 @@ pub(crate) trait Effect {
     fn render(&mut self, input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>, info: &BlockInfo);
 }
 
-pub(crate) struct BlockInfo {
+pub struct BlockInfo {
     sample_index: SamplesCount,
     sample_rate: SampleRate,
 }
 
+#[allow(unused)]
 impl BlockInfo {
     pub(crate) fn new(sample_index: SamplesCount, sample_rate: SampleRate) -> Self {
         BlockInfo {
@@ -88,7 +87,7 @@ impl BlockInfo {
 
 pub trait Source {
     fn get_targets(&self) -> Vec<EventTarget>;
-    fn dispatch(&mut self, event: &Event) {
+    fn dispatch(&mut self, _event: &Event) {
         // Default implementation does nothing
     }
 

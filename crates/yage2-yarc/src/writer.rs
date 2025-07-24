@@ -112,7 +112,7 @@ fn normalize_name<P: AsRef<std::path::Path>>(path: P) -> String {
         .replace(|c: char| !c.is_alphanumeric() && c != '_', "")
 }
 
-fn extension_to_resource_type(ext: &str) -> Result<(ResourceType, PreProcessor), WriterError> {
+fn extension_to_resource_type(ext: &str) -> Result<(ResourceType, PreProcessor<'_>), WriterError> {
     Ok(match ext {
         // Shader types
         "glsl" => (ResourceType::ShaderGLSL, compile_glsl_shader),

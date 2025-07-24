@@ -81,7 +81,7 @@ pub unsafe fn neon_block_m4(input: &PlanarBlock<f32>, output: &mut PlanarBlock<f
         while i < BLOCK_SIZE {
             // Load 8 samples from both blocks (16 bytes)
             let a = vld1q_f32(input.samples[channel].as_ptr().add(i));
-            let b = vld1q_f32(input.samples[channel].as_ptr().add(i));
+            let b = vld1q_f32(output.samples[channel].as_ptr().add(i));
 
             // Add the samples
             let result = vaddq_f32(a, b);

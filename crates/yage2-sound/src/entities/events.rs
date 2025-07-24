@@ -1,7 +1,6 @@
 use crate::entities::bus::BusEvent;
 use crate::entities::sources::actor::ActorsSourceEvent;
 use crate::entities::sources::multiplexer::MultiplexerSourceEvent;
-use crate::entities::sources::TestSourceEvent;
 use crate::entities::sources::waveform::WaveformSourceEvent;
 
 pub struct EventBox {
@@ -19,11 +18,13 @@ pub enum Event {
     Waveform(WaveformSourceEvent),
     Actors(ActorsSourceEvent),
     Multiplexer(MultiplexerSourceEvent),
-    Test(TestSourceEvent),
+    
+    #[cfg(test)]
+    Test(crate::entities::sources::TestSourceEvent),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct EventTargetId(usize);
+pub struct EventTargetId(usize);
 
 impl std::fmt::Display for EventTargetId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -41,7 +42,7 @@ impl EventTargetId {
 
 pub(crate) type EventDispatcher = fn(*mut u8, &Event);
 
-pub(crate) struct EventTarget {
+pub struct EventTarget {
     dispatcher: EventDispatcher,
     id: EventTargetId,
     ptr: *mut u8,

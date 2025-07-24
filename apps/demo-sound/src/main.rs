@@ -23,9 +23,6 @@ fn profile_audio(frame: &yage2_sound::manager::ProfileFrame) {
     // is maximally allowed to take to fill the device buffer.
     let allowed_time = (1000.0 / frame.sample_rate as f32) * frame.block_size as f32;
 
-    // Calculate the average load of the renderer thread
-    let proc_load_precent = frame.render_av / allowed_time * 100.0;
-
     // When no events are processed, we cannot calculate the load
     // (since the thread is not running).
     // Assume that events thread has the same maximum allowed time
@@ -37,10 +34,13 @@ fn profile_audio(frame: &yage2_sound::manager::ProfileFrame) {
     };
 
     info!(
-        "T: {:.0}. Render: {:.1}ms ({:.1}%). Ev {:.1}ms ({:.0})",
-        frame.render_tps_av, frame.render_av,
+        "T: {:.0}. Render: {:.1}ms ({:.1}%). Ev {:.1}ms ({:.1}%) ({:.0})",
+        frame.render_tps_av,
+        frame.render_av,
         frame.render_av / allowed_time * 100.0,
-        frame.events_av, frame.events_tps_av,
+        frame.events_av,
+        events_load_precent,
+        frame.events_tps_av,
     );
 }
 

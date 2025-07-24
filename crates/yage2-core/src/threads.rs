@@ -1,10 +1,11 @@
+use log::info;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::thread::{Scope, ScopedJoinHandle};
-use log::{error, info};
 
 #[cfg(target_os = "linux")]
+#[allow(unused)]
 mod native_impl {
     use crate::threads::ThreadPriority;
     use log::{debug, warn};
@@ -96,6 +97,7 @@ mod native_impl {
 }
 
 #[cfg(target_os = "windows")]
+#[allow(unused)]
 mod native_impl {
     use crate::threads::ThreadPriority;
     use log::debug;
@@ -127,6 +129,7 @@ mod native_impl {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(unused)]
 mod native_impl {
     use crate::threads::ThreadPriority;
     use log::debug;
@@ -195,6 +198,7 @@ pub struct ProfileFrame {
     pub threads: Vec<ProfileThreadFrame>,
 }
 
+#[allow(dead_code)]
 struct ThreadWrapper<'scope> {
     join: ScopedJoinHandle<'scope, ()>,
     native_id: NativeId,
@@ -254,7 +258,8 @@ impl Feedback {
     }
 }
 
-fn join_all(threads: Arc<Mutex<Vec<ThreadWrapper>>>, profile_handle: Option<fn(&ProfileFrame)>) {
+fn join_all(threads: Arc<Mutex<Vec<ThreadWrapper>>>, _: Option<fn(&ProfileFrame)>) {
+    // TODO: Implement profiling logic if needed
     let mut threads_guard = threads.lock().unwrap();
     for thread in threads_guard.drain(..) {
         if let Err(e) = thread.join.join() {
@@ -321,15 +326,6 @@ impl<'scope, 'env: 'scope> ThreadManager<'scope, 'env> {
 
         self.threads.lock().unwrap().push(thread_wrapper);
         Ok(())
-    }
-
-    fn join_all(&self) {
-        let mut threads = self.threads.lock().unwrap();
-        for thread in threads.drain(..) {
-            if let Err(e) = thread.join.join() {
-                error!("Thread '{}' panicked: {:?}", thread.name, e);
-            }
-        }
     }
 }
 
