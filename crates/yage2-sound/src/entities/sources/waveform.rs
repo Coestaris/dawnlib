@@ -61,14 +61,15 @@ impl WaveformSource {
 mod dsp {
     use crate::entities::BlockInfo;
     use crate::sample::PlanarBlock;
+    use crate::BLOCK_SIZE;
 
     pub(crate) fn generate_sine(frequency: f32, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
         fn sine(frequency: f32, time: f32) -> f32 {
-            (2.0 * std::f32::consts::PI * frequency * time).sin()
+            (2.0 * std::f32::consts::PI * frequency * time).sin() * 0.1
         }
 
         // TODO: Implement SIMD optimization for sine wave generation
-        for i in 0..output.samples[0].len() {
+        for i in 0..BLOCK_SIZE {
             let time = info.time(i);
             let value = sine(frequency, time);
             for channel in 0..output.samples.len() {
@@ -87,7 +88,7 @@ mod dsp {
         }
 
         // TODO: Implement SIMD optimization for square wave generation
-        for i in 0..output.samples[0].len() {
+        for i in 0..BLOCK_SIZE {
             let time = info.time(i);
             let value = square(frequency, time);
             for channel in 0..output.samples.len() {
@@ -106,7 +107,7 @@ mod dsp {
         }
 
         // TODO: Implement SIMD optimization for triangle wave generation
-        for i in 0..output.samples[0].len() {
+        for i in 0..BLOCK_SIZE {
             let time = info.time(i);
             let value = triangle(frequency, time);
             for channel in 0..output.samples.len() {
@@ -124,7 +125,7 @@ mod dsp {
             (frequency * time) % 1.0 * 2.0 - 1.0
         }
 
-        for i in 0..output.samples[0].len() {
+        for i in 0..BLOCK_SIZE {
             let time = info.time(i);
             let value = sawtooth(frequency, time);
             for channel in 0..output.samples.len() {
@@ -158,26 +159,27 @@ impl Source for WaveformSource {
         }
     }
 
+    #[inline(always)]
     fn frame_start(&mut self) {
         self.cached = false;
     }
 
+    #[inline(always)]
     fn render(&mut self, info: &BlockInfo) -> &PlanarBlock<f32> {
         if self.cached {
             return &self.output;
         }
 
-        self.output.silence();
-        // match self.waveform_type {
-        //     WaveformType::Sine => dsp::generate_sine(self.frequency, &mut self.output, info),
-        //     WaveformType::Square => dsp::generate_square(self.frequency, &mut self.output, info),
-        //     WaveformType::Triangle => {
-        //         dsp::generate_triangle(self.frequency, &mut self.output, info)
-        //     }
-        //     WaveformType::Sawtooth => {
-        //         dsp::generate_sawtooth(self.frequency, &mut self.output, info)
-        //     }
-        // }
+        match self.waveform_type {
+            WaveformType::Sine => dsp::generate_sine(self.frequency, &mut self.output, info),
+            WaveformType::Square => dsp::generate_square(self.frequency, &mut self.output, info),
+            WaveformType::Triangle => {
+                dsp::generate_triangle(self.frequency, &mut self.output, info)
+            }
+            WaveformType::Sawtooth => {
+                dsp::generate_sawtooth(self.frequency, &mut self.output, info)
+            }
+        }
 
         self.cached = true;
         &self.output

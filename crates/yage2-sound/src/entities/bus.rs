@@ -3,7 +3,6 @@ use crate::sample::PlanarBlock;
 use log::debug;
 
 pub enum BusEvent {
-    ChangeGain(f32),
 }
 
 pub struct Bus<'a, E, S>
@@ -12,7 +11,6 @@ where
     S: Source,
 {
     id: EventTargetId,
-    gain: f32,
     effect: NodeRef<'a, E>,
     source: NodeRef<'a, S>,
     output: PlanarBlock<f32>,
@@ -32,10 +30,9 @@ where
     E: Effect,
     S: Source,
 {
-    pub fn new(gain: f32, effect: &'a E, source: &'a S) -> Self {
+    pub fn new(effect: &'a E, source: &'a S) -> Self {
         Bus {
             id: EventTargetId::new(),
-            gain,
             effect: NodeRef::<'a>::new(effect),
             source: NodeRef::<'a>::new(source),
             output: PlanarBlock::default(),
@@ -65,15 +62,11 @@ where
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::Bus(BusEvent::ChangeGain(gain)) => {
-                debug!("ChangeBusGain of bus {} to {}", self.id, self.gain);
-                self.gain = *gain;
-            }
-
             _ => {}
         }
     }
 
+    #[inline(always)]
     fn frame_start(&mut self) {
         self.source.as_mut().frame_start();
     }
@@ -91,13 +84,53 @@ where
             self.output.copy_from(input);
         }
 
-        // Apply gain
-        for channel in 0..self.output.samples.len() {
-            for sample in &mut self.output.samples[channel] {
-                *sample *= self.gain;
+        &self.output
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate test;
+
+    use super::*;
+    use crate::dsp::detect_features;
+    use crate::entities::effects::bypass::BypassEffect;
+    use crate::entities::sources::TestSource;
+
+    #[test]
+    fn test_bus() {
+        detect_features();
+
+        let effect = BypassEffect::new();
+        let source = TestSource::new();
+        let mut bus = Bus::new(&effect, &source);
+
+        for i in 0..10 {
+            bus.frame_start();
+            let info = BlockInfo::new(0, 44_100);
+            let output = bus.render(&info);
+
+            // Result should be the same as output of the TestSource (1,2,3,...)
+            for i in 0..output.samples[0].len() {
+                for channel in 0..output.samples.len() {
+                    assert_eq!(output.samples[channel][i], (i + 1) as f32);
+                }
             }
         }
+    }
 
-        &self.output
+    #[bench]
+    fn bench_bus(b: &mut test::Bencher) {
+        detect_features();
+
+        let effect = BypassEffect::new();
+        let source = TestSource::new();
+        let mut bus = Bus::new(&effect, &source);
+        let info = BlockInfo::new(0, 44_100);
+
+        b.iter(|| {
+            bus.frame_start();
+            bus.render(&info);
+        });
     }
 }

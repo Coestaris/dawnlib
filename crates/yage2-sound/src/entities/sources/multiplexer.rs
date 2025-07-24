@@ -130,7 +130,7 @@ impl<'a, T: Source, const N: usize> Source for MultiplexerSource<'a, T, N> {
         // TODO: Make sure that loop unrolling is done by the compiler
         for i in 0..N {
             let input = self.sources[i].as_mut().render(info);
-            self.output.mix(input, self.mix[i]);
+            self.output.addm(input, self.mix[i]);
         }
         self.cached = true;
         &self.output
@@ -197,7 +197,7 @@ impl<'a, T1: Source> Source for Multiplexer1Source<'a, T1> {
 
         let input = self.source1.as_mut().render(info);
         self.output.silence();
-        self.output.mix(input, self.mix1);
+        self.output.addm(input, self.mix1);
         self.cached = true;
         &self.output
     }
@@ -275,8 +275,8 @@ impl<'a, T1: Source, T2: Source> Source for Multiplexer2Source<'a, T1, T2> {
         let input1 = self.source1.as_mut().render(info);
         let input2 = self.source2.as_mut().render(info);
         self.output.silence();
-        self.output.mix(input1, self.mix1);
-        self.output.mix(input2, self.mix2);
+        self.output.addm(input1, self.mix1);
+        self.output.addm(input2, self.mix2);
         self.cached = true;
         &self.output
     }
@@ -373,9 +373,9 @@ impl<'a, T1: Source, T2: Source, T3: Source> Source for Multiplexer3Source<'a, T
         let input2 = self.source2.as_mut().render(info);
         let input3 = self.source3.as_mut().render(info);
         self.output.silence();
-        self.output.mix(input1, self.mix1);
-        self.output.mix(input2, self.mix2);
-        self.output.mix(input3, self.mix3);
+        self.output.addm(input1, self.mix1);
+        self.output.addm(input2, self.mix2);
+        self.output.addm(input3, self.mix3);
         self.cached = true;
         &self.output
     }
@@ -491,13 +491,125 @@ impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Source
         let input3 = self.source3.as_mut().render(info);
         let input4 = self.source4.as_mut().render(info);
         self.output.silence();
-        self.output.mix(input1, self.mix1);
-        self.output.mix(input2, self.mix2);
-        self.output.mix(input3, self.mix3);
-        self.output.mix(input4, self.mix4);
+        self.output.addm(input1, self.mix1);
+        self.output.addm(input2, self.mix2);
+        self.output.addm(input3, self.mix3);
+        self.output.addm(input4, self.mix4);
         self.cached = true;
         &self.output
     }
 }
 
-// TODO: Tests
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dsp::detect_features;
+    use crate::entities::sources::TestSource;
+
+    #[test]
+    fn test_multiplexer1() {
+        detect_features();
+
+        let source = TestSource::new();
+        let mut mux = Multiplexer1Source::new(&source, 0.5);
+
+        mux.frame_start();
+        let info = BlockInfo::new(0, 44_100);
+        let output = mux.render(&info);
+
+        // Check that the output is as expected
+        for i in 0..output.samples[0].len() {
+            for channel in 0..output.samples.len() {
+                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 0.5);
+            }
+        }
+    }
+
+    #[test]
+    fn test_multiplexer2() {
+        detect_features();
+
+        let source1 = TestSource::new();
+        let source2 = TestSource::new();
+        let mut mux = Multiplexer2Source::new(&source1, &source2, 0.1, 0.2);
+
+        mux.frame_start();
+        let info = BlockInfo::new(0, 44_100);
+        let output = mux.render(&info);
+
+        // Check that the output is as expected
+        for i in 0..output.samples[0].len() {
+            for channel in 0..output.samples.len() {
+                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 0.1 + (i + 1) as f32 * 0.2);
+            }
+        }
+    }
+
+    #[test]
+    fn test_multiplexer3() {
+        detect_features();
+
+        let source1 = TestSource::new();
+        let source2 = TestSource::new();
+        let source3 = TestSource::new();
+        let mut mux = Multiplexer3Source::new(&source1, &source2, &source3, 0.1, 0.2, 0.3);
+
+        mux.frame_start();
+        let info = BlockInfo::new(0, 44_100);
+        let output = mux.render(&info);
+
+        // Check that the output is as expected
+        for i in 0..output.samples[0].len() {
+            for channel in 0..output.samples.len() {
+                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 0.1 + (i + 1) as f32 * 0.2 + (i + 1) as f32 * 0.3);
+            }
+        }
+    }
+
+    #[test]
+    fn test_multiplexer4() {
+        detect_features();
+
+        let source1 = TestSource::new();
+        let source2 = TestSource::new();
+        let source3 = TestSource::new();
+        let source4 = TestSource::new();
+        let mut mux = Multiplexer4Source::new(&source1, &source2, &source3, &source4, 0.1, 0.2, 0.3, 0.4);
+
+        mux.frame_start();
+        let info = BlockInfo::new(0, 44_100);
+        let output = mux.render(&info);
+
+        // Check that the output is as expected
+        for i in 0..output.samples[0].len() {
+            for channel in 0..output.samples.len() {
+                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 0.1 + (i + 1) as f32 * 0.2 + (i + 1) as f32 * 0.3 + (i + 1) as f32 * 0.4);
+            }
+        }
+    }
+
+    #[test]
+    fn test_multiplexer_n() {
+        detect_features();
+
+        let source1 = TestSource::new();
+        let source2 = TestSource::new();
+        let source3 = TestSource::new();
+        let mut mux = MultiplexerSource::new(
+            [&source1, &source2, &source3],
+            [0.5, 0.2, 0.3],
+        );
+
+        mux.frame_start();
+        let info = BlockInfo::new(0, 44_100);
+        let output = mux.render(&info);
+
+        // Check that the output is as expected
+        for i in 0..output.samples[0].len() {
+            for channel in 0..output.samples.len() {
+                let expected = (i + 1) as f32 * (0.5 + 0.2 + 0.3);
+                assert_eq!(output.samples[channel][i], expected, "Mismatch at sample {}, channel {}", i, channel);
+            }
+        }
+    }
+}

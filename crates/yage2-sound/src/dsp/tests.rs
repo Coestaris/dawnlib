@@ -2,15 +2,13 @@
 mod tests {
     extern crate test;
     use crate::dsp::detect_features;
-    use crate::sample::InterleavedBlock;
+    use crate::sample::{InterleavedBlock, PlanarBlock};
     use std::panic;
     use test::Bencher;
+    use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 
     #[test]
     fn copy_from_planar_vec_full_test() {
-        use crate::sample::PlanarBlock;
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
         let mut block = PlanarBlock::<f32>::default();
         let input: [Vec<f32>; CHANNELS_COUNT] = [
             (0..BLOCK_SIZE).map(|i| i as f32).collect(),
@@ -28,9 +26,6 @@ mod tests {
 
     #[test]
     fn copy_from_planar_vec_fail_if_not_end_of_block() {
-        use crate::sample::PlanarBlock;
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
         let result = panic::catch_unwind(|| {
             let mut block = PlanarBlock::<f32>::default();
             let input: [Vec<f32>; CHANNELS_COUNT] = [
@@ -50,9 +45,6 @@ mod tests {
 
     #[test]
     fn copy_from_test() {
-        use crate::sample::PlanarBlock;
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
         let mut block1 = PlanarBlock::<f32>::default();
         let mut block2 = PlanarBlock::<f32>::default();
 
@@ -73,9 +65,6 @@ mod tests {
 
     #[test]
     fn copy_into_interleaved_test() {
-        use crate::sample::{InterleavedSample, PlanarBlock};
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
         detect_features();
 
         let mut block = PlanarBlock::<f32>::default();
@@ -104,9 +93,6 @@ mod tests {
 
     #[bench]
     fn copy_into_interleaved_bench(b: &mut Bencher) {
-        use crate::sample::{InterleavedSample, PlanarBlock};
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
         detect_features();
 
         let mut planar = PlanarBlock::<f32>::default();
@@ -124,10 +110,7 @@ mod tests {
     }
 
     #[test]
-    fn mix_test() {
-        use crate::sample::PlanarBlock;
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
+    fn add_test() {
         detect_features();
 
         let mut block1 = PlanarBlock::<f32>::default();
@@ -140,7 +123,7 @@ mod tests {
             }
         }
 
-        block1.mix(&block2, 1.0);
+        block1.add(&block2);
 
         for channel in 0..CHANNELS_COUNT {
             for i in 0..BLOCK_SIZE {
@@ -153,10 +136,7 @@ mod tests {
     }
 
     #[bench]
-    fn mix_bench(b: &mut Bencher) {
-        use crate::sample::PlanarBlock;
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
+    fn add_bench(b: &mut Bencher) {
         detect_features();
 
         let mut block1 = PlanarBlock::<f32>::default();
@@ -170,115 +150,32 @@ mod tests {
         }
 
         b.iter(|| {
-            block1.mix(&block2, 1.0);
+            block1.add(&block2);
         });
     }
 
     #[test]
-    fn gain_clamp_test() {
-        use crate::sample::PlanarBlock;
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
+    fn addm_test() {
         detect_features();
 
-        let mut block = PlanarBlock::<f32>::default();
-        let gain = 0.5;
+        let mut block1 = PlanarBlock::<f32>::default();
+        let mut block2 = PlanarBlock::<f32>::default();
 
         for channel in 0..CHANNELS_COUNT {
             for i in 0..BLOCK_SIZE {
-                block.samples[channel][i] = (i as f32 + channel as f32) / 10.0;
+                block1.samples[channel][i] = i as f32 + channel as f32;
+                block2.samples[channel][i] = (i as f32 + channel as f32) * 3.0;
             }
         }
 
-        block.pan_gain_phase_clamp(0.0, gain, false);
-
+        block1.addm(&block2, 0.5);
         for channel in 0..CHANNELS_COUNT {
             for i in 0..BLOCK_SIZE {
                 assert_eq!(
-                    block.samples[channel][i],
-                    ((i as f32 + channel as f32) * gain / 10.0).clamp(-1.0, 1.0)
+                    block1.samples[channel][i],
+                    (i as f32 + channel as f32) + (i as f32 + channel as f32) * 3.0 * 0.5
                 );
             }
         }
-    }
-
-    #[test]
-    fn phase_clamp_test() {
-        use crate::sample::PlanarBlock;
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
-        detect_features();
-
-        let mut block = PlanarBlock::<f32>::default();
-        let invert_phase = true;
-
-        for channel in 0..CHANNELS_COUNT {
-            for i in 0..BLOCK_SIZE {
-                block.samples[channel][i] = (i as f32 + channel as f32) / 10.0;
-            }
-        }
-
-        block.pan_gain_phase_clamp(0.0, 1.0, invert_phase);
-
-        for channel in 0..CHANNELS_COUNT {
-            for i in 0..BLOCK_SIZE {
-                assert_eq!(
-                    block.samples[channel][i],
-                    -((i as f32 + channel as f32) / 10.0).clamp(-1.0, 1.0)
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn pan_clamp_test() {
-        use crate::sample::PlanarBlock;
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
-        detect_features();
-
-        let mut block_right = PlanarBlock::<f32>::default();
-        for channel in 0..CHANNELS_COUNT {
-            for i in 0..BLOCK_SIZE {
-                block_right.samples[channel][i] = (i as f32 + channel as f32) / 10.0;
-            }
-        }
-
-        block_right.pan_gain_phase_clamp(1.0, 1.0, false);
-        for i in 0..BLOCK_SIZE {
-            assert_eq!(block_right.samples[0][i], 0.0); // Left channel
-        }
-
-        let mut block_left = PlanarBlock::<f32>::default();
-        for channel in 0..CHANNELS_COUNT {
-            for i in 0..BLOCK_SIZE {
-                block_left.samples[channel][i] = (i as f32 + channel as f32) / 10.0;
-            }
-        }
-        block_left.pan_gain_phase_clamp(-1.0, 1.0, false);
-        for i in 0..BLOCK_SIZE {
-            assert_eq!(block_left.samples[1][i], 0.0); // Right channel
-        }
-    }
-
-    #[bench]
-    fn pan_gain_phase_clamp_bench(b: &mut Bencher) {
-        use crate::sample::PlanarBlock;
-        use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-
-        detect_features();
-
-        let mut block = PlanarBlock::<f32>::default();
-        let gain = 0.5;
-
-        for channel in 0..CHANNELS_COUNT {
-            for i in 0..BLOCK_SIZE {
-                block.samples[channel][i] = (i as f32 + channel as f32) / 10.0;
-            }
-        }
-
-        b.iter(|| {
-            block.pan_gain_phase_clamp(0.0, gain, false);
-        });
     }
 }

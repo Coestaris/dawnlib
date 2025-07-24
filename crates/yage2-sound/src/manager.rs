@@ -3,7 +3,8 @@ use crate::backend::{
 };
 use crate::dsp::detect_features;
 use crate::entities::bus::Bus;
-use crate::entities::{BlockInfo, Effect, NodeRef, Sink, Source};
+use crate::entities::sinks::InterleavedSink;
+use crate::entities::{BlockInfo, Effect, NodeRef, Source};
 use crate::error::{AudioManagerCreationError, AudioManagerStartError, AudioManagerStopError};
 use crate::sample::{
     InterleavedBlock, InterleavedSample, MappedInterleavedBuffer, PlanarBlock, Sample,
@@ -97,7 +98,7 @@ impl Drop for AudioManager {
 impl AudioManager {
     pub fn new<S>(
         config: AudioManagerConfig,
-        sink: Sink<S>,
+        sink: InterleavedSink<S>,
     ) -> Result<Self, AudioManagerCreationError>
     where
         S: Source + Send + Sync + 'static,
@@ -233,26 +234,26 @@ impl AudioManager {
 
     fn spawn_renderer<S>(
         backend: &mut AudioBackend<SampleType>,
-        sink: Sink<S>,
+        mut sink: InterleavedSink<S>,
         profilers: Arc<Profilers>,
     ) -> Result<(), AudioManagerStartError>
     where
         S: Source + Send + Sync + 'static,
     {
         let raw_fn = {
-            move |output: &mut InterleavedBlock<f32>| {
+            move |output: &mut MappedInterleavedBuffer<f32>| {
                 profilers.renderer_tps.tick(1);
 
-                let info = BlockInfo::new(0, 0);
+                // TODO: Collect new event boxes
+                profilers.events.start();
+                let boxes = [];
+                profilers.events_tps.tick(boxes.len() as u32);
+                sink.dispatch(&boxes);
+                profilers.events.end();
 
                 profilers.renderer_time.start();
-                let rendered = sink.render(&info);
+                sink.render(output);
                 profilers.renderer_time.end();
-
-                // Convert the planar block to interleaved format
-                rendered.copy_into_interleaved(output);
-
-                profilers.renderer_time.start();
             }
         };
 

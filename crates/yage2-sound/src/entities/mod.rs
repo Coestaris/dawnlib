@@ -1,13 +1,14 @@
+use crate::entities::events::{Event, EventBox, EventTarget, EventTargetId};
+use crate::sample::{InterleavedSample, PlanarBlock};
+use crate::{SampleRate, SamplesCount, BLOCK_SIZE};
 use std::cell::UnsafeCell;
-use crate::entities::events::{Event, EventTarget, EventTargetId};
-use crate::sample::PlanarBlock;
-use crate::{SampleRate, SamplesCount};
 use std::collections::HashMap;
 
 pub mod bus;
 pub mod effects;
 pub mod events;
 pub mod sources;
+pub mod sinks;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -79,12 +80,13 @@ impl BlockInfo {
         self.sample_rate
     }
 
+    #[inline(always)]
     fn time(&self, i: SamplesCount) -> f32 {
         (self.sample_index as f32 + i as f32) / self.sample_rate as f32
     }
 }
 
-pub(crate) trait Source {
+pub trait Source {
     fn get_targets(&self) -> Vec<EventTarget>;
     fn dispatch(&mut self, event: &Event) {
         // Default implementation does nothing
@@ -93,138 +95,6 @@ pub(crate) trait Source {
     fn frame_start(&mut self) {
         // Default implementation does nothing
     }
+
     fn render(&mut self, info: &BlockInfo) -> &PlanarBlock<f32>;
-}
-
-pub struct Sink<T: Source> {
-    master: UnsafeCell<T>,
-    event_router: HashMap<EventTargetId, EventTarget>,
-}
-unsafe impl<T: Source> Send for Sink<T> {}
-unsafe impl<T: Source> Sync for Sink<T> {}
-
-impl<T: Source> Sink<T> {
-    pub fn new(master: T) -> Self {
-        let targets = master.get_targets();
-        let mut event_router = HashMap::new();
-        for target in targets {
-            event_router.insert(target.get_id(), target);
-        }
-
-        Sink {
-            master: UnsafeCell::new(master),
-            event_router,
-        }
-    }
-
-    fn dispatch_event(&self, target_id: EventTargetId, event: &Event) {
-        if let Some(target) = self.event_router.get(&target_id) {
-            target.dispatch(event);
-        }
-    }
-
-    pub fn render(&self, info: &BlockInfo) -> &PlanarBlock<f32> {
-        // TODO: Process events for the master source
-
-        unsafe {
-            let master = &mut *self.master.get();
-
-            // Propagate the frame start to the master source
-            master.frame_start();
-            // Render the master source
-            master.render(info)
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::entities::bus::{Bus, BusEvent};
-    use crate::entities::effects::bypass::BypassEffect;
-    use crate::entities::sources::actor::ActorsSource;
-    use crate::entities::sources::multiplexer::{
-        Multiplexer1Source, Multiplexer2Source, MultiplexerSourceEvent,
-    };
-    use log;
-
-    struct SoftClip {}
-    impl Effect for SoftClip {
-        fn bypass(&self) -> bool {
-            todo!()
-        }
-
-        fn render(
-            &mut self,
-            input: &PlanarBlock<f32>,
-            output: &mut PlanarBlock<f32>,
-            info: &BlockInfo,
-        ) {
-            todo!()
-        }
-    }
-
-    struct FreeVerb {}
-    impl Effect for FreeVerb {
-        fn bypass(&self) -> bool {
-            todo!()
-        }
-
-        fn render(
-            &mut self,
-            input: &PlanarBlock<f32>,
-            output: &mut PlanarBlock<f32>,
-            info: &BlockInfo,
-        ) {
-            todo!()
-        }
-    }
-
-    #[test]
-    fn test() {
-        // Setup basic logging
-        log::set_max_level(log::LevelFilter::Debug);
-        struct Logger;
-        impl log::Log for Logger {
-            fn enabled(&self, metadata: &log::Metadata) -> bool {
-                metadata.level() <= log::Level::Debug
-            }
-
-            fn log(&self, record: &log::Record) {
-                println!("{} - {}", record.level(), record.args());
-            }
-
-            fn flush(&self) {}
-        }
-        static LOGGER: Logger = Logger;
-        log::set_logger(&LOGGER).unwrap();
-
-        let actors_effect = BypassEffect {};
-        let actors_source = ActorsSource::new();
-        let actors_bus = Bus::new(1.0, &actors_effect, &actors_source);
-
-        let freeverb = FreeVerb {};
-        let send_source = Multiplexer1Source::new(&actors_bus, 0.5);
-        let send_bus = Bus::new(1.0, &freeverb, &send_source);
-
-        let soft_clip = SoftClip {};
-        let master_source = Multiplexer2Source::new(&actors_bus, &send_bus, 0.7, 0.3);
-        let master_bus = Bus::new(1.0, &soft_clip, &master_source);
-
-        let sink = Sink::new(master_bus);
-        assert_ne!(
-            sink.event_router.len(),
-            0,
-            "Event router should not be empty"
-        );
-
-        let info = BlockInfo::new(0, 48000);
-        let output = sink.render(&info);
-
-        sink.dispatch_event(send_bus.get_id(), &Event::Bus(BusEvent::ChangeGain(0.8)));
-        sink.dispatch_event(
-            master_source.get_id(),
-            &Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(0, 0.6)),
-        );
-    }
 }

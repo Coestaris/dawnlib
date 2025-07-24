@@ -1,5 +1,5 @@
 use crate::backend::{BackendDeviceTrait, CreateBackendConfig};
-use crate::sample::{InterleavedBlock, MappedInterleavedBuffer, PlanarBlock, Sample};
+use crate::sample::{InterleavedBlock, MappedInterleavedBuffer, PlanarBlock, Sample, SampleCode};
 use crate::{ChannelsCount, SampleRate, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SizedSample;
@@ -143,7 +143,7 @@ where
 
     fn open<F>(&mut self, mut raw_fn: F) -> Result<(), Error>
     where
-        F: FnMut(&mut InterleavedBlock<f32>) + Send + 'static,
+        F: FnMut(&mut MappedInterleavedBuffer<f32>) + Send + 'static,
     {
         if self.stream.is_some() {
             return Err(Error::AlreadyOpened);
@@ -159,34 +159,31 @@ where
         };
         let samples_count = interleaved_samples_count * self.stream_config.channels as usize;
 
-        let stream = self
-            .device
-            .build_output_stream(
-                &self.stream_config,
-                move |data: &mut [S], _: &cpal::OutputCallbackInfo| {
-                    // Warp raw buffer into interleaved sample buffer
-                    match MappedInterleavedBuffer::<S>::new(data) {
-                        Some(mapped_buffer) => {
-                            if mapped_buffer.len != BLOCK_SIZE {
-                                warn!(
-                                    "Mapped buffer length is not equal to BLOCK_SIZE: expected {}, got {}",
-                                    BLOCK_SIZE,
-                                    mapped_buffer.len
-                                );
-                            }
-
-                            // Generate a new interleaved block (always done in the f32 format)
-                            let mut interleaved_block = InterleavedBlock::<f32>::default();
-                            raw_fn(&mut interleaved_block);
-
-                            // Copy samples from interleaved block to mapped buffer
-                            for sample in 0..min(mapped_buffer.len, BLOCK_SIZE) {
-                                for channel in 0..CHANNELS_COUNT {
-                                    mapped_buffer.samples[sample].channels[channel] = S::from_f32(interleaved_block.samples[sample].channels[channel]);
-                                }
-                            }
+        let f = match S::code() {
+            SampleCode::I8 => {
+                todo!()
+            }
+            SampleCode::I16 => {
+                todo!()
+            }
+            SampleCode::I24 => {
+                todo!()
+            }
+            SampleCode::I32 => {
+                todo!()
+            }
+            SampleCode::U16 => {
+                todo!()
+            }
+            SampleCode::U32 => {
+                todo!()
+            }
+            SampleCode::F32 => {
+                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    match MappedInterleavedBuffer::<f32>::new(data) {
+                        Some(mut mapped_buffer) => {
+                            raw_fn(&mut mapped_buffer);
                         }
-
                         None => {
                             warn!(
                                 "Failed to create interleaved sample buffer: expected {} samples, got {}",
@@ -195,10 +192,16 @@ where
                             );
                         }
                     }
-                },
-                err_fn,
-                None,
-            )
+                }
+            }
+            SampleCode::F64 => {
+                todo!()
+            }
+        };
+
+        let stream = self
+            .device
+            .build_output_stream(&self.stream_config, f, err_fn, None)
             .map_err(Error::BuildStreamError)?;
 
         stream.play().map_err(Error::StartStreamError)?;
