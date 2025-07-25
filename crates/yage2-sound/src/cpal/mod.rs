@@ -57,6 +57,11 @@ pub(crate) struct Player<S> {
     keep_s: PhantomData<S>,
 }
 
+#[cfg(target_os = "macos")]
+// Internal CPAL implementation for MacOS has weird issues with Send 
+// and Sync traits. I'll deal with it later.
+unsafe impl<S> Send for Player<S> where S: Sample + Send {}
+
 fn sample_code_to_cpal_format<S>() -> cpal::SampleFormat
 where
     S: Sample,

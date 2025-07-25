@@ -427,6 +427,7 @@ dependencies = [
  "common",
  "log",
  "midly",
+ "rand",
  "yage2-core",
  "yage2-sound",
  "yage2-yarc",
