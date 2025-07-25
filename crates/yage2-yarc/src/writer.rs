@@ -120,6 +120,7 @@ fn extension_to_resource_type(ext: &str) -> Result<(ResourceType, PreProcessor<'
         "hlsl" => (ResourceType::ShaderHLSL, dummy_preprocessor),
 
         // Audio types
+        "midi" | "mid" | "rmi" => (ResourceType::AudioMIDI, dummy_preprocessor),
         "flac" => (ResourceType::AudioFLAC, resample_flac_file),
         "wav" => (ResourceType::AudioWAV, resample_wav_file),
         "ogg" => (ResourceType::AudioOGG, resample_ogg_file),

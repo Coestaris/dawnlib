@@ -19,9 +19,10 @@ const STATISTICS_THREAD_NAME: &str = "aud_stats";
 const STATISTICS_THREAD_PRIORITY: ThreadPriority = ThreadPriority::Low;
 const EVENTS_QUEUE_CAPACITY: usize = 1024;
 
-pub struct PlayerConfig<'tm, 'scope, 'env>
+pub struct PlayerConfig<'tm, 'scope, 'env, F>
 where
     'env: 'scope,
+    F: FnMut(&ProfileFrame) + Send + Sync + 'static,
 {
     /// Sample rate of the audio stream
     pub sample_rate: SampleRate,
@@ -30,7 +31,7 @@ where
     /// Scoped thread manager that will be used to spawn the statistics thread
     pub thread_manager: &'tm ThreadManager<'scope, 'env>,
     /// Optional profiler handler that will be called with the profiling data
-    pub profiler_handler: Option<fn(&ProfileFrame)>,
+    pub profiler: Option<F>,
 }
 
 struct Profilers {
@@ -134,35 +135,47 @@ impl Display for PlayerError {
 }
 
 impl Player {
-    pub fn new<S>(config: PlayerConfig, mut sink: InterleavedSink<S>) -> Result<Self, PlayerError>
+    pub fn new<S, F>(
+        config: PlayerConfig<F>,
+        mut sink: InterleavedSink<S>,
+    ) -> Result<Self, PlayerError>
     where
         S: Source + Send + Sync + 'static,
+        F: FnMut(&ProfileFrame) + Send + Sync + 'static,
     {
         if config.sample_rate == 0 {
             return Err(PlayerError::InvalidSampleRate(config.sample_rate));
         }
 
+        // If requested, start the statistics thread (for profiling)
+        let stop_signal = Arc::new(AtomicBool::new(false));
+        let profilers = Arc::new(Profilers::default());
+        match config.profiler {
+            Some(handler) => {
+                Player::spawn_statistics_thread(
+                    config.thread_manager,
+                    handler,
+                    Arc::clone(&stop_signal),
+                    config.sample_rate,
+                    Arc::clone(&profilers),
+                )?;
+            }
+            None => {
+                info!("Profiler handler is not set, statistics thread will not be spawned");
+            }
+        }
+
+        // Should not be here, since DSP processing is not required
+        // for the player, but for convincing we will call it here.
+        detect_features();
+
+        // Create and start the audio backend
         let backend_config = InternalBackendConfig {
             backend_specific: config.backend_config,
             sample_rate: config.sample_rate,
             channels: CHANNELS_COUNT,
             buffer_size: BLOCK_SIZE,
         };
-
-        let stop_signal = Arc::new(AtomicBool::new(false));
-        let profilers = Arc::new(Profilers::default());
-        Player::spawn_statistics_thread(
-            config.thread_manager,
-            config.profiler_handler,
-            Arc::clone(&stop_signal),
-            config.sample_rate,
-            Arc::clone(&profilers),
-        )?;
-
-        // Should not be here, since DSP processing is not required
-        // for the player, but for convincing we will call it here.
-        detect_features();
-
         let events_queue = Arc::new(ArrayQueue::<EventBox>::new(EVENTS_QUEUE_CAPACITY));
         let events_queue_clone = Arc::clone(&events_queue);
         let mut backend = PlayerBackend::<SampleType>::new(backend_config)
@@ -192,7 +205,7 @@ impl Player {
         Ok(Player {
             backend,
             stop_signal,
-            events: Arc::clone(&events_queue),
+            events: events_queue,
         })
     }
 
@@ -200,54 +213,16 @@ impl Player {
         self.events.push(event.clone()).unwrap();
     }
 
-    fn spawn_statistics_thread(
+    fn spawn_statistics_thread<F>(
         tm: &ThreadManager,
-        profiler_handler: Option<fn(&ProfileFrame)>,
+        mut handler: F,
         stop_signal: Arc<AtomicBool>,
         sample_rate: SampleRate,
         profilers: Arc<Profilers>,
-    ) -> Result<(), PlayerError> {
-        let profiler_handler = match &profiler_handler {
-            Some(handler) => handler.clone(),
-            None => {
-                warn!("No profiler handler provided, statistics thread will not log data");
-                return Ok(());
-            }
-        };
-
-        let tick = move || {
-            profilers.renderer_tps.update();
-            profilers.events_tps.update();
-
-            let (render_min, render_av, render_max) = profilers.renderer_time.get_stat();
-            let (render_tps_min, render_tps_av, render_tps_max) = profilers.renderer_tps.get_stat();
-            let (events_min, events_av, events_max) = profilers.events.get_stat();
-            let (events_tps_min, events_tps_av, events_tps_max) = profilers.events_tps.get_stat();
-
-            let frame = ProfileFrame {
-                render_min,
-                render_av,
-                render_max,
-                render_tps_min,
-                render_tps_av,
-                render_tps_max,
-                events_min,
-                events_av,
-                events_max,
-                events_tps_min,
-                events_tps_av,
-                events_tps_max,
-                sample_rate,
-                channels: CHANNELS_COUNT,
-                block_size: BLOCK_SIZE,
-            };
-
-            profiler_handler(&frame);
-
-            // Sleep for a short duration to avoid busy-waiting
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-        };
-
+    ) -> Result<(), PlayerError>
+    where
+        F: FnMut(&ProfileFrame) + Send + Sync + 'static,
+    {
         tm.spawn(
             STATISTICS_THREAD_NAME.into(),
             STATISTICS_THREAD_PRIORITY,
@@ -260,12 +235,41 @@ impl Player {
                     }
 
                     // Collect and log statistics
-                    tick();
+                    profilers.renderer_tps.update();
+                    profilers.events_tps.update();
+
+                    let (render_min, render_av, render_max) = profilers.renderer_time.get_stat();
+                    let (render_tps_min, render_tps_av, render_tps_max) =
+                        profilers.renderer_tps.get_stat();
+                    let (events_min, events_av, events_max) = profilers.events.get_stat();
+                    let (events_tps_min, events_tps_av, events_tps_max) =
+                        profilers.events_tps.get_stat();
+
+                    let frame = ProfileFrame {
+                        render_min,
+                        render_av,
+                        render_max,
+                        render_tps_min,
+                        render_tps_av,
+                        render_tps_max,
+                        events_min,
+                        events_av,
+                        events_max,
+                        events_tps_min,
+                        events_tps_av,
+                        events_tps_max,
+                        sample_rate,
+                        channels: CHANNELS_COUNT,
+                        block_size: BLOCK_SIZE,
+                    };
+
+                    handler(&frame);
+
+                    // Sleep for a short duration to avoid busy-waiting
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
                 }
             },
         )
-        .map_err(|_| PlayerError::FailedToSpawnStatisticsThread)?;
-
-        Ok(())
+        .map_err(|_| PlayerError::FailedToSpawnStatisticsThread)
     }
 }
