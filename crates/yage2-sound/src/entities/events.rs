@@ -3,11 +3,29 @@ use crate::entities::sources::actor::ActorsSourceEvent;
 use crate::entities::sources::multiplexer::MultiplexerSourceEvent;
 use crate::entities::sources::waveform::WaveformSourceEvent;
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct EventBox {
-    pub target_id: EventTargetId,
-    pub event: Event,
+    target_id: EventTargetId,
+    event: Event,
 }
 
+impl EventBox {
+    pub fn new(target_id: EventTargetId, event: Event) -> Self {
+        EventBox { target_id, event }
+    }
+
+    #[inline(always)]
+    pub fn get_target_id(&self) -> EventTargetId {
+        self.target_id
+    }
+
+    #[inline(always)]
+    pub fn get_event(&self) -> &Event {
+        &self.event
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     // General events
     Mute,

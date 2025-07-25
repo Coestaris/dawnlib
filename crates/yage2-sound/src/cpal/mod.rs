@@ -1,4 +1,4 @@
-use crate::backend::{BackendDeviceTrait, CreateBackendConfig};
+use crate::backend::{PlayerBackendTrait, InternalBackendConfig};
 use crate::sample::{MappedInterleavedBuffer, Sample, SampleCode};
 use crate::{ChannelsCount, SampleRate, SamplesCount};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -48,9 +48,9 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 #[derive(Debug)]
-pub struct DeviceConfig {}
+pub struct PlayerConfig {}
 
-pub(crate) struct Device<S> {
+pub(crate) struct Player<S> {
     device: cpal::Device,
     stream_config: cpal::StreamConfig,
     stream: Option<cpal::Stream>,
@@ -70,11 +70,11 @@ where
     }
 }
 
-impl<S> BackendDeviceTrait<S> for Device<S>
+impl<S> PlayerBackendTrait<S> for Player<S>
 where
-    S: Sample + SizedSample + std::marker::Send,
+    S: Sample + SizedSample + Send,
 {
-    fn new(cfg: CreateBackendConfig) -> Result<Self, Error>
+    fn new(cfg: InternalBackendConfig) -> Result<Self, Error>
     where
         Self: Sized,
     {
@@ -136,7 +136,7 @@ where
             }
         }
 
-        Ok(Device::<S> {
+        Ok(Player::<S> {
             device,
             stream_config: selected_config.ok_or(Error::NotSupportedStreamParameters(
                 cfg.sample_rate,

@@ -4,9 +4,8 @@
 pub mod backend;
 mod cpal;
 pub mod dsp;
-mod error;
-pub mod manager;
-mod resources;
+pub mod player;
+pub mod resources;
 mod sample;
 pub mod entities;
 

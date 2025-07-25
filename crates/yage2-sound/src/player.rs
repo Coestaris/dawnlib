@@ -1,31 +1,35 @@
 use crate::backend::{
-    AudioBackend, BackendDeviceTrait, BackendSpecificConfig, CreateBackendConfig,
+    InternalBackendConfig, PlayerBackend, PlayerBackendConfig, PlayerBackendError,
+    PlayerBackendTrait,
 };
 use crate::dsp::detect_features;
+use crate::entities::events::EventBox;
 use crate::entities::sinks::InterleavedSink;
 use crate::entities::Source;
-use crate::error::{AudioManagerCreationError, AudioManagerStartError};
 use crate::sample::MappedInterleavedBuffer;
 use crate::{ChannelsCount, SampleRate, SampleType, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
+use crossbeam_queue::ArrayQueue;
 use log::{debug, info, warn};
+use std::fmt::{Display, Formatter};
 use std::sync::{atomic::AtomicBool, Arc};
 use yage2_core::profile::{PeriodProfiler, TickProfiler};
-use yage2_core::resources::{ResourceManager, ResourceType};
 use yage2_core::threads::{ThreadManager, ThreadPriority};
 
 const STATISTICS_THREAD_NAME: &str = "aud_stats";
 const STATISTICS_THREAD_PRIORITY: ThreadPriority = ThreadPriority::Low;
+const EVENTS_QUEUE_CAPACITY: usize = 1024;
 
-pub struct AudioManagerConfig<'tm, 'scope, 'env>
+pub struct PlayerConfig<'tm, 'scope, 'env>
 where
     'env: 'scope,
 {
-    pub thread_manager: &'tm ThreadManager<'scope, 'env>,
-    pub resource_manager: Arc<ResourceManager>,
-
-    pub backend_specific: BackendSpecificConfig,
+    /// Sample rate of the audio stream
     pub sample_rate: SampleRate,
-
+    /// Backend-specific configuration used for fine-tuning the audio backend
+    pub backend_config: PlayerBackendConfig,
+    /// Scoped thread manager that will be used to spawn the statistics thread
+    pub thread_manager: &'tm ThreadManager<'scope, 'env>,
+    /// Optional profiler handler that will be called with the profiling data
     pub profiler_handler: Option<fn(&ProfileFrame)>,
 }
 
@@ -74,16 +78,18 @@ pub struct ProfileFrame {
     pub block_size: SamplesCount,
 }
 
-pub struct AudioManager {
-    // The backend that handles audio output
-    backend: AudioBackend<SampleType>,
-    // Threads for audio generation, event processing, and statistics
+pub struct Player {
+    // The backend that handles audio output and most of the audio conversion.
+    backend: PlayerBackend<SampleType>,
+    // A signal that is used to stop the audio processing thread.
     stop_signal: Arc<AtomicBool>,
+    // Event queue for processing audio events.
+    events: Arc<ArrayQueue<EventBox>>,
 }
 
-impl Drop for AudioManager {
+impl Drop for Player {
     fn drop(&mut self) {
-        info!("Closing audio manager");
+        info!("Dropping Player");
         self.backend.close().unwrap();
 
         // Notify the generator thread to stop
@@ -92,72 +98,106 @@ impl Drop for AudioManager {
     }
 }
 
-impl AudioManager {
-    pub fn new<S>(
-        config: AudioManagerConfig,
-        sink: InterleavedSink<S>,
-    ) -> Result<Self, AudioManagerCreationError>
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlayerError {
+    InvalidSampleRate(SampleRate),
+    InvalidChannels(ChannelsCount),
+    InvalidBufferSize(SamplesCount),
+    FailedToSpawnStatisticsThread,
+    FailedToStartBackend(PlayerBackendError),
+    FailedToCreateBackend(PlayerBackendError),
+}
+
+impl Display for PlayerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PlayerError::InvalidSampleRate(rate) => {
+                write!(f, "Invalid sample rate: {}", rate)
+            }
+            PlayerError::InvalidChannels(channels) => {
+                write!(f, "Invalid number of channels: {}", channels)
+            }
+            PlayerError::InvalidBufferSize(size) => {
+                write!(f, "Invalid buffer size: {}", size)
+            }
+            PlayerError::FailedToSpawnStatisticsThread => {
+                write!(f, "Failed to spawn statistics thread")
+            }
+            PlayerError::FailedToStartBackend(err) => {
+                write!(f, "Failed to start backend: {}", err)
+            }
+            PlayerError::FailedToCreateBackend(err) => {
+                write!(f, "Failed to create backend: {}", err)
+            }
+        }
+    }
+}
+
+impl Player {
+    pub fn new<S>(config: PlayerConfig, mut sink: InterleavedSink<S>) -> Result<Self, PlayerError>
     where
         S: Source + Send + Sync + 'static,
     {
         if config.sample_rate == 0 {
-            return Err(AudioManagerCreationError::InvalidSampleRate(
-                config.sample_rate,
-            ));
+            return Err(PlayerError::InvalidSampleRate(config.sample_rate));
         }
 
-        let backend_config = CreateBackendConfig {
-            backend_specific: config.backend_specific,
+        let backend_config = InternalBackendConfig {
+            backend_specific: config.backend_config,
             sample_rate: config.sample_rate,
             channels: CHANNELS_COUNT,
             buffer_size: BLOCK_SIZE,
         };
 
-        let mut backend = AudioBackend::<SampleType>::new(backend_config)
-            .map_err(AudioManagerCreationError::BackendSpecific)?;
-
-        detect_features();
-
-        #[cfg(feature = "resources-wav")]
-        config.resource_manager.register_factory(
-            ResourceType::AudioWAV,
-            Arc::new(crate::resources::wav::WAVResourceFactory::new(
-                config.sample_rate,
-            )),
-        );
-        #[cfg(feature = "resources-ogg")]
-        config.resource_manager.register_factory(
-            ResourceType::AudioOGG,
-            Arc::new(crate::resources::ogg::OGGResourceFactory::new(
-                config.sample_rate,
-            )),
-        );
-        #[cfg(feature = "resources-flac")]
-        config.resource_manager.register_factory(
-            ResourceType::AudioFLAC,
-            Arc::new(crate::resources::flac::FLACResourceFactory::new(
-                config.sample_rate,
-            )),
-        );
-
         let stop_signal = Arc::new(AtomicBool::new(false));
         let profilers = Arc::new(Profilers::default());
-
-        AudioManager::spawn_statistics_thread(
+        Player::spawn_statistics_thread(
             config.thread_manager,
             config.profiler_handler,
             Arc::clone(&stop_signal),
             config.sample_rate,
             Arc::clone(&profilers),
-        )
-        .unwrap();
+        )?;
 
-        AudioManager::spawn_renderer(&mut backend, sink, Arc::clone(&profilers)).unwrap();
+        // Should not be here, since DSP processing is not required
+        // for the player, but for convincing we will call it here.
+        detect_features();
 
-        Ok(AudioManager {
+        let events_queue = Arc::new(ArrayQueue::<EventBox>::new(EVENTS_QUEUE_CAPACITY));
+        let events_queue_clone = Arc::clone(&events_queue);
+        let mut backend = PlayerBackend::<SampleType>::new(backend_config)
+            .map_err(PlayerError::FailedToCreateBackend)?;
+        backend
+            .open(move |output: &mut MappedInterleavedBuffer<f32>| {
+                profilers.renderer_tps.tick(1);
+
+                // Process events from the queue
+                profilers.events.start();
+                let mut processed_events = 0;
+                while let Some(event) = events_queue_clone.pop() {
+                    // Process the event
+                    sink.dispatch(&event);
+                    processed_events += 1;
+                }
+                profilers.events_tps.tick(processed_events);
+                profilers.events.end();
+
+                // Render the audio output
+                profilers.renderer_time.start();
+                sink.render(output);
+                profilers.renderer_time.end();
+            })
+            .map_err(PlayerError::FailedToStartBackend)?;
+
+        Ok(Player {
             backend,
             stop_signal,
+            events: Arc::clone(&events_queue),
         })
+    }
+
+    pub fn push_event(&self, event: &EventBox) {
+        self.events.push(event.clone()).unwrap();
     }
 
     fn spawn_statistics_thread(
@@ -166,7 +206,7 @@ impl AudioManager {
         stop_signal: Arc<AtomicBool>,
         sample_rate: SampleRate,
         profilers: Arc<Profilers>,
-    ) -> Result<(), AudioManagerStartError> {
+    ) -> Result<(), PlayerError> {
         let profiler_handler = match &profiler_handler {
             Some(handler) => handler.clone(),
             None => {
@@ -224,39 +264,7 @@ impl AudioManager {
                 }
             },
         )
-        .map_err(AudioManagerStartError::StatisticsThreadSpawnError)?;
-
-        Ok(())
-    }
-
-    fn spawn_renderer<S>(
-        backend: &mut AudioBackend<SampleType>,
-        mut sink: InterleavedSink<S>,
-        profilers: Arc<Profilers>,
-    ) -> Result<(), AudioManagerStartError>
-    where
-        S: Source + Send + Sync + 'static,
-    {
-        let raw_fn = {
-            move |output: &mut MappedInterleavedBuffer<f32>| {
-                profilers.renderer_tps.tick(1);
-
-                // TODO: Collect new event boxes
-                profilers.events.start();
-                let boxes = [];
-                profilers.events_tps.tick(boxes.len() as u32);
-                sink.dispatch(&boxes);
-                profilers.events.end();
-
-                profilers.renderer_time.start();
-                sink.render(output);
-                profilers.renderer_time.end();
-            }
-        };
-
-        backend
-            .open(raw_fn)
-            .map_err(AudioManagerStartError::BackendSpecific)?;
+        .map_err(|_| PlayerError::FailedToSpawnStatisticsThread)?;
 
         Ok(())
     }

@@ -4,6 +4,7 @@ use yage2_core::vec3::Vec3;
 
 const MAX_ACTORS: usize = 1024;
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum ActorsSourceEvent {
     AddActor { pos: Vec3, id: usize, gain: f32 },
     RemoveActors(usize),

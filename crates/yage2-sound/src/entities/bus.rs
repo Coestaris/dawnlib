@@ -1,6 +1,7 @@
 use crate::entities::{BlockInfo, Effect, Event, EventTarget, EventTargetId, NodeRef, Source};
 use crate::sample::PlanarBlock;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BusEvent {
 }
 
