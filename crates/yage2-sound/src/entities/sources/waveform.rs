@@ -2,14 +2,16 @@ use crate::entities::events::{Event, EventTarget, EventTargetId};
 use crate::entities::{BlockInfo, Source};
 use crate::sample::PlanarBlock;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum WaveformType {
+    Disabled,
     Sine,
     Square,
     Triangle,
     Sawtooth,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum WaveformSourceEvent {
     SetWaveformType(WaveformType),
     SetFrequency(f32),
@@ -39,9 +41,9 @@ impl WaveformSource {
         phase: Option<f32>,
     ) -> Self {
         WaveformSource {
-            waveform_type: waveform_type.unwrap_or(WaveformType::Sine),
-            frequency: frequency.unwrap_or(440.0), // Default to A4
-            phase: phase.unwrap_or(0.0),           // Default phase is 0
+            waveform_type: waveform_type.unwrap_or(WaveformType::Disabled),
+            frequency: frequency.unwrap_or(0.0),
+            phase: phase.unwrap_or(0.0),
 
             id: EventTargetId::new(),
             cached: false,
@@ -171,6 +173,7 @@ impl Source for WaveformSource {
         }
 
         match self.waveform_type {
+            WaveformType::Disabled => self.output.silence(),
             WaveformType::Sine => dsp::generate_sine(self.frequency, &mut self.output, info),
             WaveformType::Square => dsp::generate_square(self.frequency, &mut self.output, info),
             WaveformType::Triangle => {

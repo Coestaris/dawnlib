@@ -2,6 +2,7 @@ use crate::entities::{BlockInfo, Event, EventTarget, EventTargetId, NodeRef, Sou
 use crate::sample::PlanarBlock;
 use log::debug;
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum MultiplexerSourceEvent {
     ChangeMix(usize, f32),
 }

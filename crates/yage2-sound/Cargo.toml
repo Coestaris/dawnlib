@@ -11,14 +11,16 @@ resources-ogg = ["dep:ogg", "dep:lewton"]
 
 [dependencies]
 yage2-core = { path = "../yage2-core" }
-cpal = { version = "0.16.0", features = ["audio_thread_priority"] }
+log = "0.4.27"
+cpal = { version = "0.16.0", features = ["audio_thread_priority"] } # Primary audio backend
+ringbuf = "0.4.8" # Used for double-buffering audio data
+crossbeam-queue = "0.3.12" # Used for sending messages to the render thread
+i24 = "2.1.0" # For 24-bit PCM support (used in WAV files)
+
 hound = { version = "3.5.1", optional = true } # For WAV file reading/writing
 flac = { version = "0.5.0", optional = true } # For FLAC file reading
 ogg = { version = "0.9.2", optional = true } # For OGG file reading
 lewton = { version = "0.10.0", optional = true } # For OGG Vorbis decoding
-ringbuf = "0.4.8"
-log = "0.4.27"
-i24 = "2.1.0" # For 24-bit PCM support (used in WAV files)
 
 [profile.release]
 lto = true

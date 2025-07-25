@@ -10,15 +10,17 @@ use std::thread::sleep;
 use std::time::Duration;
 use yage2_core::resources::{ResourceManager, ResourceManagerConfig, ResourceType};
 use yage2_core::threads::{scoped, ThreadManagerConfig, ThreadPriority};
-use yage2_sound::backend::BackendSpecificConfig;
+use yage2_sound::backend::PlayerBackendConfig;
 use yage2_sound::entities::bus::Bus;
 use yage2_sound::entities::effects::bypass::BypassEffect;
+use yage2_sound::entities::events::{Event, EventBox, EventTargetId};
 use yage2_sound::entities::sinks::InterleavedSink;
-use yage2_sound::entities::sources::multiplexer::Multiplexer3Source;
-use yage2_sound::entities::sources::waveform::WaveformSource;
-use yage2_sound::manager::{AudioManager, AudioManagerConfig};
+use yage2_sound::entities::sources::multiplexer::{Multiplexer3Source, MultiplexerSource};
+use yage2_sound::entities::sources::waveform::{WaveformSource, WaveformSourceEvent, WaveformType};
+use yage2_sound::player::{Player, PlayerConfig};
+use yage2_sound::resources::{FLACResourceFactory, OGGResourceFactory, WAVResourceFactory};
 
-fn profile_audio(frame: &yage2_sound::manager::ProfileFrame) {
+fn profile_audio(frame: &yage2_sound::player::ProfileFrame) {
     // Calculate the time in milliseconds, the renderer thread
     // is maximally allowed to take to fill the device buffer.
     let allowed_time = (1000.0 / frame.sample_rate as f32) * frame.block_size as f32;
@@ -44,58 +46,119 @@ fn profile_audio(frame: &yage2_sound::manager::ProfileFrame) {
     );
 }
 
+struct MidiPlayer<const VOICES_COUNT: usize> {
+    ids: [EventTargetId; VOICES_COUNT],
+}
+
+impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
+    fn new<'a>() -> (
+        MidiPlayer<VOICES_COUNT>,
+        Bus<'a, BypassEffect, MultiplexerSource<'a, WaveformSource, VOICES_COUNT>>,
+    ) {
+        fn leak<T>(value: T) -> &'static T {
+            Box::leak(Box::new(value))
+        }
+        let sources: [&WaveformSource; VOICES_COUNT] =
+            std::array::from_fn(|_| leak(WaveformSource::new(None, None, None)));
+        let ids: [EventTargetId; VOICES_COUNT] = sources
+            .iter()
+            .map(|source| source.get_id())
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+
+        let gain: f32 = 3.0 / VOICES_COUNT as f32;
+        let mixes: [f32; VOICES_COUNT] = [gain; VOICES_COUNT];
+        let multiplexer = leak(MultiplexerSource::new(sources, mixes));
+        let effect = leak(BypassEffect::new());
+
+        (MidiPlayer { ids }, Bus::new(effect, multiplexer))
+    }
+
+    fn set_freq(&mut self, player: &Player, id: usize, name: NoteName, octave: u8) {
+        if id >= VOICES_COUNT {
+            panic!("Invalid voice ID: {}", id);
+        }
+        let frequency = Note::new(name, octave).frequency();
+        let event = WaveformSourceEvent::SetFrequency(frequency);
+        let event = EventBox::new(self.ids[id], Event::Waveform(event));
+        player.push_event(&event);
+
+        let event = WaveformSourceEvent::SetWaveformType(WaveformType::Sine);
+        let event = EventBox::new(self.ids[id], Event::Waveform(event));
+        player.push_event(&event);
+    }
+
+    fn play(&mut self, player: &Player) {
+        self.set_freq(player, 0, NoteName::C, 4);
+        self.set_freq(player, 1, NoteName::E, 4);
+        self.set_freq(player, 2, NoteName::G, 4);
+
+        sleep(Duration::from_secs(2));
+
+        self.set_freq(player, 0, NoteName::C, 4);
+        self.set_freq(player, 1, NoteName::B, 4);
+        self.set_freq(player, 2, NoteName::A, 4);
+
+        sleep(Duration::from_secs(2));
+
+        self.set_freq(player, 0, NoteName::C, 4);
+        self.set_freq(player, 1, NoteName::E, 4);
+        self.set_freq(player, 2, NoteName::G, 4);
+
+        sleep(Duration::from_secs(2));
+    }
+}
+
 fn main() {
     // Initialize logging
     log::set_logger(&CommonLogger).unwrap();
     log::set_max_level(log::LevelFilter::Debug);
 
+    const SAMPLE_RATE: usize = 44_100;
+
     let resource_manager = Arc::new(ResourceManager::new(ResourceManagerConfig {
         backend: Box::new(YARCResourceManagerIO::new("demo_sound.yarc".to_string())),
     }));
+    resource_manager.register_factory(
+        ResourceType::AudioWAV,
+        Arc::new(WAVResourceFactory::new(SAMPLE_RATE)),
+    );
+    resource_manager.register_factory(
+        ResourceType::AudioOGG,
+        Arc::new(OGGResourceFactory::new(SAMPLE_RATE)),
+    );
+    resource_manager.register_factory(
+        ResourceType::AudioFLAC,
+        Arc::new(FLACResourceFactory::new(SAMPLE_RATE)),
+    );
+
     resource_manager.poll_io().unwrap();
 
-    // TODO: Using leaked boxes for now.
-    // This is a temporary solution until we have a proper resource management system.
-    let bypass_effect = Box::leak(Box::new(BypassEffect {}));
-    let waveform_source1 = Box::leak(Box::new(WaveformSource::new(
-        None,
-        Some(Note::new(NoteName::C, 3).frequency()),
-        None,
-    )));
-    let waveform_source2 = Box::leak(Box::new(WaveformSource::new(
-        None,
-        Some(Note::new(NoteName::E, 4).frequency()),
-        None,
-    )));
-    let waveform_source3 = Box::leak(Box::new(WaveformSource::new(
-        None,
-        Some(Note::new(NoteName::B, 4).frequency()),
-        None,
-    )));
-    let multiplexer = Multiplexer3Source::new(
-        waveform_source1,
-        waveform_source2,
-        waveform_source3,
-        0.3,
-        0.3,
-        0.3,
-    );
-    // let master_bus = Bus::new(bypass_effect, multiplexer);
-    let sink = InterleavedSink::new(multiplexer, 48_000);
+    let (mut controller, bus) = MidiPlayer::<8>::new();
+    let sink = InterleavedSink::new(bus, SAMPLE_RATE);
 
     let thread_manager_config = ThreadManagerConfig::default();
     let _ = scoped(thread_manager_config, |manager| {
-        let audio_manager_config = AudioManagerConfig {
+        let config = PlayerConfig {
             thread_manager: &manager,
-            resource_manager: Arc::clone(&resource_manager),
-            backend_specific: BackendSpecificConfig {},
+            backend_config: PlayerBackendConfig {},
             profiler_handler: Some(profile_audio),
-            sample_rate: 48_000,
+            sample_rate: SAMPLE_RATE,
         };
-        let mut audio_manager =
-            AudioManager::new(audio_manager_config, sink).expect("Failed to create audio device");
 
-        sleep(Duration::from_millis(10000));
+        let player = Player::new(config, sink).unwrap();
+
+        manager
+            .spawn(
+                "controller".to_string(),
+                ThreadPriority::Normal,
+                move || controller.play(&player),
+            )
+            .unwrap();
+
+        // Player will be dropped here when the thread is finished.
+        // Threads will be automatically joined when they go out of scope.
     });
 
     resource_manager.finalize_all(ResourceType::AudioWAV);

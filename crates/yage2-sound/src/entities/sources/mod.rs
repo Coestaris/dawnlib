@@ -9,6 +9,7 @@ mod test {
     use crate::sample::PlanarBlock;
     use crate::BLOCK_SIZE;
 
+    #[derive(Debug, Clone, PartialEq)]
     pub enum TestSourceEvent {
         SetMultiplier(f32),
     }
@@ -122,4 +123,4 @@ mod test {
 }
 
 #[cfg(test)]
-pub (crate) use test::*;
+pub(crate) use test::*;

@@ -50,7 +50,7 @@ pub(crate) mod wav {
     use crate::{ChannelsCount, SampleRate, CHANNELS_COUNT};
     use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};
 
-    pub(crate) struct WAVResourceFactory {
+    pub struct WAVResourceFactory {
         sample_rate: SampleRate,
     }
 
@@ -129,7 +129,7 @@ pub(crate) mod flac {
     use log::{error, warn};
     use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};
 
-    pub(crate) struct FLACResourceFactory {
+    pub struct FLACResourceFactory {
         sample_rate: SampleRate,
     }
 
@@ -162,7 +162,7 @@ pub(crate) mod ogg {
     use log::{error, warn};
     use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};
 
-    pub(crate) struct OGGResourceFactory {
+    pub struct OGGResourceFactory {
         sample_rate: SampleRate,
     }
 
@@ -187,3 +187,9 @@ pub(crate) mod ogg {
         }
     }
 }
+
+pub use {
+    wav::WAVResourceFactory,
+    flac::FLACResourceFactory,
+    ogg::OGGResourceFactory,
+};
