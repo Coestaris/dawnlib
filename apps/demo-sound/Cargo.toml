@@ -10,3 +10,4 @@ yage2-yarc = { path = "../../crates/yage2-yarc" }
 yage2-sound = { path = "../../crates/yage2-sound" }
 log = "0.4.27"
 midly = {version = "0.5.3"}
+rand = "0.4.6"

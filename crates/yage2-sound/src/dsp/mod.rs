@@ -1,4 +1,4 @@
-use crate::sample::{InterleavedBlock, PlanarBlock};
+use crate::sample::{InterleavedBlock, PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
 use crate::{SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
 
 mod add;
@@ -223,5 +223,21 @@ impl PlanarBlock<f32> {
         //
         // // Fallback to the basic implementation if no SIMD is available
         // fallback(self);
+    }
+
+    #[inline(always)]
+    pub(crate) fn gain_pan(&mut self, gain: f32, pan: f32) {
+        // TODO: Implement SIMD acceleration for gain and pan
+        // Separating the channels into two loops gives a little bit
+        // better performance due to better cache locality
+        let left_gain = gain * (1.0 - pan).sqrt();
+        for i in 0..BLOCK_SIZE {
+            self.samples[LEFT_CHANNEL][i] = (self.samples[LEFT_CHANNEL][i] * left_gain);
+        }
+
+        let right_gain = gain * (1.0 + pan).sqrt();
+        for i in 0..BLOCK_SIZE {
+            self.samples[RIGHT_CHANNEL][i] = (self.samples[RIGHT_CHANNEL][i] * right_gain);
+        }
     }
 }

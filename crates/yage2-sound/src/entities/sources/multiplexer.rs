@@ -3,16 +3,13 @@ use crate::sample::PlanarBlock;
 use log::debug;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum MultiplexerSourceEvent {
-    ChangeMix(usize, f32),
-}
+pub enum MultiplexerSourceEvent {}
 
 /// Multiplexer for 1 source (with the same type)
 pub struct Multiplexer1Source<'a, T1: Source> {
     id: EventTargetId,
     cached: bool,
     source1: NodeRef<'a, T1>,
-    mix1: f32,
     output: PlanarBlock<f32>,
 }
 
@@ -22,8 +19,6 @@ pub struct Multiplexer2Source<'a, T1: Source, T2: Source> {
     cached: bool,
     source1: NodeRef<'a, T1>,
     source2: NodeRef<'a, T2>,
-    mix1: f32,
-    mix2: f32,
     output: PlanarBlock<f32>,
 }
 
@@ -34,9 +29,6 @@ pub struct Multiplexer3Source<'a, T1: Source, T2: Source, T3: Source> {
     source1: NodeRef<'a, T1>,
     source2: NodeRef<'a, T2>,
     source3: NodeRef<'a, T3>,
-    mix1: f32,
-    mix2: f32,
-    mix3: f32,
     output: PlanarBlock<f32>,
 }
 
@@ -48,10 +40,6 @@ pub struct Multiplexer4Source<'a, T1: Source, T2: Source, T3: Source, T4: Source
     source2: NodeRef<'a, T2>,
     source3: NodeRef<'a, T3>,
     source4: NodeRef<'a, T4>,
-    mix1: f32,
-    mix2: f32,
-    mix3: f32,
-    mix4: f32,
     output: PlanarBlock<f32>,
 }
 
@@ -61,7 +49,6 @@ pub struct MultiplexerSource<'a, T: Source, const N: usize> {
     id: EventTargetId,
     cached: bool,
     sources: [NodeRef<'a, T>; N],
-    mix: [f32; N],
     output: PlanarBlock<f32>,
 }
 
@@ -72,13 +59,12 @@ fn dispatch_multiplexer<T: Source, const N: usize>(ptr: *mut u8, event: &Event) 
 }
 
 impl<'a, T: Source, const N: usize> MultiplexerSource<'a, T, N> {
-    pub fn new(sources: [&'a T; N], mix: [f32; N]) -> Self {
+    pub fn new(sources: [&'a T; N]) -> Self {
         let sources_refs: [NodeRef<'a, T>; N] = sources.map(|s| NodeRef::new(s));
         MultiplexerSource {
             id: EventTargetId::new(),
             cached: false,
             sources: sources_refs,
-            mix,
             output: PlanarBlock::default(),
         }
     }
@@ -103,11 +89,6 @@ impl<'a, T: Source, const N: usize> Source for MultiplexerSource<'a, T, N> {
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(index, mix)) if *index < N => {
-                debug!("ChangeMultiplexerSourceMix of muxN {} to {}", self.id, *mix);
-                self.mix[*index] = *mix;
-            }
-
             _ => {}
         }
     }
@@ -132,7 +113,7 @@ impl<'a, T: Source, const N: usize> Source for MultiplexerSource<'a, T, N> {
         // TODO: Make sure that loop unrolling is done by the compiler
         for i in 0..N {
             let input = self.sources[i].as_mut().render(info);
-            self.output.addm(input, self.mix[i]);
+            self.output.add(input);
         }
         self.cached = true;
         &self.output
@@ -146,12 +127,11 @@ fn dispatch_multiplexer1<T1: Source>(ptr: *mut u8, event: &Event) {
 }
 
 impl<'a, T1: Source> Multiplexer1Source<'a, T1> {
-    pub fn new(source1: &'a T1, mix1: f32) -> Self {
+    pub fn new(source1: &'a T1) -> Self {
         Multiplexer1Source {
             id: EventTargetId::new(),
             cached: false,
             source1: NodeRef::new(source1),
-            mix1,
             output: PlanarBlock::default(),
         }
     }
@@ -174,13 +154,6 @@ impl<'a, T1: Source> Source for Multiplexer1Source<'a, T1> {
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(0, mix)) => {
-                debug!(
-                    "ChangeMultiplexerSourceMix of mux1:0 {} to {}",
-                    self.id, *mix
-                );
-                self.mix1 = *mix;
-            }
             _ => {}
         }
     }
@@ -199,7 +172,7 @@ impl<'a, T1: Source> Source for Multiplexer1Source<'a, T1> {
 
         let input = self.source1.as_mut().render(info);
         self.output.silence();
-        self.output.addm(input, self.mix1);
+        self.output.add(input);
         self.cached = true;
         &self.output
     }
@@ -212,14 +185,12 @@ fn dispatch_multiplexer2<T1: Source, T2: Source>(ptr: *mut u8, event: &Event) {
 }
 
 impl<'a, T1: Source, T2: Source> Multiplexer2Source<'a, T1, T2> {
-    pub fn new(source1: &'a T1, source2: &'a T2, mix1: f32, mix2: f32) -> Self {
+    pub fn new(source1: &'a T1, source2: &'a T2) -> Self {
         Multiplexer2Source {
             id: EventTargetId::new(),
             cached: false,
             source1: NodeRef::new(source1),
             source2: NodeRef::new(source2),
-            mix1,
-            mix2,
             output: PlanarBlock::default(),
         }
     }
@@ -243,20 +214,6 @@ impl<'a, T1: Source, T2: Source> Source for Multiplexer2Source<'a, T1, T2> {
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(0, mix)) => {
-                debug!(
-                    "ChangeMultiplexerSourceMix of mux2:0 {} to {}",
-                    self.id, *mix
-                );
-                self.mix1 = *mix;
-            }
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(1, mix)) => {
-                debug!(
-                    "ChangeMultiplexerSourceMix of mux2:1 {} to {}",
-                    self.id, *mix
-                );
-                self.mix2 = *mix;
-            }
             _ => {}
         }
     }
@@ -277,8 +234,8 @@ impl<'a, T1: Source, T2: Source> Source for Multiplexer2Source<'a, T1, T2> {
         let input1 = self.source1.as_mut().render(info);
         let input2 = self.source2.as_mut().render(info);
         self.output.silence();
-        self.output.addm(input1, self.mix1);
-        self.output.addm(input2, self.mix2);
+        self.output.add(input1);
+        self.output.add(input2);
         self.cached = true;
         &self.output
     }
@@ -291,23 +248,13 @@ fn dispatch_multiplexer3<T1: Source, T2: Source, T3: Source>(ptr: *mut u8, event
 }
 
 impl<'a, T1: Source, T2: Source, T3: Source> Multiplexer3Source<'a, T1, T2, T3> {
-    pub fn new(
-        source1: &'a T1,
-        source2: &'a T2,
-        source3: &'a T3,
-        mix1: f32,
-        mix2: f32,
-        mix3: f32,
-    ) -> Self {
+    pub fn new(source1: &'a T1, source2: &'a T2, source3: &'a T3) -> Self {
         Multiplexer3Source {
             id: EventTargetId::new(),
             cached: false,
             source1: NodeRef::new(source1),
             source2: NodeRef::new(source2),
             source3: NodeRef::new(source3),
-            mix1,
-            mix2,
-            mix3,
             output: PlanarBlock::default(),
         }
     }
@@ -332,27 +279,6 @@ impl<'a, T1: Source, T2: Source, T3: Source> Source for Multiplexer3Source<'a, T
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(0, mix)) => {
-                debug!(
-                    "ChangeMultiplexerSourceMix of mux3:0 {} to {}",
-                    self.id, *mix
-                );
-                self.mix1 = *mix;
-            }
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(1, mix)) => {
-                debug!(
-                    "ChangeMultiplexerSourceMix of mux3:1 {} to {}",
-                    self.id, *mix
-                );
-                self.mix2 = *mix;
-            }
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(2, mix)) => {
-                debug!(
-                    "ChangeMultiplexerSourceMix of mux3:2 {} to {}",
-                    self.id, *mix
-                );
-                self.mix3 = *mix;
-            }
             _ => {}
         }
     }
@@ -375,9 +301,9 @@ impl<'a, T1: Source, T2: Source, T3: Source> Source for Multiplexer3Source<'a, T
         let input2 = self.source2.as_mut().render(info);
         let input3 = self.source3.as_mut().render(info);
         self.output.silence();
-        self.output.addm(input1, self.mix1);
-        self.output.addm(input2, self.mix2);
-        self.output.addm(input3, self.mix3);
+        self.output.add(input1);
+        self.output.add(input2);
+        self.output.add(input3);
         self.cached = true;
         &self.output
     }
@@ -393,16 +319,7 @@ fn dispatch_multiplexer4<T1: Source, T2: Source, T3: Source, T4: Source>(
 }
 
 impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Multiplexer4Source<'a, T1, T2, T3, T4> {
-    pub fn new(
-        source1: &'a T1,
-        source2: &'a T2,
-        source3: &'a T3,
-        source4: &'a T4,
-        mix1: f32,
-        mix2: f32,
-        mix3: f32,
-        mix4: f32,
-    ) -> Self {
+    pub fn new(source1: &'a T1, source2: &'a T2, source3: &'a T3, source4: &'a T4) -> Self {
         Multiplexer4Source {
             id: EventTargetId::new(),
             cached: false,
@@ -410,10 +327,6 @@ impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Multiplexer4Source<'a, 
             source2: NodeRef::new(source2),
             source3: NodeRef::new(source3),
             source4: NodeRef::new(source4),
-            mix1,
-            mix2,
-            mix3,
-            mix4,
             output: PlanarBlock::default(),
         }
     }
@@ -441,34 +354,6 @@ impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Source
 
     fn dispatch(&mut self, event: &Event) {
         match event {
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(0, mix)) => {
-                debug!(
-                    "ChangeMultiplexerSourceMix of mux4:0 {} to {}",
-                    self.id, *mix
-                );
-                self.mix1 = *mix;
-            }
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(1, mix)) => {
-                debug!(
-                    "ChangeMultiplexerSourceMix of mux4:1 {} to {}",
-                    self.id, *mix
-                );
-                self.mix2 = *mix;
-            }
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(2, mix)) => {
-                debug!(
-                    "ChangeMultiplexerSourceMix of mux4:2 {} to {}",
-                    self.id, *mix
-                );
-                self.mix3 = *mix;
-            }
-            Event::Multiplexer(MultiplexerSourceEvent::ChangeMix(3, mix)) => {
-                debug!(
-                    "ChangeMultiplexerSourceMix of mux4:3 {} to {}",
-                    self.id, *mix
-                );
-                self.mix4 = *mix;
-            }
             _ => {}
         }
     }
@@ -493,10 +378,10 @@ impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Source
         let input3 = self.source3.as_mut().render(info);
         let input4 = self.source4.as_mut().render(info);
         self.output.silence();
-        self.output.addm(input1, self.mix1);
-        self.output.addm(input2, self.mix2);
-        self.output.addm(input3, self.mix3);
-        self.output.addm(input4, self.mix4);
+        self.output.add(input1);
+        self.output.add(input2);
+        self.output.add(input3);
+        self.output.add(input4);
         self.cached = true;
         &self.output
     }
@@ -513,7 +398,7 @@ mod tests {
         detect_features();
 
         let source = TestSource::new();
-        let mut mux = Multiplexer1Source::new(&source, 0.5);
+        let mut mux = Multiplexer1Source::new(&source);
 
         mux.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -522,7 +407,7 @@ mod tests {
         // Check that the output is as expected
         for i in 0..output.samples[0].len() {
             for channel in 0..output.samples.len() {
-                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 0.5);
+                assert_eq!(output.samples[channel][i], (i + 1) as f32);
             }
         }
     }
@@ -533,7 +418,7 @@ mod tests {
 
         let source1 = TestSource::new();
         let source2 = TestSource::new();
-        let mut mux = Multiplexer2Source::new(&source1, &source2, 0.1, 0.2);
+        let mut mux = Multiplexer2Source::new(&source1, &source2);
 
         mux.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -542,7 +427,7 @@ mod tests {
         // Check that the output is as expected
         for i in 0..output.samples[0].len() {
             for channel in 0..output.samples.len() {
-                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 0.1 + (i + 1) as f32 * 0.2);
+                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 2.0);
             }
         }
     }
@@ -554,7 +439,7 @@ mod tests {
         let source1 = TestSource::new();
         let source2 = TestSource::new();
         let source3 = TestSource::new();
-        let mut mux = Multiplexer3Source::new(&source1, &source2, &source3, 0.1, 0.2, 0.3);
+        let mut mux = Multiplexer3Source::new(&source1, &source2, &source3);
 
         mux.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -563,7 +448,7 @@ mod tests {
         // Check that the output is as expected
         for i in 0..output.samples[0].len() {
             for channel in 0..output.samples.len() {
-                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 0.1 + (i + 1) as f32 * 0.2 + (i + 1) as f32 * 0.3);
+                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 3.0);
             }
         }
     }
@@ -576,7 +461,7 @@ mod tests {
         let source2 = TestSource::new();
         let source3 = TestSource::new();
         let source4 = TestSource::new();
-        let mut mux = Multiplexer4Source::new(&source1, &source2, &source3, &source4, 0.1, 0.2, 0.3, 0.4);
+        let mut mux = Multiplexer4Source::new(&source1, &source2, &source3, &source4);
 
         mux.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -585,7 +470,7 @@ mod tests {
         // Check that the output is as expected
         for i in 0..output.samples[0].len() {
             for channel in 0..output.samples.len() {
-                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 0.1 + (i + 1) as f32 * 0.2 + (i + 1) as f32 * 0.3 + (i + 1) as f32 * 0.4);
+                assert_eq!(output.samples[channel][i], (i + 1) as f32 * 4.0);
             }
         }
     }
@@ -597,10 +482,7 @@ mod tests {
         let source1 = TestSource::new();
         let source2 = TestSource::new();
         let source3 = TestSource::new();
-        let mut mux = MultiplexerSource::new(
-            [&source1, &source2, &source3],
-            [0.5, 0.2, 0.3],
-        );
+        let mut mux = MultiplexerSource::new([&source1, &source2, &source3]);
 
         mux.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -609,8 +491,12 @@ mod tests {
         // Check that the output is as expected
         for i in 0..output.samples[0].len() {
             for channel in 0..output.samples.len() {
-                let expected = (i + 1) as f32 * (0.5 + 0.2 + 0.3);
-                assert_eq!(output.samples[channel][i], expected, "Mismatch at sample {}, channel {}", i, channel);
+                let expected = (i + 1) as f32 * 3.0;
+                assert_eq!(
+                    output.samples[channel][i], expected,
+                    "Mismatch at sample {}, channel {}",
+                    i, channel
+                );
             }
         }
     }

@@ -5,6 +5,7 @@ use common::logging::CommonLogger;
 use common::resources::YARCResourceManagerIO;
 use log::{debug, info, warn};
 use midly::MidiMessage;
+use rand::random;
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
@@ -67,28 +68,36 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
         midi: Resource,
     ) -> (
         MidiPlayer<VOICES_COUNT>,
-        Bus<'a, BypassEffect, MultiplexerSource<'a, WaveformSource, VOICES_COUNT>>,
+        Bus<
+            'a,
+            BypassEffect,
+            MultiplexerSource<'a, Bus<'a, BypassEffect, WaveformSource>, VOICES_COUNT>,
+        >,
     ) {
         fn leak<T>(value: T) -> &'static T {
             Box::leak(Box::new(value))
         }
-        let sources: [&WaveformSource; VOICES_COUNT] =
-            std::array::from_fn(|_| leak(WaveformSource::new(None, None, None)));
-        let voices: [Voice; VOICES_COUNT] = sources
-            .iter()
-            .map(|source| Voice {
+
+        let mut voices: [Voice; VOICES_COUNT] = unsafe { std::mem::zeroed() };
+        let mut busses: [_; VOICES_COUNT] = unsafe { std::mem::zeroed() };
+        for i in 0..VOICES_COUNT {
+            let source = leak(WaveformSource::new(None, None, None));
+            let bus_effect = leak(BypassEffect::new());
+
+            busses[i] = leak(Bus::new(
+                bus_effect,
+                source,
+                Some(1.0 / VOICES_COUNT as f32),
+                Some(random::<f32>() * 2.0 - 1.0),
+            ));
+            voices[i] = Voice {
                 target: source.get_id(),
                 note: Note::default(),
                 playing: false,
-            })
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        let gain: f32 = 3.0 / VOICES_COUNT as f32;
-        let mixes: [f32; VOICES_COUNT] = [gain; VOICES_COUNT];
-        let multiplexer = leak(MultiplexerSource::new(sources, mixes));
-        let effect = leak(BypassEffect::new());
+            };
+        }
+        let multiplexer = leak(MultiplexerSource::new(busses));
+        let master_effect = leak(BypassEffect::new());
 
         (
             MidiPlayer {
@@ -96,7 +105,7 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
                 midi,
                 index: 0,
             },
-            Bus::new(effect, multiplexer),
+            Bus::new(master_effect, multiplexer, None, None),
         )
     }
 
@@ -108,7 +117,7 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
         player.push_event(&event);
         let event = EventBox::new(
             target,
-            Event::Waveform(WaveformSourceEvent::SetWaveformType(WaveformType::Sawtooth)),
+            Event::Waveform(WaveformSourceEvent::SetWaveformType(WaveformType::Square)),
         );
         player.push_event(&event);
     }
@@ -179,31 +188,9 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
 }
 
 enum MIDIEvent {
-    NoteOn {
-        channel: u8,
-        note: u8,
-        velocity: u8,
-    },
-    NoteOff {
-        channel: u8,
-        note: u8,
-    },
-    ControlChange {
-        channel: u8,
-        controller: u8,
-        value: u8,
-    },
-    ProgramChange {
-        channel: u8,
-        program: u8,
-    },
-    PitchBend {
-        channel: u8,
-        value: i16,
-    },
-    Idle {
-        ms: f32,
-    },
+    NoteOn { channel: u8, note: u8, velocity: u8 },
+    NoteOff { channel: u8, note: u8 },
+    Idle { ms: f32 },
 }
 
 struct MIDIResource {
@@ -219,10 +206,9 @@ impl MIDIResourceFactory {
 }
 
 impl ResourceFactory for MIDIResourceFactory {
-    fn parse(&self, header: &ResourceHeader, raw: &[u8]) -> Result<Resource, String> {
+    fn parse(&self, _header: &ResourceHeader, raw: &[u8]) -> Result<Resource, String> {
         let smf = midly::Smf::parse(raw).map_err(|e| format!("Failed to parse MIDI: {}", e))?;
 
-        // TODO: Implement proper MIDI parsing and event handling
         let clock_to_ms = |clocks_delta, tempo, signature| match smf.header.timing {
             midly::Timing::Metrical(tpqn) => {
                 let tpqn = tpqn.as_int() as f32;
@@ -257,7 +243,8 @@ impl ResourceFactory for MIDIResourceFactory {
         track_events.sort_by_key(|e| e.absolute_time);
         // Recalculate deltas
         for i in 1..track_events.len() {
-            track_events[i].delta = track_events[i].absolute_time - track_events[i - 1].absolute_time;
+            track_events[i].delta =
+                track_events[i].absolute_time - track_events[i - 1].absolute_time;
         }
 
         let mut events = Vec::new();
@@ -316,7 +303,7 @@ impl ResourceFactory for MIDIResourceFactory {
         Ok(Resource::new(MIDIResource { events }))
     }
 
-    fn finalize(&self, header: &ResourceHeader, resource: &Resource) -> Result<(), String> {
+    fn finalize(&self, _header: &ResourceHeader, _resource: &Resource) -> Result<(), String> {
         Ok(())
     }
 }
