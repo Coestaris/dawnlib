@@ -6,6 +6,7 @@ use ringbuf::traits::{Consumer, Observer, Producer, SplitRef};
 use std::collections::HashMap;
 
 const ROUTER_CAPACITY: usize = 64;
+const RING_BUFFER_CAPACITY: usize = 2048;
 
 /// Wraps a master source and allows interleaved
 /// buffered rendering and event dispatching.
@@ -13,7 +14,7 @@ pub struct InterleavedSink<T: Source> {
     source: T,
     event_router: [EventTarget; ROUTER_CAPACITY],
     sample_rate: SampleRate,
-    ring_buf: ringbuf::StaticRb<InterleavedSample<f32>, { 2 * BLOCK_SIZE }>,
+    ring_buf: ringbuf::StaticRb<InterleavedSample<f32>, RING_BUFFER_CAPACITY>,
     processed: usize,
 }
 
@@ -58,16 +59,15 @@ impl<T: Source> InterleavedSink<T> {
     /// Output is allowed to have any number of samples (but less then BLOCK_SIZE)
     /// Render works as a kind of ring-buffer, so we can render only by BLOCK_SIZE samples
     pub(crate) fn render(&mut self, output: &mut MappedInterleavedBuffer<f32>) {
-        if output.len > BLOCK_SIZE {
+        if output.len > RING_BUFFER_CAPACITY {
             panic!(
                 "InterleavedSink: Output buffer length exceeds ({} > {})",
-                output.len, BLOCK_SIZE
+                output.len, RING_BUFFER_CAPACITY
             );
         }
 
         // If theres not enough samples in the ring buffer, we need to fill it
-        let available = self.ring_buf.split_ref().0.occupied_len();
-        if available < output.len {
+        while self.ring_buf.split_ref().0.occupied_len() < output.len {
             let info = BlockInfo::new(self.processed, self.sample_rate);
             self.source.frame_start();
             let rendered = self.source.render(&info);

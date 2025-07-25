@@ -326,7 +326,7 @@ fn main() {
     log::set_logger(&CommonLogger).unwrap();
     log::set_max_level(log::LevelFilter::Info);
 
-    const SAMPLE_RATE: usize = 44_100;
+    const SAMPLE_RATE: usize = 48000;
 
     let resource_manager = Arc::new(ResourceManager::new(ResourceManagerConfig {
         backend: Box::new(YARCResourceManagerIO::new("demo_sound.yarc".to_string())),
