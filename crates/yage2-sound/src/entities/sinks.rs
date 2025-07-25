@@ -5,11 +5,13 @@ use crate::{SampleRate, BLOCK_SIZE};
 use ringbuf::traits::{Consumer, Observer, Producer, SplitRef};
 use std::collections::HashMap;
 
+const ROUTER_CAPACITY: usize = 64;
+
 /// Wraps a master source and allows interleaved
 /// buffered rendering and event dispatching.
 pub struct InterleavedSink<T: Source> {
     source: T,
-    event_router: HashMap<EventTargetId, EventTarget>,
+    event_router: [EventTarget; ROUTER_CAPACITY],
     sample_rate: SampleRate,
     ring_buf: ringbuf::StaticRb<InterleavedSample<f32>, { 2 * BLOCK_SIZE }>,
     processed: usize,
@@ -21,9 +23,10 @@ unsafe impl<T: Source> Sync for InterleavedSink<T> {}
 impl<T: Source> InterleavedSink<T> {
     pub fn new(master: T, sample_rate: SampleRate) -> Self {
         let targets = master.get_targets();
-        let mut event_router = HashMap::new();
+        let mut event_router: [EventTarget; ROUTER_CAPACITY] =
+            [EventTarget::default(); ROUTER_CAPACITY];
         for target in targets {
-            event_router.insert(target.get_id(), target);
+            event_router[target.get_id().as_usize()] = target;
         }
 
         InterleavedSink {
@@ -36,9 +39,19 @@ impl<T: Source> InterleavedSink<T> {
     }
 
     pub(crate) fn dispatch(&self, b: &EventBox) {
-        if let Some(target) = self.event_router.get(&b.get_target_id()) {
-            target.dispatch(b.get_event());
+        let index = b.get_target_id().as_usize();
+
+        #[cfg(debug_assertions)]
+        if index >= ROUTER_CAPACITY {
+            panic!("InterleavedSink: Event target ID exceeds router capacity");
         }
+        #[cfg(debug_assertions)]
+        if self.event_router[index].get_id().as_usize() == 0 {
+            panic!("InterleavedSink: Event target ID {} is not registered in the router", index);
+        }
+
+        // Dispatch the event to the target
+        self.event_router[index].dispatch(b.get_event());
     }
 
     /// Renders a specific number of samples into the output buffer.

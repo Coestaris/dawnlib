@@ -46,6 +46,7 @@ pub enum ResourceType {
     ShaderHLSL,
 
     // Audio types
+    AudioMIDI,
     AudioFLAC,
     AudioWAV,
     AudioOGG,

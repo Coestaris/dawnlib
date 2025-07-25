@@ -36,7 +36,7 @@ pub enum Event {
     Waveform(WaveformSourceEvent),
     Actors(ActorsSourceEvent),
     Multiplexer(MultiplexerSourceEvent),
-    
+
     #[cfg(test)]
     Test(crate::entities::sources::TestSourceEvent),
 }
@@ -52,14 +52,20 @@ impl std::fmt::Display for EventTargetId {
 
 impl EventTargetId {
     pub(crate) fn new() -> Self {
-        static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        // Zero is reserved for the default target
         EventTargetId(id)
+    }
+
+    pub(crate) fn as_usize(&self) -> usize {
+        self.0
     }
 }
 
 pub(crate) type EventDispatcher = fn(*mut u8, &Event);
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EventTarget {
     dispatcher: EventDispatcher,
     id: EventTargetId,
@@ -68,6 +74,16 @@ pub struct EventTarget {
 
 unsafe impl Send for EventTarget {}
 unsafe impl Sync for EventTarget {}
+
+impl Default for EventTarget {
+    fn default() -> Self {
+        EventTarget {
+            dispatcher: |_, _| {},
+            id: EventTargetId::new(),
+            ptr: std::ptr::null_mut(),
+        }
+    }
+}
 
 impl EventTarget {
     pub(crate) fn new<T>(dispatcher: EventDispatcher, id: EventTargetId, ptr: &T) -> Self {

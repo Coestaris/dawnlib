@@ -1,3 +1,4 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteName {
     C,
     CSharp,
@@ -13,9 +14,19 @@ pub enum NoteName {
     B,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Note {
     name: NoteName,
     octave: u8,
+}
+
+impl Default for Note {
+    fn default() -> Self {
+        Note {
+            name: NoteName::C,
+            octave: 4,
+        }
+    }
 }
 
 impl Note {
@@ -42,5 +53,28 @@ impl Note {
             NoteName::B => 493.88,
         };
         base_frequency * 2f32.powi(self.octave as i32 - 4)
+    }
+
+    pub fn from_midi(midi_note: u8) -> Self {
+        if midi_note < 21 || midi_note > 108 {
+            panic!("MIDI note must be between 21 and 108");
+        }
+        let octave = (midi_note / 12) as u8;
+        let note_index = midi_note % 12;
+        let name = match note_index {
+            0 => NoteName::C,
+            1 => NoteName::CSharp,
+            2 => NoteName::D,
+            3 => NoteName::DSharp,
+            4 => NoteName::E,
+            5 => NoteName::F,
+            6 => NoteName::FSharp,
+            7 => NoteName::G,
+            8 => NoteName::GSharp,
+            9 => NoteName::A,
+            10 => NoteName::ASharp,
+            _ => NoteName::B,
+        };
+        Self { name, octave }
     }
 }
