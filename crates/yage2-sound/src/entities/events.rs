@@ -1,4 +1,9 @@
 use crate::entities::bus::BusEvent;
+use crate::entities::effects::fir::FirFilterEffectEvent;
+use crate::entities::effects::freeverb::FreeverbEffectEvent;
+use crate::entities::effects::lpf::LPFEffectEvent;
+use crate::entities::effects::multiplexer::MultiplexerEffectEvent;
+use crate::entities::effects::soft_clip::SoftClipEffectEvent;
 use crate::entities::sources::actor::ActorsSourceEvent;
 use crate::entities::sources::multiplexer::MultiplexerSourceEvent;
 use crate::entities::sources::waveform::WaveformSourceEvent;
@@ -28,20 +33,26 @@ impl EventBox {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     // General events
-    Mute,
-    Unmute,
     Bus(BusEvent),
+    #[cfg(test)]
+    TestSource(crate::entities::sources::TestSourceEvent),
+    #[cfg(test)]
+    TestEffect(crate::entities::effects::TestEffectEvent),
 
     // Sources events
+    MuxSource(MultiplexerSourceEvent),
     Waveform(WaveformSourceEvent),
     Actors(ActorsSourceEvent),
-    Multiplexer(MultiplexerSourceEvent),
 
-    #[cfg(test)]
-    Test(crate::entities::sources::TestSourceEvent),
+    // Effects events
+    MuxEffect(MultiplexerEffectEvent),
+    FirFilter(FirFilterEffectEvent),
+    Freeverb(FreeverbEffectEvent),
+    LPF(LPFEffectEvent),
+    SoftClip(SoftClipEffectEvent),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct EventTargetId(usize);
 
 impl std::fmt::Display for EventTargetId {

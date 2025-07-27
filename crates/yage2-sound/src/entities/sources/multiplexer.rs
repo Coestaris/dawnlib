@@ -3,7 +3,9 @@ use crate::sample::PlanarBlock;
 use log::debug;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum MultiplexerSourceEvent {}
+pub enum MultiplexerSourceEvent {
+    SetGain(usize, f32),
+}
 
 /// Multiplexer for 1 source (with the same type)
 pub struct Multiplexer1Source<'a, T1: Source> {

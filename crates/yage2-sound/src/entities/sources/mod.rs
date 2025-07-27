@@ -63,7 +63,7 @@ mod test {
 
         fn dispatch(&mut self, event: &Event) {
             match event {
-                Event::Test(TestSourceEvent::SetMultiplier(mul)) => {
+                Event::TestSource(TestSourceEvent::SetMultiplier(mul)) => {
                     self.mul = *mul;
                     // Here you might want to update the output based on the new multiplier
                     // For simplicity, we won't modify the output in this example

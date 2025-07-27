@@ -15,7 +15,8 @@ pub enum WaveformType {
 pub enum WaveformSourceEvent {
     SetWaveformType(WaveformType),
     SetFrequency(f32),
-    SetPhase(f32),
+    SetAttack { attack_ms: f32, sample_rate: f32 },
+    SetRelease { release_ms: f32, sample_rate: f32 },
 }
 
 /// Allows generating audio samples on the fly,
@@ -25,7 +26,8 @@ pub struct WaveformSource {
     cached: bool,
     waveform_type: WaveformType,
     frequency: f32,
-    phase: f32,
+    attack: f32,
+    release: f32,
     output: PlanarBlock<f32>,
 }
 
@@ -43,11 +45,12 @@ impl WaveformSource {
         WaveformSource {
             waveform_type: waveform_type.unwrap_or(WaveformType::Disabled),
             frequency: frequency.unwrap_or(0.0),
-            phase: phase.unwrap_or(0.0),
 
             id: EventTargetId::new(),
             cached: false,
             output: PlanarBlock::default(),
+            attack: 0.0,
+            release: 0.0,
         }
     }
 
@@ -152,11 +155,6 @@ impl Source for WaveformSource {
                 self.frequency = *frequency;
                 self.cached = false;
             }
-            Event::Waveform(WaveformSourceEvent::SetPhase(phase)) => {
-                self.phase = *phase; // Phase is not used in this implementation, but can be added later
-                self.cached = false;
-            }
-
             _ => {}
         }
     }
