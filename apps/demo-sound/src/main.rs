@@ -16,12 +16,15 @@ use yage2_core::threads::{scoped, ThreadManagerConfig, ThreadPriority};
 use yage2_sound::backend::PlayerBackendConfig;
 use yage2_sound::entities::bus::Bus;
 use yage2_sound::entities::effects::bypass::BypassEffect;
+use yage2_sound::entities::effects::fir::FirFilterEffect;
 use yage2_sound::entities::events::{Event, EventBox, EventTargetId};
 use yage2_sound::entities::sinks::InterleavedSink;
 use yage2_sound::entities::sources::multiplexer::MultiplexerSource;
 use yage2_sound::entities::sources::waveform::{WaveformSource, WaveformSourceEvent, WaveformType};
 use yage2_sound::player::{Player, PlayerConfig, ProfileFrame};
 use yage2_sound::resources::{FLACResourceFactory, OGGResourceFactory, WAVResourceFactory};
+
+const SAMPLE_RATE: usize = 48000;
 
 fn profile_player(frame: &ProfileFrame) {
     // Calculate the time in milliseconds, the renderer thread
@@ -70,7 +73,7 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
         MidiPlayer<VOICES_COUNT>,
         Bus<
             'a,
-            BypassEffect,
+            FirFilterEffect<32>,
             MultiplexerSource<'a, Bus<'a, BypassEffect, WaveformSource>, VOICES_COUNT>,
         >,
     ) {
@@ -97,7 +100,7 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
             };
         }
         let multiplexer = leak(MultiplexerSource::new(busses));
-        let master_effect = leak(BypassEffect::new());
+        let master_effect = leak(FirFilterEffect::new_from_design(10000.0, SAMPLE_RATE as f32));
 
         (
             MidiPlayer {
@@ -312,8 +315,6 @@ fn main() {
     // Initialize logging
     log::set_logger(&CommonLogger).unwrap();
     log::set_max_level(log::LevelFilter::Info);
-
-    const SAMPLE_RATE: usize = 48000;
 
     let resource_manager = Arc::new(ResourceManager::new(ResourceManagerConfig {
         backend: Box::new(YARCResourceManagerIO::new("demo_sound.yarc".to_string())),
