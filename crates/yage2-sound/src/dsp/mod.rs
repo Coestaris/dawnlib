@@ -10,14 +10,75 @@ mod soft_limit;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod feature_flag_impl {
+    use std::cell::UnsafeCell;
+
+    #[cfg(test)]
+    // Allow overriding feature flags in tests
+    pub(crate) struct FeatureFlag {
+        value: UnsafeCell<bool>,
+    }
+
+    impl FeatureFlag {
+        pub const fn new() -> Self {
+            FeatureFlag {
+                value: UnsafeCell::new(false),
+            }
+        }
+
+        pub fn get(&self) -> bool {
+            unsafe { *self.value.get() }
+        }
+
+        pub fn set(&self, value: bool) {
+            unsafe {
+                *self.value.get() = value;
+            }
+        }
+    }
+    unsafe impl Sync for FeatureFlag {}
+    unsafe impl Send for FeatureFlag {}
+}
+
+#[cfg(not(test))]
+mod feature_flag_impl {
+    use std::sync::OnceLock;
+
+    #[cfg(not(test))]
+    pub(crate) struct FeatureFlag {
+        value: OnceLock<bool>,
+    }
+
+    #[cfg(not(test))]
+    impl FeatureFlag {
+        pub const fn new() -> Self {
+            FeatureFlag {
+                value: std::sync::OnceLock::new(),
+            }
+        }
+
+        pub fn get(&self) -> bool {
+            *self.value.get().unwrap_or(&false)
+        }
+
+        pub fn set(&self, value: bool) {
+            let _ = self.value.set(value);
+        }
+    }
+}
+
+use feature_flag_impl::FeatureFlag;
+
 #[cfg(target_arch = "x86_64")]
 mod features {
+    use crate::dsp::FeatureFlag;
     use log::debug;
 
-    pub static X86_HAS_SSE42: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    pub static X86_HAS_AVX: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    pub static X86_HAS_AVX2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    pub static X86_HAS_AVX512: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    pub static X86_HAS_SSE42: FeatureFlag = FeatureFlag::new();
+    pub static X86_HAS_AVX: FeatureFlag = FeatureFlag::new();
+    pub static X86_HAS_AVX2: FeatureFlag = FeatureFlag::new();
+    pub static X86_HAS_AVX512: FeatureFlag = FeatureFlag::new();
 
     pub fn detect_features() {
         use std::arch::is_x86_feature_detected;
@@ -27,10 +88,20 @@ mod features {
         X86_HAS_AVX512.set(is_x86_feature_detected!("avx512f"));
 
         debug!("Detecting x86 features (by priority):");
-        debug!("AVX512: {}", X86_HAS_AVX512.get().unwrap());
-        debug!("AVX2: {}", X86_HAS_AVX2.get().unwrap());
-        debug!("AVX: {}", X86_HAS_AVX.get().unwrap());
-        debug!("SSE2: {}", X86_HAS_SSE42.get().unwrap());
+        debug!("AVX512: {}", X86_HAS_AVX512.get());
+        debug!("AVX2: {}", X86_HAS_AVX2.get());
+        debug!("AVX: {}", X86_HAS_AVX.get());
+        debug!("SSE2: {}", X86_HAS_SSE42.get());
+    }
+
+    #[cfg(test)]
+    pub fn disable_all_features() {
+        X86_HAS_SSE42.set(false);
+        X86_HAS_AVX.set(false);
+        X86_HAS_AVX2.set(false);
+        X86_HAS_AVX512.set(false);
+
+        debug!("All x86 features disabled for testing.");
     }
 }
 
@@ -53,19 +124,20 @@ mod features {
 }
 
 pub use features::detect_features;
+#[cfg(test)]
+pub use features::disable_all_features;
 use features::*;
 
 macro_rules! call_accelerated(
-    ($arch:expr, $align:expr, $condvar:ident, $func:expr, $($args:expr),*) => {
-        #[cfg(target_arch = $arch)]
-        if BLOCK_SIZE % $align == 0 && *$condvar.get().unwrap() {
-            return unsafe {
-                $func($($args),*);
-            };
+        ($arch:expr, $align:expr, $condvar:ident, $func:expr, $($args:expr),*) => {
+            #[cfg(target_arch = $arch)]
+            if BLOCK_SIZE % $align == 0 && $condvar.get() {
+                return unsafe {
+                    $func($($args),*);
+                };
+            }
         }
-
-    }
-);
+    );
 
 impl PlanarBlock<f32> {
     #[inline(always)]
