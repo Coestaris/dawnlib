@@ -1,20 +1,21 @@
 use crate::entities::events::{Event, EventTarget, EventTargetId};
 use crate::entities::{BlockInfo, Source};
 use crate::sample::PlanarBlock;
+use tinyrand::Wyrand;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WaveformType {
     Disabled,
-    Sine,
-    Square,
-    Triangle,
-    Sawtooth,
+    WhiteNoise,
+    Sine(f32),
+    Square(f32),
+    Triangle(f32),
+    Sawtooth(f32),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WaveformSourceEvent {
     SetWaveformType(WaveformType),
-    SetFrequency(f32),
     SetAttack { attack_ms: f32, sample_rate: f32 },
     SetRelease { release_ms: f32, sample_rate: f32 },
 }
@@ -25,9 +26,9 @@ pub struct WaveformSource {
     id: EventTargetId,
     cached: bool,
     waveform_type: WaveformType,
-    frequency: f32,
-    attack: f32,
-    release: f32,
+    attack: f32,  // In samples
+    release: f32, // In samples
+    rng: Wyrand,
     output: PlanarBlock<f32>,
 }
 
@@ -44,11 +45,10 @@ impl WaveformSource {
     ) -> Self {
         WaveformSource {
             waveform_type: waveform_type.unwrap_or(WaveformType::Disabled),
-            frequency: frequency.unwrap_or(0.0),
-
             id: EventTargetId::new(),
             cached: false,
             output: PlanarBlock::default(),
+            rng: Wyrand::default(),
             attack: 0.0,
             release: 0.0,
         }
@@ -65,8 +65,22 @@ impl WaveformSource {
 
 mod dsp {
     use crate::entities::BlockInfo;
-    use crate::sample::PlanarBlock;
-    use crate::BLOCK_SIZE;
+    use crate::sample::{PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
+    use crate::{BLOCK_SIZE, CHANNELS_COUNT};
+    use tinyrand::Rand;
+
+    pub(crate) fn generate_white_noise(
+        rng: &mut tinyrand::Wyrand,
+        output: &mut PlanarBlock<f32>,
+        _info: &BlockInfo,
+    ) {
+        // Generate white noise by filling the output with random values
+        for i in 0..BLOCK_SIZE {
+            for channel in 0..CHANNELS_COUNT {
+                output.samples[channel][i] = rng.next_u32() as f32 / u32::MAX as f32 * 2.0 - 1.0;
+            }
+        }
+    }
 
     pub(crate) fn generate_sine(frequency: f32, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
         fn sine(frequency: f32, time: f32) -> f32 {
@@ -77,7 +91,7 @@ mod dsp {
         for i in 0..BLOCK_SIZE {
             let time = info.time(i);
             let value = sine(frequency, time);
-            for channel in 0..output.samples.len() {
+            for channel in 0..CHANNELS_COUNT {
                 output.samples[channel][i] = value;
             }
         }
@@ -96,7 +110,7 @@ mod dsp {
         for i in 0..BLOCK_SIZE {
             let time = info.time(i);
             let value = square(frequency, time);
-            for channel in 0..output.samples.len() {
+            for channel in 0..CHANNELS_COUNT {
                 output.samples[channel][i] = value;
             }
         }
@@ -115,7 +129,7 @@ mod dsp {
         for i in 0..BLOCK_SIZE {
             let time = info.time(i);
             let value = triangle(frequency, time);
-            for channel in 0..output.samples.len() {
+            for channel in 0..CHANNELS_COUNT {
                 output.samples[channel][i] = value;
             }
         }
@@ -133,7 +147,7 @@ mod dsp {
         for i in 0..BLOCK_SIZE {
             let time = info.time(i);
             let value = sawtooth(frequency, time);
-            for channel in 0..output.samples.len() {
+            for channel in 0..CHANNELS_COUNT {
                 output.samples[channel][i] = value;
             }
         }
@@ -151,8 +165,18 @@ impl Source for WaveformSource {
                 self.waveform_type = waveform_type.clone();
                 self.cached = false;
             }
-            Event::Waveform(WaveformSourceEvent::SetFrequency(frequency)) => {
-                self.frequency = *frequency;
+            Event::Waveform(WaveformSourceEvent::SetAttack {
+                attack_ms,
+                sample_rate,
+            }) => {
+                self.attack = *attack_ms / 1000.0 * sample_rate;
+                self.cached = false;
+            }
+            Event::Waveform(WaveformSourceEvent::SetRelease {
+                release_ms,
+                sample_rate,
+            }) => {
+                self.release = *release_ms / 1000.0 * sample_rate;
                 self.cached = false;
             }
             _ => {}
@@ -172,14 +196,11 @@ impl Source for WaveformSource {
 
         match self.waveform_type {
             WaveformType::Disabled => self.output.silence(),
-            WaveformType::Sine => dsp::generate_sine(self.frequency, &mut self.output, info),
-            WaveformType::Square => dsp::generate_square(self.frequency, &mut self.output, info),
-            WaveformType::Triangle => {
-                dsp::generate_triangle(self.frequency, &mut self.output, info)
-            }
-            WaveformType::Sawtooth => {
-                dsp::generate_sawtooth(self.frequency, &mut self.output, info)
-            }
+            WaveformType::WhiteNoise => dsp::generate_white_noise(&mut self.rng, &mut self.output, info),
+            WaveformType::Sine(freq) => dsp::generate_sine(freq, &mut self.output, info),
+            WaveformType::Square(freq) => dsp::generate_square(freq, &mut self.output, info),
+            WaveformType::Triangle(freq) => dsp::generate_triangle(freq, &mut self.output, info),
+            WaveformType::Sawtooth(freq) => dsp::generate_sawtooth(freq, &mut self.output, info),
         }
 
         self.cached = true;
