@@ -10,3 +10,6 @@ yage2-core = { path = "../../crates/yage2-core" }
 yage2-yarc = { path = "../../crates/yage2-yarc" }
 yage2-sound = { path = "../../crates/yage2-sound" }
 log = "0.4.27"
+evenio = { version = "0.6.0", features = ["std", "rayon"] }
+triple_buffer = "8.1.1"
+glam = "0.30.5"
