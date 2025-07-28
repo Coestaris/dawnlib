@@ -38,11 +38,7 @@ fn dispatch_waveform(ptr: *mut u8, event: &Event) {
 }
 
 impl WaveformSource {
-    pub fn new(
-        waveform_type: Option<WaveformType>,
-        frequency: Option<f32>,
-        phase: Option<f32>,
-    ) -> Self {
+    pub fn new(waveform_type: Option<WaveformType>) -> Self {
         WaveformSource {
             waveform_type: waveform_type.unwrap_or(WaveformType::Disabled),
             id: EventTargetId::new(),
@@ -84,7 +80,7 @@ mod dsp {
 
     pub(crate) fn generate_sine(frequency: f32, output: &mut PlanarBlock<f32>, info: &BlockInfo) {
         fn sine(frequency: f32, time: f32) -> f32 {
-            (2.0 * std::f32::consts::PI * frequency * time).sin() * 0.1
+            (2.0 * std::f32::consts::PI * frequency * time).sin()
         }
 
         // TODO: Implement SIMD optimization for sine wave generation
@@ -196,7 +192,9 @@ impl Source for WaveformSource {
 
         match self.waveform_type {
             WaveformType::Disabled => self.output.silence(),
-            WaveformType::WhiteNoise => dsp::generate_white_noise(&mut self.rng, &mut self.output, info),
+            WaveformType::WhiteNoise => {
+                dsp::generate_white_noise(&mut self.rng, &mut self.output, info)
+            }
             WaveformType::Sine(freq) => dsp::generate_sine(freq, &mut self.output, info),
             WaveformType::Square(freq) => dsp::generate_square(freq, &mut self.output, info),
             WaveformType::Triangle(freq) => dsp::generate_triangle(freq, &mut self.output, info),

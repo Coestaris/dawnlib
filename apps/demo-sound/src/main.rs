@@ -72,6 +72,10 @@ struct MidiPlayer<const VOICES_COUNT: usize> {
     midi: Resource,
 }
 
+fn leak<T>(value: T) -> &'static T {
+    Box::leak(Box::new(value))
+}
+
 impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
     fn new<'a>(
         midi: Resource,
@@ -83,14 +87,10 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
             MultiplexerSource<'a, Bus<'a, BypassEffect, WaveformSource>, VOICES_COUNT>,
         >,
     ) {
-        fn leak<T>(value: T) -> &'static T {
-            Box::leak(Box::new(value))
-        }
-
         let mut voices: [Voice; VOICES_COUNT] = unsafe { std::mem::zeroed() };
         let mut busses: [_; VOICES_COUNT] = unsafe { std::mem::zeroed() };
         for i in 0..VOICES_COUNT {
-            let source = leak(WaveformSource::new(None, None, None));
+            let source = leak(WaveformSource::new(None));
             let bus_effect = leak(BypassEffect::new());
 
             busses[i] = leak(Bus::new(
@@ -121,9 +121,9 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
     fn set_freq(&self, player: &Player, target: EventTargetId, freq: f32) {
         let event = EventBox::new(
             target,
-            Event::Waveform(WaveformSourceEvent::SetWaveformType(WaveformType::Sawtooth(
-                freq,
-            ))),
+            Event::Waveform(WaveformSourceEvent::SetWaveformType(
+                WaveformType::Sawtooth(freq),
+            )),
         );
         player.push_event(&event);
     }

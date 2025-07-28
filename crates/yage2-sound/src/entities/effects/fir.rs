@@ -46,6 +46,13 @@ impl<const N: usize> FirFilterEffect<N> {
             coeffs[i] = 2.0 * norm_cutoff * sinc * window;
         }
 
+        // Normalize coefficients
+        let sum: f32 = coeffs.iter().sum();
+        for i in 0..N {
+            coeffs[i] /= sum;
+        }
+
+
         FirFilterEffect::new(coeffs)
     }
 
