@@ -107,10 +107,11 @@ mod features {
 
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
 mod features {
+    use crate::dsp::FeatureFlag;
     use log::debug;
 
-    pub static ARM_HAS_NEON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    pub static ARM_HAS_SVE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    pub static ARM_HAS_NEON: FeatureFlag = FeatureFlag::new();
+    pub static ARM_HAS_SVE: FeatureFlag = FeatureFlag::new();
 
     pub fn detect_features() {
         use std::arch::is_aarch64_feature_detected;
@@ -118,8 +119,16 @@ mod features {
         let _ = ARM_HAS_SVE.set(is_aarch64_feature_detected!("sve"));
 
         debug!("Detecting ARM features (by priority):");
-        debug!("SVE: {}", ARM_HAS_SVE.get().unwrap());
-        debug!("NEON: {}", ARM_HAS_NEON.get().unwrap());
+        debug!("SVE: {}", ARM_HAS_SVE.get());
+        debug!("NEON: {}", ARM_HAS_NEON.get());
+    }
+
+    #[cfg(test)]
+    pub fn disable_all_features() {
+        ARM_HAS_NEON.set(false);
+        ARM_HAS_SVE.set(false);
+
+        debug!("All ARM features disabled for testing.");
     }
 }
 
