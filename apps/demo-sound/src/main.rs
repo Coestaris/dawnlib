@@ -31,9 +31,11 @@ const SAMPLE_RATE: usize = 44100;
 const SAMPLE_RATE: usize = 48000;
 
 fn profile_player(frame: &ProfileFrame) {
-    // Calculate the time in milliseconds, the renderer thread
-    // is maximally allowed to take to fill the device buffer.
-    let allowed_time = (1000.0 / frame.sample_rate as f32) * frame.block_size as f32;
+    // Number of samples that actually processed by one render call
+    // (assuming that no underruns happens).
+    let av_actual_samples = frame.sample_rate as f32 / frame.render_tps_av as f32;
+    // Calculate the allowed time for one render call
+    let allowed_time = av_actual_samples / frame.sample_rate as f32 * 1000.0;
 
     // When no events are processed, we cannot calculate the load
     // (since the thread is not running).
@@ -119,12 +121,9 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
     fn set_freq(&self, player: &Player, target: EventTargetId, freq: f32) {
         let event = EventBox::new(
             target,
-            Event::Waveform(WaveformSourceEvent::SetFrequency(freq)),
-        );
-        player.push_event(&event);
-        let event = EventBox::new(
-            target,
-            Event::Waveform(WaveformSourceEvent::SetWaveformType(WaveformType::Square)),
+            Event::Waveform(WaveformSourceEvent::SetWaveformType(WaveformType::Sawtooth(
+                freq,
+            ))),
         );
         player.push_event(&event);
     }
