@@ -24,6 +24,10 @@ use yage2_sound::entities::sources::waveform::{WaveformSource, WaveformSourceEve
 use yage2_sound::player::{Player, PlayerConfig, ProfileFrame};
 use yage2_sound::resources::{FLACResourceFactory, OGGResourceFactory, WAVResourceFactory};
 
+#[cfg(target_os = "linux")]
+// Alsa backend works A LOT better with 44,100 Hz sample rate
+const SAMPLE_RATE: usize = 44100;
+#[cfg(not(target_os = "linux"))]
 const SAMPLE_RATE: usize = 48000;
 
 fn profile_player(frame: &ProfileFrame) {
@@ -100,7 +104,7 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
             };
         }
         let multiplexer = leak(MultiplexerSource::new(busses));
-        let master_effect = leak(FirFilterEffect::new_from_design(10000.0, SAMPLE_RATE as f32));
+        let master_effect = leak(FirFilterEffect::new_from_design(8000.0, SAMPLE_RATE as f32));
 
         (
             MidiPlayer {

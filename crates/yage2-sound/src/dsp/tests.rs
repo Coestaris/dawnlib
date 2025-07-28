@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod tests {
     extern crate test;
-    use crate::dsp::detect_features;
+    use crate::dsp::{detect_features, disable_all_features};
     use crate::sample::{InterleavedBlock, PlanarBlock};
+    use crate::{BLOCK_SIZE, CHANNELS_COUNT};
     use std::panic;
     use test::Bencher;
-    use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 
     #[test]
     fn copy_from_planar_vec_full_test() {
@@ -63,10 +63,7 @@ mod tests {
         }
     }
 
-    #[test]
     fn copy_into_interleaved_test() {
-        detect_features();
-
         let mut block = PlanarBlock::<f32>::default();
         let mut interleaved = InterleavedBlock::<f32>::default();
 
@@ -91,6 +88,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn copy_into_interleaved_test_simd() {
+        detect_features();
+        copy_into_interleaved_test();
+    }
+
+    #[test]
+    fn copy_into_interleaved_test_fallback() {
+        disable_all_features();
+        copy_into_interleaved_test();
+    }
+
     #[bench]
     fn copy_into_interleaved_bench(b: &mut Bencher) {
         detect_features();
@@ -109,10 +118,7 @@ mod tests {
         });
     }
 
-    #[test]
     fn add_test() {
-        detect_features();
-
         let mut block1 = PlanarBlock::<f32>::default();
         let mut block2 = PlanarBlock::<f32>::default();
 
@@ -135,6 +141,18 @@ mod tests {
         }
     }
 
+    #[test]
+    fn add_test_simd() {
+        detect_features();
+        add_test();
+    }
+
+    #[test]
+    fn add_test_fallback() {
+        disable_all_features();
+        add_test();
+    }
+
     #[bench]
     fn add_bench(b: &mut Bencher) {
         detect_features();
@@ -154,10 +172,7 @@ mod tests {
         });
     }
 
-    #[test]
     fn addm_test() {
-        detect_features();
-
         let mut block1 = PlanarBlock::<f32>::default();
         let mut block2 = PlanarBlock::<f32>::default();
 
@@ -177,5 +192,17 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn addm_test_simd() {
+        detect_features();
+        addm_test();
+    }
+
+    #[test]
+    fn addm_test_fallback() {
+        disable_all_features();
+        addm_test();
     }
 }

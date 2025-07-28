@@ -1,6 +1,6 @@
 use log::{debug, info};
 
-pub mod application;
+// pub mod application;
 pub mod event;
 pub(crate) mod input;
 pub mod object;

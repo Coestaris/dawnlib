@@ -3,7 +3,7 @@ use ash::vk::SurfaceKHR;
 use ash::{vk, Device, Instance};
 use log::debug;
 use std::ffi::c_char;
-use crate::view::ViewHandle;
+pub(crate) use crate::view::ViewHandle;
 #[cfg(target_os = "macos")]
 use crate::vulkan::MACOS_SURFACE_EXTENSION_NAME;
 #[cfg(target_os = "windows")]
