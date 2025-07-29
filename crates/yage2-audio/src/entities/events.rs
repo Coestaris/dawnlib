@@ -8,7 +8,7 @@ use crate::entities::sources::multiplexer::MultiplexerSourceEvent;
 use crate::entities::sources::waveform::WaveformSourceEvent;
 use evenio::prelude::GlobalEvent;
 
-#[derive(GlobalEvent, Debug, Clone, PartialEq)]
+#[derive(GlobalEvent, Debug, Clone)]
 pub struct AudioEvent {
     target_id: AudioEventTargetId,
     event: AudioEventType,
@@ -30,7 +30,7 @@ impl AudioEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum AudioEventType {
     // General events
     Bus(BusEvent),

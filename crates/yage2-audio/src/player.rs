@@ -9,12 +9,15 @@ use crate::entities::Source;
 use crate::sample::MappedInterleavedBuffer;
 use crate::{ChannelsCount, SampleRate, SampleType, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
 use crossbeam_queue::ArrayQueue;
+use evenio::component::Component;
+use evenio::event::Receiver;
+use evenio::fetch::Single;
+use evenio::handler::IntoHandler;
+use evenio::world::World;
 use log::{debug, info};
 use std::fmt::{Display, Formatter};
-use std::ops::Index;
 use std::sync::{atomic::AtomicBool, Arc};
 use std::thread::{Builder, JoinHandle};
-use evenio::component::Component;
 use yage2_core::profile::{PeriodProfiler, TickProfiler};
 
 const STATISTICS_THREAD_NAME: &str = "aud_stats";
@@ -266,5 +269,19 @@ impl Player {
                 }
             })
             .map_err(|_| PlayerError::FailedToSpawnStatisticsThread)
+    }
+
+    fn audio_events_handler(r: Receiver<AudioEvent>, player: Single<&Player>) {
+        // Remap the event to the player (usually run in the different thread)
+        player.0.push_event(r.event);
+    }
+
+    pub fn attach_to_ecs(self, world: &mut World) {
+        // Setup the audio player
+        let player_entity = world.spawn();
+        world.insert(player_entity, self);
+
+        // Setup the audio events handler
+        world.add_handler(Player::audio_events_handler.low());
     }
 }

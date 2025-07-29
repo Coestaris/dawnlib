@@ -72,7 +72,7 @@ impl Default for ResourceType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Resource(Arc<dyn Any + Send + Sync>);
 
 impl Resource {

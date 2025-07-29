@@ -2,9 +2,13 @@ use common::logging::CommonLogger;
 use common::resources::YARCResourceManagerIO;
 use log::info;
 use std::sync::Arc;
+use evenio::world::World;
 use yage2_audio::backend::PlayerBackendConfig;
+use yage2_audio::entities::bus::Bus;
+use yage2_audio::entities::effects::bypass::BypassEffect;
+use yage2_audio::entities::effects::soft_clip::SoftClipEffect;
 use yage2_audio::entities::sinks::InterleavedSink;
-use yage2_audio::entities::sources::midi::MidiPlayer;
+use yage2_audio::entities::sources::actor::ActorsSource;
 use yage2_audio::player::{Player, PlayerConfig, ProfileFrame};
 use yage2_audio::resources::{
     FLACResourceFactory, MIDIResourceFactory, OGGResourceFactory, WAVResourceFactory,
@@ -50,6 +54,7 @@ fn main() {
     log::set_logger(&CommonLogger).unwrap();
     log::set_max_level(log::LevelFilter::Info);
 
+    // Setup resource manager
     let resource_manager = Arc::new(ResourceManager::new(ResourceManagerConfig {
         backend: Box::new(YARCResourceManagerIO::new("demo_audio.yarc".to_string())),
     }));
@@ -69,23 +74,28 @@ fn main() {
         ResourceType::AudioMIDI,
         Arc::new(MIDIResourceFactory::new()),
     );
-
     resource_manager.poll_io().unwrap();
 
-    let (mut controller, bus) = MidiPlayer::<24>::new(
-        resource_manager.get_resource("beethoven").unwrap(),
-        SAMPLE_RATE,
-    );
-    let sink = InterleavedSink::new(bus, SAMPLE_RATE);
+    let mut world = World::new();
 
+    // Setup Audio Pipeline
+    fn leak<T>(value: T) -> &'static T {
+        Box::leak(Box::new(value))
+    }
+    let actors_source = leak(ActorsSource::new());
+    let clipper = leak(BypassEffect::new());
+    let bus = Bus::new(clipper, actors_source, None, None);
+
+    // Start Audio Player (output)
+    let sink = InterleavedSink::new(bus, SAMPLE_RATE);
     let config = PlayerConfig {
         backend_config: PlayerBackendConfig {},
         profiler: Some(profile_player),
         sample_rate: SAMPLE_RATE,
     };
     let player = Player::new(config, sink).unwrap();
+    // Allow player to receive events from the ECS
+    player.attach_to_ecs(&mut world);
 
-    controller.play(&player);
-
-    resource_manager.finalize_all(ResourceType::AudioWAV);
+    let entity = world.spawn();
 }
