@@ -9,20 +9,20 @@ use rand::random;
 use std::sync::Arc;
 use std::thread::sleep;
 use std::time::Duration;
+use yage2_audio::backend::PlayerBackendConfig;
+use yage2_audio::entities::bus::Bus;
+use yage2_audio::entities::effects::bypass::BypassEffect;
+use yage2_audio::entities::effects::fir::FirFilterEffect;
+use yage2_audio::entities::events::{Event, EventBox, EventTargetId};
+use yage2_audio::entities::sinks::InterleavedSink;
+use yage2_audio::entities::sources::multiplexer::MultiplexerSource;
+use yage2_audio::entities::sources::waveform::{WaveformSource, WaveformSourceEvent, WaveformType};
+use yage2_audio::player::{Player, PlayerConfig, ProfileFrame};
+use yage2_audio::resources::{FLACResourceFactory, OGGResourceFactory, WAVResourceFactory};
 use yage2_core::resources::{
     Resource, ResourceFactory, ResourceHeader, ResourceManager, ResourceManagerConfig, ResourceType,
 };
 use yage2_core::threads::{scoped, ThreadManagerConfig, ThreadPriority};
-use yage2_sound::backend::PlayerBackendConfig;
-use yage2_sound::entities::bus::Bus;
-use yage2_sound::entities::effects::bypass::BypassEffect;
-use yage2_sound::entities::effects::fir::FirFilterEffect;
-use yage2_sound::entities::events::{Event, EventBox, EventTargetId};
-use yage2_sound::entities::sinks::InterleavedSink;
-use yage2_sound::entities::sources::multiplexer::MultiplexerSource;
-use yage2_sound::entities::sources::waveform::{WaveformSource, WaveformSourceEvent, WaveformType};
-use yage2_sound::player::{Player, PlayerConfig, ProfileFrame};
-use yage2_sound::resources::{FLACResourceFactory, OGGResourceFactory, WAVResourceFactory};
 
 #[cfg(target_os = "linux")]
 // Alsa backend works A LOT better with 44,100 Hz sample rate
@@ -320,7 +320,7 @@ fn main() {
     log::set_max_level(log::LevelFilter::Info);
 
     let resource_manager = Arc::new(ResourceManager::new(ResourceManagerConfig {
-        backend: Box::new(YARCResourceManagerIO::new("demo_sound.yarc".to_string())),
+        backend: Box::new(YARCResourceManagerIO::new("demo_audio.yarc".to_string())),
     }));
     resource_manager.register_factory(
         ResourceType::AudioWAV,
@@ -345,7 +345,10 @@ fn main() {
     //     MidiPlayer::<24>::new(resource_manager.get_resource("beethoven").unwrap());
 
     let source = leak(WaveformSource::new(Some(WaveformType::WhiteNoise)));
-    let effect = leak(FirFilterEffect::<32>::new_from_design(2000.0, SAMPLE_RATE as f32));
+    let effect = leak(FirFilterEffect::<32>::new_from_design(
+        2000.0,
+        SAMPLE_RATE as f32,
+    ));
     // let effect = leak(BypassEffect::new());
     let bus = Bus::new(effect, source, Some(1.0), Some(0.0));
     let sink = InterleavedSink::new(bus, SAMPLE_RATE);

@@ -1,5 +1,5 @@
 [package]
-name = "yage2-sound"
+name = "yage2-audio"
 version = "0.1.0"
 edition = "2021"
 
