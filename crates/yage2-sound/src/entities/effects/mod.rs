@@ -1,7 +1,6 @@
 pub mod bypass;
 pub mod fir;
 pub mod freeverb;
-pub mod lpf;
 pub mod multiplexer;
 pub mod soft_clip;
 

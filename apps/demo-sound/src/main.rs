@@ -341,9 +341,13 @@ fn main() {
 
     resource_manager.poll_io().unwrap();
 
-    let (mut controller, bus) =
-        MidiPlayer::<24>::new(resource_manager.get_resource("beethoven").unwrap());
+    // let (mut controller, bus) =
+    //     MidiPlayer::<24>::new(resource_manager.get_resource("beethoven").unwrap());
 
+    let source = leak(WaveformSource::new(Some(WaveformType::WhiteNoise)));
+    let effect = leak(FirFilterEffect::<32>::new_from_design(2000.0, SAMPLE_RATE as f32));
+    // let effect = leak(BypassEffect::new());
+    let bus = Bus::new(effect, source, Some(1.0), Some(0.0));
     let sink = InterleavedSink::new(bus, SAMPLE_RATE);
 
     let thread_manager_config = ThreadManagerConfig::default();
@@ -357,16 +361,18 @@ fn main() {
 
         let player = Player::new(config, sink).unwrap();
 
-        manager
-            .spawn(
-                "controller".to_string(),
-                ThreadPriority::Normal,
-                move || controller.play(&player),
-            )
-            .unwrap();
+        // manager
+        //     .spawn(
+        //         "controller".to_string(),
+        //         ThreadPriority::Normal,
+        //         move || controller.play(&player),
+        //     )
+        //     .unwrap();
 
         // Player will be dropped here when the thread is finished.
         // Threads will be automatically joined when they go out of scope.
+
+        sleep(Duration::from_secs(30));
     });
 
     resource_manager.finalize_all(ResourceType::AudioWAV);
