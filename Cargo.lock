@@ -397,7 +397,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c87e182de0887fd5361989c677c4e8f5000cd9491d6d563161a8f3a5519fc7f"
 
 [[package]]
-name = "demo-app"
+name = "demo-audio"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "log",
+ "midly",
+ "rand",
+ "yage2-audio",
+ "yage2-core",
+ "yage2-yarc",
+]
+
+[[package]]
+name = "demo-graphics"
 version = "0.1.0"
 dependencies = [
  "common",
@@ -405,22 +418,9 @@ dependencies = [
  "glam",
  "log",
  "triple_buffer",
- "yage2-app",
+ "yage2-audio",
  "yage2-core",
- "yage2-sound",
- "yage2-yarc",
-]
-
-[[package]]
-name = "demo-sound"
-version = "0.1.0"
-dependencies = [
- "common",
- "log",
- "midly",
- "rand",
- "yage2-core",
- "yage2-sound",
+ "yage2-graphics",
  "yage2-yarc",
 ]
 
@@ -2177,15 +2177,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "yage2-app"
+name = "yage2-audio"
 version = "0.1.0"
 dependencies = [
- "ash",
- "bitflags 2.9.1",
+ "cpal",
+ "crossbeam-queue",
+ "flac",
+ "hound 3.5.1",
+ "i24",
+ "lewton",
  "log",
- "vergen",
- "windows 0.61.3",
- "x11",
+ "ogg 0.9.2",
+ "ringbuf",
+ "tinyrand",
  "yage2-core",
 ]
 
@@ -2200,19 +2204,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "yage2-sound"
+name = "yage2-graphics"
 version = "0.1.0"
 dependencies = [
- "cpal",
- "crossbeam-queue",
- "flac",
- "hound 3.5.1",
- "i24",
- "lewton",
+ "ash",
+ "bitflags 2.9.1",
  "log",
- "ogg 0.9.2",
- "ringbuf",
- "tinyrand",
+ "vergen",
+ "windows 0.61.3",
+ "x11",
  "yage2-core",
 ]
 

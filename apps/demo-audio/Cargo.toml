@@ -1,5 +1,5 @@
 [package]
-name = "demo-sound"
+name = "demo-audio"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,7 @@ edition = "2021"
 common = { path = "../common" }
 yage2-core = { path = "../../crates/yage2-core" }
 yage2-yarc = { path = "../../crates/yage2-yarc" }
-yage2-sound = { path = "../../crates/yage2-sound" }
+yage2-audio = { path = "../../crates/yage2-audio" }
 log = "0.4.27"
 midly = {version = "0.5.3"}
 rand = "0.4.6"
