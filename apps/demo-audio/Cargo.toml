@@ -6,8 +6,5 @@ edition = "2021"
 [dependencies]
 common = { path = "../common" }
 yage2-core = { path = "../../crates/yage2-core" }
-yage2-yarc = { path = "../../crates/yage2-yarc" }
 yage2-audio = { path = "../../crates/yage2-audio" }
 log = "0.4.27"
-midly = {version = "0.5.3"}
-rand = "0.4.6"

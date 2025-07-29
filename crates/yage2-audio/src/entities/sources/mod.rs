@@ -1,10 +1,10 @@
 pub mod actor;
 pub mod multiplexer;
 pub mod waveform;
-
+pub mod midi;
 #[cfg(test)]
 mod test {
-    use crate::entities::events::{Event, EventTarget, EventTargetId};
+    use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
     use crate::entities::{BlockInfo, Source};
     use crate::sample::PlanarBlock;
     use crate::BLOCK_SIZE;
@@ -15,13 +15,13 @@ mod test {
     }
 
     pub(crate) struct TestSource {
-        id: EventTargetId,
+        id: AudioEventTargetId,
         cached: bool,
         mul: f32,
         output: PlanarBlock<f32>,
     }
 
-    fn dispatch_test_source(ptr: *mut u8, event: &Event) {
+    fn dispatch_test_source(ptr: *mut u8, event: &AudioEventType) {
         let source: &mut TestSource = unsafe { &mut *(ptr as *mut TestSource) };
         // Here you would typically handle the event, but for this example, we do nothing.
         source.dispatch(event);
@@ -31,19 +31,19 @@ mod test {
     impl TestSource {
         pub fn new() -> Self {
             Self {
-                id: EventTargetId::new(),
+                id: AudioEventTargetId::new(),
                 cached: false,
                 output: PlanarBlock::default(),
                 mul: 1.0, // Default multiplier
             }
         }
 
-        pub fn get_id(&self) -> EventTargetId {
+        pub fn get_id(&self) -> AudioEventTargetId {
             self.id
         }
 
-        fn create_event_target(&self) -> EventTarget {
-            EventTarget::new(dispatch_test_source, self.id, self)
+        fn create_event_target(&self) -> AudioEventTarget {
+            AudioEventTarget::new(dispatch_test_source, self.id, self)
         }
 
         fn generate_test_signal(output: &mut PlanarBlock<f32>, mul: f32) {
@@ -57,13 +57,13 @@ mod test {
     }
 
     impl Source for TestSource {
-        fn get_targets(&self) -> Vec<EventTarget> {
+        fn get_targets(&self) -> Vec<AudioEventTarget> {
             vec![self.create_event_target()]
         }
 
-        fn dispatch(&mut self, event: &Event) {
+        fn dispatch(&mut self, event: &AudioEventType) {
             match event {
-                Event::TestSource(TestSourceEvent::SetMultiplier(mul)) => {
+                AudioEventType::TestSource(TestSourceEvent::SetMultiplier(mul)) => {
                     self.mul = *mul;
                     // Here you might want to update the output based on the new multiplier
                     // For simplicity, we won't modify the output in this example

@@ -1,4 +1,4 @@
-use crate::entities::events::{Event, EventTarget, EventTargetId};
+use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
 use crate::sample::PlanarBlock;
 use crate::{SampleRate, SamplesCount};
 
@@ -7,7 +7,6 @@ pub mod effects;
 pub mod events;
 pub mod sinks;
 pub mod sources;
-
 #[repr(C)]
 #[derive(Debug)]
 pub struct NodeRef<'a, T> {
@@ -44,11 +43,11 @@ impl<'a, T> NodeRef<'a, T> {
 }
 
 pub trait Effect {
-    fn get_targets(&self) -> Vec<EventTarget> {
+    fn get_targets(&self) -> Vec<AudioEventTarget> {
         // Default implementation returns an empty vector
         vec![]
     }
-    fn dispatch(&mut self, _event: &Event) {
+    fn dispatch(&mut self, _event: &AudioEventType) {
         // Bypass effect does not handle events
     }
 
@@ -86,8 +85,8 @@ impl BlockInfo {
 }
 
 pub trait Source {
-    fn get_targets(&self) -> Vec<EventTarget>;
-    fn dispatch(&mut self, _event: &Event) {
+    fn get_targets(&self) -> Vec<AudioEventTarget>;
+    fn dispatch(&mut self, _event: &AudioEventType) {
         // Default implementation does nothing
     }
 

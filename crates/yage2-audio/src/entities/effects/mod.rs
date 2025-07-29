@@ -6,7 +6,7 @@ pub mod soft_clip;
 
 #[cfg(test)]
 mod test {
-    use crate::entities::events::{Event, EventTarget, EventTargetId};
+    use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
     use crate::entities::{BlockInfo, Effect};
     use crate::sample::PlanarBlock;
     use crate::{BLOCK_SIZE, CHANNELS_COUNT};
@@ -39,12 +39,12 @@ mod test {
     }
 
     pub struct TestEffect {
-        id: EventTargetId,
+        id: AudioEventTargetId,
         bypass: bool,
         function: TestEffectFunction,
     }
 
-    fn dispatch_test_effect(ptr: *mut u8, event: &Event) {
+    fn dispatch_test_effect(ptr: *mut u8, event: &AudioEventType) {
         let test_effect: &mut TestEffect = unsafe { &mut *(ptr as *mut TestEffect) };
         test_effect.dispatch(event);
     }
@@ -52,32 +52,32 @@ mod test {
     impl TestEffect {
         pub fn new(function: TestEffectFunction) -> Self {
             Self {
-                id: EventTargetId::new(),
+                id: AudioEventTargetId::new(),
                 bypass: false,
                 function,
             }
         }
 
-        pub fn get_id(&self) -> EventTargetId {
+        pub fn get_id(&self) -> AudioEventTargetId {
             self.id
         }
 
-        fn create_event_target(&self) -> EventTarget {
-            EventTarget::new(dispatch_test_effect, self.id, self)
+        fn create_event_target(&self) -> AudioEventTarget {
+            AudioEventTarget::new(dispatch_test_effect, self.id, self)
         }
     }
 
     impl Effect for TestEffect {
-        fn get_targets(&self) -> Vec<EventTarget> {
+        fn get_targets(&self) -> Vec<AudioEventTarget> {
             vec![self.create_event_target()]
         }
 
-        fn dispatch(&mut self, event: &Event) {
+        fn dispatch(&mut self, event: &AudioEventType) {
             match event {
-                Event::TestEffect(TestEffectEvent::Bypass(bypass)) => {
+                AudioEventType::TestEffect(TestEffectEvent::Bypass(bypass)) => {
                     self.bypass = *bypass;
                 }
-                Event::TestEffect(TestEffectEvent::SetFunction(function)) => {
+                AudioEventType::TestEffect(TestEffectEvent::SetFunction(function)) => {
                     self.function = function.clone();
                 }
                 _ => {}

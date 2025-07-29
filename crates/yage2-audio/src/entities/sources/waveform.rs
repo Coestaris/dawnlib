@@ -1,4 +1,4 @@
-use crate::entities::events::{Event, EventTarget, EventTargetId};
+use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
 use crate::entities::{BlockInfo, Source};
 use crate::sample::PlanarBlock;
 use tinyrand::Wyrand;
@@ -23,7 +23,7 @@ pub enum WaveformSourceEvent {
 /// Allows generating audio samples on the fly,
 /// for example, a sine wave generator.
 pub struct WaveformSource {
-    id: EventTargetId,
+    id: AudioEventTargetId,
     cached: bool,
     waveform_type: WaveformType,
     attack: f32,  // In samples
@@ -32,7 +32,7 @@ pub struct WaveformSource {
     output: PlanarBlock<f32>,
 }
 
-fn dispatch_waveform(ptr: *mut u8, event: &Event) {
+fn dispatch_waveform(ptr: *mut u8, event: &AudioEventType) {
     let waveform: &mut WaveformSource = unsafe { &mut *(ptr as *mut WaveformSource) };
     waveform.dispatch(event);
 }
@@ -41,7 +41,7 @@ impl WaveformSource {
     pub fn new(waveform_type: Option<WaveformType>) -> Self {
         WaveformSource {
             waveform_type: waveform_type.unwrap_or(WaveformType::Disabled),
-            id: EventTargetId::new(),
+            id: AudioEventTargetId::new(),
             cached: false,
             output: PlanarBlock::default(),
             rng: Wyrand::default(),
@@ -50,12 +50,12 @@ impl WaveformSource {
         }
     }
 
-    pub fn get_id(&self) -> EventTargetId {
+    pub fn get_id(&self) -> AudioEventTargetId {
         self.id
     }
 
-    fn create_event_target(&self) -> EventTarget {
-        EventTarget::new(dispatch_waveform, self.id, self)
+    fn create_event_target(&self) -> AudioEventTarget {
+        AudioEventTarget::new(dispatch_waveform, self.id, self)
     }
 }
 
@@ -151,24 +151,24 @@ mod dsp {
 }
 
 impl Source for WaveformSource {
-    fn get_targets(&self) -> Vec<EventTarget> {
+    fn get_targets(&self) -> Vec<AudioEventTarget> {
         vec![self.create_event_target()]
     }
 
-    fn dispatch(&mut self, event: &Event) {
+    fn dispatch(&mut self, event: &AudioEventType) {
         match event {
-            Event::Waveform(WaveformSourceEvent::SetWaveformType(waveform_type)) => {
+            AudioEventType::Waveform(WaveformSourceEvent::SetWaveformType(waveform_type)) => {
                 self.waveform_type = waveform_type.clone();
                 self.cached = false;
             }
-            Event::Waveform(WaveformSourceEvent::SetAttack {
+            AudioEventType::Waveform(WaveformSourceEvent::SetAttack {
                 attack_ms,
                 sample_rate,
             }) => {
                 self.attack = *attack_ms / 1000.0 * sample_rate;
                 self.cached = false;
             }
-            Event::Waveform(WaveformSourceEvent::SetRelease {
+            AudioEventType::Waveform(WaveformSourceEvent::SetRelease {
                 release_ms,
                 sample_rate,
             }) => {

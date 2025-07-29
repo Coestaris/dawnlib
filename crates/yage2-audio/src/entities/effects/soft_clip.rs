@@ -1,4 +1,6 @@
-use crate::entities::events::{Event, EventTarget, EventTargetId};
+use crate::entities::events::{AudioEventTarget, AudioEventTargetId, AudioEventType};
+use crate::entities::{BlockInfo, Effect};
+use crate::sample::PlanarBlock;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SoftClipEffectEvent {
@@ -7,13 +9,13 @@ pub enum SoftClipEffectEvent {
     SetRatio(f32),
 }
 
-fn dispatch_soft_clip(ptr: *mut u8, event: &Event) {
+fn dispatch_soft_clip(ptr: *mut u8, event: &AudioEventType) {
     let soft_clip: &mut SoftClipEffect = unsafe { &mut *(ptr as *mut SoftClipEffect) };
     soft_clip.dispatch(event);
 }
 
 pub struct SoftClipEffect {
-    id: EventTargetId,
+    id: AudioEventTargetId,
     bypass: bool,
     threshold: f32,
     ratio: f32,
@@ -22,32 +24,36 @@ pub struct SoftClipEffect {
 impl SoftClipEffect {
     pub fn new(threshold: f32, ratio: f32) -> Self {
         Self {
-            id: EventTargetId::new(),
+            id: AudioEventTargetId::new(),
             bypass: false,
             threshold,
             ratio,
         }
     }
-    
-    pub fn get_id(&self) -> EventTargetId {
+
+    pub fn get_id(&self) -> AudioEventTargetId {
         self.id
     }
 
-    fn create_event_target(&self) -> EventTarget {
-        EventTarget::new(dispatch_soft_clip, self.id, self)
+    fn create_event_target(&self) -> AudioEventTarget {
+        AudioEventTarget::new(dispatch_soft_clip, self.id, self)
     }
 }
 
-impl SoftClipEffect {
-    fn dispatch(&mut self, event: &Event) {
+impl Effect for SoftClipEffect {
+    fn get_targets(&self) -> Vec<AudioEventTarget> {
+        vec![self.create_event_target()]
+    }
+
+    fn dispatch(&mut self, event: &AudioEventType) {
         match event {
-            Event::SoftClip(SoftClipEffectEvent::Bypass(bypass)) => {
+            AudioEventType::SoftClip(SoftClipEffectEvent::Bypass(bypass)) => {
                 self.bypass = *bypass;
             }
-            Event::SoftClip(SoftClipEffectEvent::SetThreshold(threshold)) => {
+            AudioEventType::SoftClip(SoftClipEffectEvent::SetThreshold(threshold)) => {
                 self.threshold = *threshold;
             }
-            Event::SoftClip(SoftClipEffectEvent::SetRatio(ratio)) => {
+            AudioEventType::SoftClip(SoftClipEffectEvent::SetRatio(ratio)) => {
                 self.ratio = *ratio;
             }
             _ => {}
@@ -56,5 +62,14 @@ impl SoftClipEffect {
 
     fn bypass(&self) -> bool {
         self.bypass
+    }
+
+    fn render(
+        &mut self,
+        input: &PlanarBlock<f32>,
+        output: &mut PlanarBlock<f32>,
+        info: &BlockInfo,
+    ) {
+        todo!()
     }
 }

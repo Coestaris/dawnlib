@@ -1,4 +1,4 @@
-use crate::entities::events::{Event, EventTarget, EventTargetId};
+use crate::entities::events::{AudioEventTarget, AudioEventTargetId, AudioEventType};
 use crate::entities::{BlockInfo, Effect};
 use crate::sample::{PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
 use crate::{BLOCK_SIZE, CHANNELS_COUNT};
@@ -9,7 +9,7 @@ pub enum FirFilterEffectEvent {
 }
 
 pub struct FirFilterEffect<const N: usize> {
-    id: EventTargetId,
+    id: AudioEventTargetId,
     bypass: bool,
 
     coeffs: [f32; N],
@@ -17,7 +17,7 @@ pub struct FirFilterEffect<const N: usize> {
     pos: usize,
 }
 
-fn dispatch_fir_filter<const N: usize>(ptr: *mut u8, event: &Event) {
+fn dispatch_fir_filter<const N: usize>(ptr: *mut u8, event: &AudioEventType) {
     let fir_filter: &mut FirFilterEffect<N> = unsafe { &mut *(ptr as *mut FirFilterEffect<N>) };
     fir_filter.dispatch(event);
 }
@@ -52,13 +52,12 @@ impl<const N: usize> FirFilterEffect<N> {
             coeffs[i] /= sum;
         }
 
-
         FirFilterEffect::new(coeffs)
     }
 
     pub fn new(coeffs: [f32; N]) -> Self {
         Self {
-            id: EventTargetId::new(),
+            id: AudioEventTargetId::new(),
             bypass: false,
             coeffs,
             buffer: [0.0; N],
@@ -66,23 +65,23 @@ impl<const N: usize> FirFilterEffect<N> {
         }
     }
 
-    pub fn get_id(&self) -> EventTargetId {
+    pub fn get_id(&self) -> AudioEventTargetId {
         self.id
     }
-    
-    fn create_event_target(&self) -> EventTarget {
-        EventTarget::new(dispatch_fir_filter::<N>, self.id, self)
+
+    fn create_event_target(&self) -> AudioEventTarget {
+        AudioEventTarget::new(dispatch_fir_filter::<N>, self.id, self)
     }
 }
 
 impl<const N: usize> Effect for FirFilterEffect<N> {
-    fn get_targets(&self) -> Vec<EventTarget> {
+    fn get_targets(&self) -> Vec<AudioEventTarget> {
         vec![self.create_event_target()]
     }
 
-    fn dispatch(&mut self, event: &Event) {
+    fn dispatch(&mut self, event: &AudioEventType) {
         match event {
-            Event::FirFilter(FirFilterEffectEvent::Bypass(bypass)) => {
+            AudioEventType::FirFilter(FirFilterEffectEvent::Bypass(bypass)) => {
                 self.bypass = *bypass;
             }
             _ => {

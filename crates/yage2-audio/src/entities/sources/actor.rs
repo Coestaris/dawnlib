@@ -1,6 +1,6 @@
-use crate::entities::{BlockInfo, Event, EventTarget, EventTargetId, Source};
+use crate::entities::{BlockInfo, AudioEventType, AudioEventTarget, AudioEventTargetId, Source};
 use crate::sample::PlanarBlock;
-use yage2_core::vec3::Vec3;
+use glam::Vec3;
 
 const MAX_ACTORS: usize = 1024;
 
@@ -12,7 +12,7 @@ pub enum ActorsSourceEvent {
 }
 
 pub struct ActorsSource {
-    id: EventTargetId,
+    id: AudioEventTargetId,
     cached: bool,
     listener_position: Vec3,
     positions: [Vec3; MAX_ACTORS],
@@ -20,7 +20,7 @@ pub struct ActorsSource {
     output: PlanarBlock<f32>,
 }
 
-fn dispatch_actors(ptr: *mut u8, event: &Event) {
+fn dispatch_actors(ptr: *mut u8, event: &AudioEventType) {
     let actors: &mut ActorsSource = unsafe { &mut *(ptr as *mut ActorsSource) };
     actors.dispatch(event);
 }
@@ -28,38 +28,38 @@ fn dispatch_actors(ptr: *mut u8, event: &Event) {
 impl ActorsSource {
     pub fn new() -> Self {
         ActorsSource {
-            id: EventTargetId::new(),
+            id: AudioEventTargetId::new(),
             cached: false,
-            listener_position: Vec3::zero(),
-            positions: [Vec3::zero(); MAX_ACTORS],
+            listener_position: Vec3::ZERO,
+            positions: [Vec3::ZERO; MAX_ACTORS],
             gains: [0.0; MAX_ACTORS],
             output: Default::default(),
         }
     }
 
-    pub fn get_id(&self) -> EventTargetId {
+    pub fn get_id(&self) -> AudioEventTargetId {
         self.id
     }
 
-    fn create_event_target(&self) -> EventTarget {
-        EventTarget::new(dispatch_actors, self.id, self)
+    fn create_event_target(&self) -> AudioEventTarget {
+        AudioEventTarget::new(dispatch_actors, self.id, self)
     }
 }
 
 impl Source for ActorsSource {
-    fn get_targets(&self) -> Vec<EventTarget> {
+    fn get_targets(&self) -> Vec<AudioEventTarget> {
         vec![self.create_event_target()]
     }
 
-    fn dispatch(&mut self, event: &Event) {
+    fn dispatch(&mut self, event: &AudioEventType) {
         match event {
-            Event::Actors(ActorsSourceEvent::AddActor { pos, id, gain }) => {
+            AudioEventType::Actors(ActorsSourceEvent::AddActor { pos, id, gain }) => {
                 // TODO: Implement logic to add an actor
             }
-            Event::Actors(ActorsSourceEvent::RemoveActors(id)) => {
+            AudioEventType::Actors(ActorsSourceEvent::RemoveActors(id)) => {
                 // TODO: Implement logic to remove an actor
             }
-            Event::Actors(ActorsSourceEvent::ChangeListenerPosition(pos)) => {}
+            AudioEventType::Actors(ActorsSourceEvent::ChangeListenerPosition(pos)) => {}
 
             _ => {
                 // Handle other events if needed
