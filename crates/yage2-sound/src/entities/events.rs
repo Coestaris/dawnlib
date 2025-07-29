@@ -1,7 +1,6 @@
 use crate::entities::bus::BusEvent;
 use crate::entities::effects::fir::FirFilterEffectEvent;
 use crate::entities::effects::freeverb::FreeverbEffectEvent;
-use crate::entities::effects::lpf::LPFEffectEvent;
 use crate::entities::effects::multiplexer::MultiplexerEffectEvent;
 use crate::entities::effects::soft_clip::SoftClipEffectEvent;
 use crate::entities::sources::actor::ActorsSourceEvent;
@@ -48,7 +47,6 @@ pub enum Event {
     MuxEffect(MultiplexerEffectEvent),
     FirFilter(FirFilterEffectEvent),
     Freeverb(FreeverbEffectEvent),
-    LPF(LPFEffectEvent),
     SoftClip(SoftClipEffectEvent),
 }
 
