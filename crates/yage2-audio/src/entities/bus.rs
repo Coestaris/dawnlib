@@ -1,4 +1,4 @@
-use crate::entities::{BlockInfo, Effect, Event, EventTarget, EventTargetId, NodeRef, Source};
+use crate::entities::{BlockInfo, Effect, AudioEventType, AudioEventTarget, AudioEventTargetId, NodeRef, Source};
 use crate::sample::PlanarBlock;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,7 +9,7 @@ where
     E: Effect,
     S: Source,
 {
-    id: EventTargetId,
+    id: AudioEventTargetId,
     cached: bool,
     gain: f32,
     pan: f32,
@@ -18,7 +18,7 @@ where
     output: PlanarBlock<f32>,
 }
 
-fn dispatch_bus<E, S>(ptr: *mut u8, event: &Event)
+fn dispatch_bus<E, S>(ptr: *mut u8, event: &AudioEventType)
 where
     E: Effect,
     S: Source,
@@ -34,7 +34,7 @@ where
 {
     pub fn new(effect: &'a E, source: &'a S, gain: Option<f32>, pan: Option<f32>) -> Self {
         Bus {
-            id: EventTargetId::new(),
+            id: AudioEventTargetId::new(),
             effect: NodeRef::<'a>::new(effect),
             source: NodeRef::<'a>::new(source),
             output: PlanarBlock::default(),
@@ -44,12 +44,12 @@ where
         }
     }
 
-    pub fn get_id(&self) -> EventTargetId {
+    pub fn get_id(&self) -> AudioEventTargetId {
         self.id
     }
 
-    fn create_event_target(&self) -> EventTarget {
-        EventTarget::new(dispatch_bus::<E, S>, self.id, self)
+    fn create_event_target(&self) -> AudioEventTarget {
+        AudioEventTarget::new(dispatch_bus::<E, S>, self.id, self)
     }
 }
 
@@ -58,14 +58,14 @@ where
     E: Effect,
     S: Source,
 {
-    fn get_targets(&self) -> Vec<EventTarget> {
+    fn get_targets(&self) -> Vec<AudioEventTarget> {
         let mut targets = self.source.as_ref().get_targets();
         targets.extend(self.effect.as_ref().get_targets());
         targets.push(self.create_event_target());
         targets
     }
 
-    fn dispatch(&mut self, event: &Event) {
+    fn dispatch(&mut self, event: &AudioEventType) {
         match event {
             _ => {}
         }

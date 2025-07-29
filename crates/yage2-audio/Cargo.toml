@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["resources-wav", "resources-flac", "resources-ogg"]
+default = ["resources-wav", "resources-flac", "resources-ogg", "resources-midi"]
 resources-wav = ["dep:hound"]
 resources-flac = ["dep:flac"]
 resources-ogg = ["dep:ogg", "dep:lewton"]
+resources-midi = ["dep:midly"]
 
 [dependencies]
 yage2-core = { path = "../yage2-core" }
@@ -17,11 +18,15 @@ ringbuf = "0.4.8" # Used for double-buffering audio data
 crossbeam-queue = "0.3.12" # Used for sending messages to the render thread
 i24 = "2.1.0" # For 24-bit PCM support (used in WAV files)
 
+tinyrand = "0.5.0" # Used in a waveform noise generator source
+glam = "0.30.5" # Used in actors source
+evenio = "0.6.0"
+
 hound = { version = "3.5.1", optional = true } # For WAV file reading/writing
 flac = { version = "0.5.0", optional = true } # For FLAC file reading
 ogg = { version = "0.9.2", optional = true } # For OGG file reading
 lewton = { version = "0.10.0", optional = true } # For OGG Vorbis decoding
-tinyrand = "0.5.0"
+midly = { version = "0.5.3", optional = true } # For MIDI decoding
 
 [profile.release]
 lto = true

@@ -3,33 +3,31 @@ use crate::backend::{
     PlayerBackendTrait,
 };
 use crate::dsp::detect_features;
-use crate::entities::events::EventBox;
+use crate::entities::events::AudioEvent;
 use crate::entities::sinks::InterleavedSink;
 use crate::entities::Source;
 use crate::sample::MappedInterleavedBuffer;
 use crate::{ChannelsCount, SampleRate, SampleType, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
 use crossbeam_queue::ArrayQueue;
-use log::{debug, info, warn};
+use log::{debug, info};
 use std::fmt::{Display, Formatter};
+use std::ops::Index;
 use std::sync::{atomic::AtomicBool, Arc};
+use std::thread::{Builder, JoinHandle};
+use evenio::component::Component;
 use yage2_core::profile::{PeriodProfiler, TickProfiler};
-use yage2_core::threads::{ThreadManager, ThreadPriority};
 
 const STATISTICS_THREAD_NAME: &str = "aud_stats";
-const STATISTICS_THREAD_PRIORITY: ThreadPriority = ThreadPriority::Low;
 const EVENTS_QUEUE_CAPACITY: usize = 1024;
 
-pub struct PlayerConfig<'tm, 'scope, 'env, F>
+pub struct PlayerConfig<F>
 where
-    'env: 'scope,
     F: FnMut(&ProfileFrame) + Send + Sync + 'static,
 {
     /// Sample rate of the audio stream
     pub sample_rate: SampleRate,
     /// Backend-specific configuration used for fine-tuning the audio backend
     pub backend_config: PlayerBackendConfig,
-    /// Scoped thread manager that will be used to spawn the statistics thread
-    pub thread_manager: &'tm ThreadManager<'scope, 'env>,
     /// Optional profiler handler that will be called with the profiling data
     pub profiler: Option<F>,
 }
@@ -79,13 +77,14 @@ pub struct ProfileFrame {
     pub block_size: SamplesCount,
 }
 
+#[derive(Component)]
 pub struct Player {
     // The backend that handles audio output and most of the audio conversion.
     backend: PlayerBackend<SampleType>,
     // A signal that is used to stop the audio processing thread.
     stop_signal: Arc<AtomicBool>,
     // Event queue for processing audio events.
-    events: Arc<ArrayQueue<EventBox>>,
+    events: Arc<ArrayQueue<AudioEvent>>,
 }
 
 impl Drop for Player {
@@ -153,7 +152,6 @@ impl Player {
         match config.profiler {
             Some(handler) => {
                 Player::spawn_statistics_thread(
-                    config.thread_manager,
                     handler,
                     Arc::clone(&stop_signal),
                     config.sample_rate,
@@ -176,7 +174,7 @@ impl Player {
             channels: CHANNELS_COUNT,
             buffer_size: BLOCK_SIZE,
         };
-        let events_queue = Arc::new(ArrayQueue::<EventBox>::new(EVENTS_QUEUE_CAPACITY));
+        let events_queue = Arc::new(ArrayQueue::<AudioEvent>::new(EVENTS_QUEUE_CAPACITY));
         let events_queue_clone = Arc::clone(&events_queue);
         let mut backend = PlayerBackend::<SampleType>::new(backend_config)
             .map_err(PlayerError::FailedToCreateBackend)?;
@@ -209,24 +207,22 @@ impl Player {
         })
     }
 
-    pub fn push_event(&self, event: &EventBox) {
+    pub fn push_event(&self, event: &AudioEvent) {
         self.events.push(event.clone()).unwrap();
     }
 
     fn spawn_statistics_thread<F>(
-        tm: &ThreadManager,
         mut handler: F,
         stop_signal: Arc<AtomicBool>,
         sample_rate: SampleRate,
         profilers: Arc<Profilers>,
-    ) -> Result<(), PlayerError>
+    ) -> Result<JoinHandle<()>, PlayerError>
     where
         F: FnMut(&ProfileFrame) + Send + Sync + 'static,
     {
-        tm.spawn(
-            STATISTICS_THREAD_NAME.into(),
-            STATISTICS_THREAD_PRIORITY,
-            move || {
+        Builder::new()
+            .name(STATISTICS_THREAD_NAME.into())
+            .spawn(move || {
                 loop {
                     // Check if the stop signal is set
                     if stop_signal.load(std::sync::atomic::Ordering::Relaxed) {
@@ -268,8 +264,7 @@ impl Player {
                     // Sleep for a short duration to avoid busy-waiting
                     std::thread::sleep(std::time::Duration::from_millis(1000));
                 }
-            },
-        )
-        .map_err(|_| PlayerError::FailedToSpawnStatisticsThread)
+            })
+            .map_err(|_| PlayerError::FailedToSpawnStatisticsThread)
     }
 }

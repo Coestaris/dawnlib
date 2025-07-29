@@ -1,4 +1,4 @@
-use crate::entities::events::{Event, EventTarget, EventTargetId};
+use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
 use crate::entities::{BlockInfo, Effect};
 use crate::sample::PlanarBlock;
 
@@ -54,7 +54,7 @@ pub enum FreeverbEffectEvent {
 
 #[derive(Default)]
 pub struct FreeverbEffect {
-    id: EventTargetId,
+    id: AudioEventTargetId,
     bypass: bool,
 
     room_size: f32,
@@ -65,7 +65,7 @@ pub struct FreeverbEffect {
     freeze_mode: bool,
 }
 
-fn dispatch_freeverb(ptr: *mut u8, event: &Event) {
+fn dispatch_freeverb(ptr: *mut u8, event: &AudioEventType) {
     let freeverb: &mut FreeverbEffect = unsafe { &mut *(ptr as *mut FreeverbEffect) };
     freeverb.dispatch(event);
 }
@@ -73,49 +73,49 @@ fn dispatch_freeverb(ptr: *mut u8, event: &Event) {
 impl FreeverbEffect {
     pub fn new_from_tuning(tuning: BuiltInTuning) -> Self {
         let mut freeverb = FreeverbEffect {
-            id: EventTargetId::new(),
+            id: AudioEventTargetId::new(),
             ..Default::default()
         };
         tuning.apply(&mut freeverb);
         freeverb
     }
     
-    pub fn get_id(&self) -> EventTargetId {
+    pub fn get_id(&self) -> AudioEventTargetId {
         self.id
     }
 
-    fn create_event_target(&self) -> EventTarget {
-        EventTarget::new(dispatch_freeverb, self.id, self)
+    fn create_event_target(&self) -> AudioEventTarget {
+        AudioEventTarget::new(dispatch_freeverb, self.id, self)
     }
 }
 
 impl Effect for FreeverbEffect {
-    fn get_targets(&self) -> Vec<EventTarget> {
+    fn get_targets(&self) -> Vec<AudioEventTarget> {
         vec![self.create_event_target()]
     }
 
-    fn dispatch(&mut self, event: &Event) {
+    fn dispatch(&mut self, event: &AudioEventType) {
         match event {
-            Event::Freeverb(FreeverbEffectEvent::Bypass(bypass)) => self.bypass = *bypass,
-            Event::Freeverb(FreeverbEffectEvent::SetRoomSize(size)) => {
+            AudioEventType::Freeverb(FreeverbEffectEvent::Bypass(bypass)) => self.bypass = *bypass,
+            AudioEventType::Freeverb(FreeverbEffectEvent::SetRoomSize(size)) => {
                 self.room_size = size.clamp(0.0, 1.0)
             }
-            Event::Freeverb(FreeverbEffectEvent::SetDamping(damping)) => {
+            AudioEventType::Freeverb(FreeverbEffectEvent::SetDamping(damping)) => {
                 self.damping = damping.clamp(0.0, 1.0)
             }
-            Event::Freeverb(FreeverbEffectEvent::SetWetLevel(level)) => {
+            AudioEventType::Freeverb(FreeverbEffectEvent::SetWetLevel(level)) => {
                 self.wet_level = level.clamp(0.0, 1.0)
             }
-            Event::Freeverb(FreeverbEffectEvent::SetDryLevel(level)) => {
+            AudioEventType::Freeverb(FreeverbEffectEvent::SetDryLevel(level)) => {
                 self.dry_level = level.clamp(0.0, 1.0)
             }
-            Event::Freeverb(FreeverbEffectEvent::SetWidth(width)) => {
+            AudioEventType::Freeverb(FreeverbEffectEvent::SetWidth(width)) => {
                 self.width = width.clamp(0.0, 1.0)
             }
-            Event::Freeverb(FreeverbEffectEvent::SetFreezeMode(freeze)) => {
+            AudioEventType::Freeverb(FreeverbEffectEvent::SetFreezeMode(freeze)) => {
                 self.freeze_mode = *freeze
             }
-            Event::Freeverb(FreeverbEffectEvent::SetBuiltInTuning(tuning)) => {
+            AudioEventType::Freeverb(FreeverbEffectEvent::SetBuiltInTuning(tuning)) => {
                 tuning.apply(self);
             }
             _ => {

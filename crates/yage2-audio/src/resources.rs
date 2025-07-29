@@ -188,8 +188,135 @@ pub(crate) mod ogg {
     }
 }
 
+pub(crate) mod midi {
+    use midly::MidiMessage;
+    use yage2_core::resources::{Resource, ResourceFactory, ResourceHeader};
+
+    pub enum MIDIEvent {
+        NoteOn { channel: u8, note: u8, velocity: u8 },
+        NoteOff { channel: u8, note: u8 },
+        Idle { ms: f32 },
+    }
+
+    pub struct MIDIResource {
+        pub events: Vec<MIDIEvent>,
+    }
+
+    pub struct MIDIResourceFactory {}
+
+    impl MIDIResourceFactory {
+        pub fn new() -> Self {
+            MIDIResourceFactory {}
+        }
+    }
+
+    impl ResourceFactory for MIDIResourceFactory {
+        fn parse(&self, _header: &ResourceHeader, raw: &[u8]) -> Result<Resource, String> {
+            let smf = midly::Smf::parse(raw).map_err(|e| format!("Failed to parse MIDI: {}", e))?;
+
+            let clock_to_ms = |clocks_delta, tempo, signature| match smf.header.timing {
+                midly::Timing::Metrical(tpqn) => {
+                    let tpqn = tpqn.as_int() as f32;
+                    let mpqn = tempo as f32 / 1_000_000.0; // Convert microseconds to seconds
+                    clocks_delta as f32 * (mpqn / tpqn * 1000.0) // Convert to milliseconds
+                }
+                midly::Timing::Timecode(fps, sub_frames) => {
+                    clocks_delta as f32 * (1000.0 / fps.as_f32() / sub_frames as f32)
+                }
+            };
+
+            struct TrackEventWrapper<'a> {
+                absolute_time: u32,
+                delta: u32,
+                kind: midly::TrackEventKind<'a>,
+            }
+
+            // Merge all track events into a single vector since we will not support multiple tracks
+            let mut track_events = Vec::new();
+            for track in smf.tracks.iter() {
+                let mut absolute_time = 0;
+                for event in track.iter() {
+                    absolute_time += event.delta.as_int();
+                    track_events.push(TrackEventWrapper {
+                        absolute_time,
+                        delta: event.delta.as_int(),
+                        kind: event.kind.clone(),
+                    });
+                }
+            }
+            // Sort events by absolute time
+            track_events.sort_by_key(|e| e.absolute_time);
+            // Recalculate deltas
+            for i in 1..track_events.len() {
+                track_events[i].delta =
+                    track_events[i].absolute_time - track_events[i - 1].absolute_time;
+            }
+
+            let mut events = Vec::new();
+            let mut tempo: u32 = 0; // Default tempo in microseconds per quarter note
+            let mut signature = (0, 0, 0, 0); // Default time signature (4/4)
+
+            for event in track_events.iter() {
+                if event.delta != 0 {
+                    // Convert delta time to milliseconds
+                    let ms = clock_to_ms(event.delta, tempo, signature);
+                    events.push(MIDIEvent::Idle { ms });
+                }
+                match event.kind {
+                    midly::TrackEventKind::Meta(midly::MetaMessage::Tempo(t)) => {
+                        tempo = t.as_int();
+                    }
+                    midly::TrackEventKind::Meta(midly::MetaMessage::TimeSignature(
+                        num,
+                        denom,
+                        clocks_per_tick,
+                        notes_per_quarter,
+                    )) => {
+                        signature = (num, denom, clocks_per_tick, notes_per_quarter);
+                    }
+                    midly::TrackEventKind::Midi { channel, message } => match message {
+                        MidiMessage::NoteOff { key, vel } => {
+                            events.push(MIDIEvent::NoteOff {
+                                channel: channel.as_int(),
+                                note: key.as_int(),
+                            });
+                        }
+                        MidiMessage::NoteOn { key, vel } if vel.as_int() == 0 => {
+                            // Note On with velocity 0 is equivalent to Note Off
+                            events.push(MIDIEvent::NoteOff {
+                                channel: channel.as_int(),
+                                note: key.as_int(),
+                            });
+                        }
+                        MidiMessage::NoteOn { key, vel } => {
+                            events.push(MIDIEvent::NoteOn {
+                                channel: channel.as_int(),
+                                note: key.as_int(),
+                                velocity: vel.as_int(),
+                            });
+                        }
+                        _ => {
+                            println!("Unhandled MIDI message: {:?}", message);
+                        }
+                    },
+                    _ => {
+                        println!("Unhandled MIDI event: {:?}", event.kind);
+                    }
+                }
+            }
+
+            Ok(Resource::new(MIDIResource { events }))
+        }
+
+        fn finalize(&self, _header: &ResourceHeader, _resource: &Resource) -> Result<(), String> {
+            Ok(())
+        }
+    }
+}
+
 pub use {
-    wav::WAVResourceFactory,
     flac::FLACResourceFactory,
+    midi::{MIDIEvent, MIDIResource, MIDIResourceFactory},
     ogg::OGGResourceFactory,
+    wav::WAVResourceFactory,
 };

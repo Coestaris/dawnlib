@@ -1,9 +1,8 @@
-use crate::entities::events::{EventBox, EventTarget, EventTargetId};
+use crate::entities::events::{AudioEvent, AudioEventTarget, AudioEventTargetId};
 use crate::entities::{BlockInfo, Source};
 use crate::sample::{InterleavedBlock, InterleavedSample, MappedInterleavedBuffer};
 use crate::{SampleRate, BLOCK_SIZE};
 use ringbuf::traits::{Consumer, Observer, Producer, SplitRef};
-use std::collections::HashMap;
 
 const ROUTER_CAPACITY: usize = 64;
 const RING_BUFFER_CAPACITY: usize = 2048;
@@ -12,7 +11,7 @@ const RING_BUFFER_CAPACITY: usize = 2048;
 /// buffered rendering and event dispatching.
 pub struct InterleavedSink<T: Source> {
     source: T,
-    event_router: [EventTarget; ROUTER_CAPACITY],
+    event_router: [AudioEventTarget; ROUTER_CAPACITY],
     sample_rate: SampleRate,
     ring_buf: ringbuf::StaticRb<InterleavedSample<f32>, RING_BUFFER_CAPACITY>,
     processed: usize,
@@ -24,8 +23,8 @@ unsafe impl<T: Source> Sync for InterleavedSink<T> {}
 impl<T: Source> InterleavedSink<T> {
     pub fn new(master: T, sample_rate: SampleRate) -> Self {
         let targets = master.get_targets();
-        let mut event_router: [EventTarget; ROUTER_CAPACITY] =
-            [EventTarget::default(); ROUTER_CAPACITY];
+        let mut event_router: [AudioEventTarget; ROUTER_CAPACITY] =
+            [AudioEventTarget::default(); ROUTER_CAPACITY];
         for target in targets {
             event_router[target.get_id().as_usize()] = target;
         }
@@ -39,7 +38,7 @@ impl<T: Source> InterleavedSink<T> {
         }
     }
 
-    pub(crate) fn dispatch(&self, b: &EventBox) {
+    pub(crate) fn dispatch(&self, b: &AudioEvent) {
         let index = b.get_target_id().as_usize();
 
         #[cfg(debug_assertions)]
