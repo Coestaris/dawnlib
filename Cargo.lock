@@ -401,6 +401,7 @@ name = "demo-audio"
 version = "0.1.0"
 dependencies = [
  "common",
+ "evenio",
  "log",
  "yage2-audio",
  "yage2-core",

@@ -8,7 +8,6 @@ pub mod player;
 pub mod resources;
 mod sample;
 pub mod entities;
-pub mod ecs;
 
 pub type SamplesCount = usize;
 pub type SampleRate = usize;
