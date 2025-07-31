@@ -9,3 +9,4 @@ yage2-core = { path = "../../crates/yage2-core" }
 yage2-audio = { path = "../../crates/yage2-audio" }
 log = "0.4.27"
 evenio = "0.6.0"
+glam="0.30.5"
