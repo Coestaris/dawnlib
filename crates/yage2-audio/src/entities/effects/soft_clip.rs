@@ -1,3 +1,4 @@
+use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 use crate::entities::events::{AudioEventTarget, AudioEventTargetId, AudioEventType};
 use crate::entities::{BlockInfo, Effect};
 use crate::sample::PlanarBlock;
@@ -70,6 +71,16 @@ impl Effect for SoftClipEffect {
         output: &mut PlanarBlock<f32>,
         info: &BlockInfo,
     ) {
-        todo!()
+        for channel in 0..CHANNELS_COUNT {
+            for i in 0..BLOCK_SIZE {
+                // TODO: SIMD optimization for soft clipping
+                let sample = input.samples[channel][i];
+
+                // Apply soft clipping using tanh function
+                let gain = 1.5;
+                let scaled = sample * gain;
+                output.samples[channel][i] = scaled.tanh();
+            }
+        }
     }
 }
