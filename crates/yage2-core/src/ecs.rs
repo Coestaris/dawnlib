@@ -6,18 +6,38 @@ use evenio::world::World;
 use glam::Vec3;
 use log::{info, warn};
 
+/// Event sent every tick in the main loop (usually 60 times per second).
+/// Can be used to update game logic, render frames, etc.
 #[derive(GlobalEvent)]
 pub struct Tick {
+    /// The time since the last tick in seconds in milliseconds.
     pub delta: f32,
+    /// The total time since the start of the main loop in milliseconds.
     pub time: f32,
 }
 
+/// Event sent to stop the main loop.
 #[derive(GlobalEvent)]
 pub struct StopEventLoop;
 
+/// Event sent every second with profiling data about the main loop.
+#[derive(GlobalEvent)]
+pub struct MainLoopProfileFrame {
+    pub tick_time_min: f32,
+    pub tick_time_max: f32,
+    pub tick_time_av: f32,
+    pub tick_tps_min: f32,
+    pub tick_tps_max: f32,
+    pub tick_tps_av: f32,
+}
+
+/// Generic component for storing the position of an entity in 3D space.
 #[derive(Component, Debug)]
 pub struct Position(Vec3);
 
+/// Generic component for storing the 'main camera' of the game.
+/// Can be used to identify the listener position in the audio system,
+/// or the camera position in the rendering system.
 #[derive(Component, Debug)]
 pub struct Head {
     pub direction: Vec3,
@@ -33,81 +53,87 @@ fn stop_event_loop_handler(_: Receiver<StopEventLoop>, mut d: Single<&mut Privat
     d.stopped = true;
 }
 
-pub struct ProfileFrame {
-    pub tick_time_min: f32,
-    pub tick_time_max: f32,
-    pub tick_time_av: f32,
-    pub tick_tps_min: f32,
-    pub tick_tps_max: f32,
-    pub tick_tps_av: f32,
+trait MainLoopProfilerTrait {
+    fn tick_start(&self);
+    fn tick_end(&mut self);
+    fn profile(&mut self, world: &mut World);
 }
 
-struct Profiler<F>
-where
-    F: FnMut(&ProfileFrame) + Send + Sync + 'static,
-{
-    handler: Option<F>,
+struct MainLoopProfiler {
     tick_profiler: TickProfiler,
     period_profiler: PeriodProfiler,
     last_profile_time: std::time::Instant,
 }
 
-impl<F> Profiler<F>
-where
-    F: FnMut(&ProfileFrame) + Send + Sync + 'static,
-{
-    pub fn new(tps: f32, handler: Option<F>) -> Self {
-        Profiler {
-            handler,
-            tick_profiler: TickProfiler::new(tps),
-            period_profiler: PeriodProfiler::new(1.0),
+impl MainLoopProfiler {
+    pub fn new() -> Self {
+        MainLoopProfiler {
+            tick_profiler: TickProfiler::new(0.5),
+            period_profiler: PeriodProfiler::new(0.5),
             last_profile_time: std::time::Instant::now(),
-        }
-    }
-
-    pub fn tick_start(&self) {
-        if let Some(_) = &self.handler {
-            self.period_profiler.start();
-        }
-    }
-
-    pub fn tick_end(&mut self) {
-        if let Some(_) = &self.handler {
-            self.period_profiler.end();
-        }
-    }
-
-    pub fn profile(&mut self) {
-        if let Some(handler) = &mut self.handler {
-            self.tick_profiler.tick(1);
-
-            // Check if one second has passed since the last profile
-            if self.last_profile_time.elapsed().as_secs_f32() >= 1.0 {
-                self.last_profile_time = std::time::Instant::now();
-                self.tick_profiler.update();
-
-                let (tick_time_min, tick_time_av, tick_time_max) = self.period_profiler.get_stat();
-                let (tick_tps_min, tick_tps_av, tick_tps_max) = self.tick_profiler.get_stat();
-
-                let profile_frame = ProfileFrame {
-                    tick_time_min,
-                    tick_time_max,
-                    tick_time_av,
-                    tick_tps_min,
-                    tick_tps_max,
-                    tick_tps_av,
-                };
-
-                // Call the handler with the profile frame
-                handler(&profile_frame);
-            }
         }
     }
 }
 
-pub fn run_loop<F>(world: &mut World, tps: f32, profiler: Option<F>)
+impl MainLoopProfilerTrait for MainLoopProfiler {
+    fn tick_start(&self) {
+        self.period_profiler.start();
+    }
+
+    fn tick_end(&mut self) {
+        self.period_profiler.end();
+    }
+
+    fn profile(&mut self, world: &mut World) {
+        self.tick_profiler.tick(1);
+
+        // Check if one second has passed since the last profile
+        if self.last_profile_time.elapsed().as_secs_f32() >= 1.0 {
+            self.last_profile_time = std::time::Instant::now();
+            self.tick_profiler.update();
+
+            let (tick_time_min, tick_time_av, tick_time_max) = self.period_profiler.get_stat();
+            let (tick_tps_min, tick_tps_av, tick_tps_max) = self.tick_profiler.get_stat();
+
+            // Call the handler with the profile frame
+            world.send(MainLoopProfileFrame {
+                tick_time_min,
+                tick_time_max,
+                tick_time_av,
+                tick_tps_min,
+                tick_tps_max,
+                tick_tps_av,
+            });
+        }
+    }
+}
+
+struct DummyMainLoopProfiler;
+
+impl MainLoopProfilerTrait for DummyMainLoopProfiler {
+    fn tick_start(&self) {}
+
+    fn tick_end(&mut self) {}
+
+    fn profile(&mut self, _world: &mut World) {}
+}
+
+/// Runs the main loop of the application.
+/// Every `tps` ticks per second, it sends a `Tick` event to the ECS.
+/// You can stop the loop by sending a `StopEventLoop` event to the ECS.
+/// If `use_profiling` is true, it will also send profiling data every second
+/// to the ECS as `MainLoopProfileFrame` events.
+pub fn run_loop(world: &mut World, tps: f32, use_profiling: bool) {
+    if use_profiling {
+        run_loop_inner(world, tps, MainLoopProfiler::new());
+    } else {
+        run_loop_inner(world, tps, DummyMainLoopProfiler);
+    }
+}
+
+fn run_loop_inner<P>(world: &mut World, tps: f32, mut profiler: P)
 where
-    F: FnMut(&ProfileFrame) + Send + Sync + 'static,
+    P: MainLoopProfilerTrait + 'static,
 {
     world.add_handler(stop_event_loop_handler);
 
@@ -117,10 +143,9 @@ where
 
     let mut prev_tick = std::time::Instant::now();
     let loop_start = std::time::Instant::now();
-    let mut profiler = Profiler::new(tps, profiler);
 
     loop {
-        profiler.profile();
+        profiler.profile(world);
 
         // Check if the event loop should stop
         if let Some(private_data) = world.get::<PrivateData>(entity) {
