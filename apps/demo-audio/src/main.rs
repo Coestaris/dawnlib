@@ -15,11 +15,11 @@ use yage2_audio::entities::sinks::InterleavedSink;
 use yage2_audio::entities::sources::actor::{
     ActorID, ActorsSource, ActorsSourceEvent, DistanceGainFunction, DistanceLPFFunction,
 };
-use yage2_audio::player::{Player, PlayerConfig, ProfileFrame};
+use yage2_audio::player::{Player, PlayerProfileFrame};
 use yage2_audio::resources::{
     FLACResourceFactory, MIDIResourceFactory, OGGResourceFactory, WAVResourceFactory,
 };
-use yage2_core::ecs::{run_loop, StopEventLoop, Tick};
+use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop, Tick};
 use yage2_core::resources::{Resource, ResourceManager, ResourceManagerConfig, ResourceType};
 
 #[cfg(target_os = "linux")]
@@ -29,44 +29,6 @@ const SAMPLE_RATE: usize = 44100;
 const SAMPLE_RATE: usize = 48000;
 
 const REFRESH_RATE: f32 = 60.0; // Main loop refresh rate in ticks per second
-
-fn profile_player(frame: &yage2_audio::player::ProfileFrame) {
-    // Number of samples that actually processed by one render call
-    // (assuming that no underruns happens).
-    let av_actual_samples = frame.sample_rate as f32 / frame.render_tps_av as f32;
-    // Calculate the allowed time for one render call
-    let allowed_time = av_actual_samples / frame.sample_rate as f32 * 1000.0;
-
-    // When no events are processed, we cannot calculate the load
-    // (since the thread is not running).
-    // Assume that the events thread has the same maximum allowed time
-    // as the renderer thread.
-    let events_load_precent = if frame.events_tps_av == 0.0 {
-        0.0
-    } else {
-        frame.events_av / allowed_time * 100.0
-    };
-
-    info!(
-        "T: {:.0}. Render: {:.1}ms ({:.1}%). Ev {:.1}ms ({:.1}%) ({:.0})",
-        frame.render_tps_av,
-        frame.render_av,
-        frame.render_av / allowed_time * 100.0,
-        frame.events_av,
-        events_load_precent,
-        frame.events_tps_av,
-    );
-}
-
-fn profile_main_loop(profile_frame: &yage2_core::ecs::ProfileFrame) {
-    let allowed_time = 1000.0 / REFRESH_RATE;
-
-    info!(
-        "Main loop: {:.1}tps ({:.1}%)",
-        profile_frame.tick_tps_av,
-        profile_frame.tick_time_av / allowed_time * 1000.0
-    );
-}
 
 #[derive(Component)]
 struct GameController {
@@ -127,12 +89,7 @@ impl GameController {
 
         // Start Audio Player (output)
         let sink = InterleavedSink::new(bus, SAMPLE_RATE);
-        let config = PlayerConfig {
-            backend_config: PlayerBackendConfig {},
-            profiler: Some(profile_player),
-            sample_rate: SAMPLE_RATE,
-        };
-        let player = Player::new(config, sink).unwrap();
+        let player = Player::new(SAMPLE_RATE, PlayerBackendConfig {}, sink, true).unwrap();
 
         // Allow player to receive events from the ECS
         // (moved to the ECS storage)
@@ -175,7 +132,52 @@ fn timeout_handler(t: Receiver<Tick>, mut stopper: Sender<StopEventLoop>) {
     }
 }
 
-fn player_handler(_: Receiver<Tick>, mut gc: Single<&mut GameController>, mut sender: Sender<AudioEvent>) {
+fn main_loop_profile_handler(r: Receiver<MainLoopProfileFrame>) {
+    let allowed_time = 1000.0 / REFRESH_RATE;
+
+    info!(
+        "Main loop: {:.1}tps ({:.1}%)",
+        r.event.tick_tps_av,
+        r.event.tick_time_av / allowed_time * 1000.0
+    );
+}
+
+
+fn player_profile_handler(r: Receiver<PlayerProfileFrame>) {
+    let frame = r.event;
+    
+    // Number of samples that actually processed by one render call
+    // (assuming that no underruns happens).
+    let av_actual_samples = frame.sample_rate as f32 / frame.render_tps_av as f32;
+    // Calculate the allowed time for one render call
+    let allowed_time = av_actual_samples / frame.sample_rate as f32 * 1000.0;
+
+    // When no events are processed, we cannot calculate the load
+    // (since the thread is not running).
+    // Assume that the events thread has the same maximum allowed time
+    // as the renderer thread.
+    let events_load_precent = if frame.events_tps_av == 0.0 {
+        0.0
+    } else {
+        frame.events_av / allowed_time * 100.0
+    };
+
+    info!(
+        "T: {:.0}. Render: {:.1}ms ({:.1}%). Ev {:.1}ms ({:.1}%) ({:.0})",
+        frame.render_tps_av,
+        frame.render_av,
+        frame.render_av / allowed_time * 100.0,
+        frame.events_av,
+        events_load_precent,
+        frame.events_tps_av,
+    );
+}
+
+fn player_handler(
+    _: Receiver<Tick>,
+    mut gc: Single<&mut GameController>,
+    mut sender: Sender<AudioEvent>,
+) {
     if gc.counter == 0 {
         let clip = gc.resource_manager.get_resource("loop").unwrap();
         sender.send(gc.add_audio_actor(Vec3::ZERO, 0.7, clip).0);
@@ -193,6 +195,8 @@ fn main() {
 
     world.add_handler(timeout_handler);
     world.add_handler(player_handler);
+    world.add_handler(main_loop_profile_handler);
+    world.add_handler(player_profile_handler);
 
-    run_loop(&mut world, REFRESH_RATE, Some(profile_main_loop));
+    run_loop(&mut world, REFRESH_RATE, true);
 }
