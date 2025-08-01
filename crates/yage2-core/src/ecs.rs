@@ -44,15 +44,6 @@ pub struct Head {
     pub position: Vec3,
 }
 
-#[derive(Component, Debug)]
-struct PrivateData {
-    stopped: bool,
-}
-
-fn stop_event_loop_handler(_: Receiver<StopEventLoop>, mut d: Single<&mut PrivateData>) {
-    d.stopped = true;
-}
-
 trait MainLoopProfilerTrait {
     fn tick_start(&self);
     fn tick_end(&mut self);
@@ -135,11 +126,19 @@ fn run_loop_inner<P>(world: &mut World, tps: f32, mut profiler: P)
 where
     P: MainLoopProfilerTrait + 'static,
 {
-    world.add_handler(stop_event_loop_handler);
+    #[derive(Component, Debug)]
+    struct PrivateData {
+        stopped: bool,
+    }
+
+    fn stop_event_loop_handler(_: Receiver<StopEventLoop>, mut d: Single<&mut PrivateData>) {
+        d.stopped = true;
+    }
 
     // Insert a private data component to track the stopped state
     let entity = world.spawn();
     world.insert(entity, PrivateData { stopped: false });
+    world.add_handler(stop_event_loop_handler);
 
     let mut prev_tick = std::time::Instant::now();
     let loop_start = std::time::Instant::now();
