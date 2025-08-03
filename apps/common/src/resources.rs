@@ -33,7 +33,7 @@ impl ResourceManagerIO for YARCResourceManagerIO {
         info!("Loaded {} resources", self.containers.len());
         for (name, container) in &self.containers {
             info!(
-                "Resource: {} (type {:?}). Size: {} bytes)",
+                "Resource: {} (type {:?}). Size: {} bytes",
                 name,
                 container.metadata.header.resource_type,
                 container.binary.len()

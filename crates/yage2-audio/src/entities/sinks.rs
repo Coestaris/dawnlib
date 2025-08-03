@@ -21,6 +21,9 @@ unsafe impl<T: Source> Send for InterleavedSink<T> {}
 unsafe impl<T: Source> Sync for InterleavedSink<T> {}
 
 impl<T: Source> InterleavedSink<T> {
+    // This takes addresses of the master's components.
+    // If they are not statically allocated on the heap, UB may occur.
+    // Use with caution. 
     pub fn new(master: T, sample_rate: SampleRate) -> Self {
         let targets = master.get_targets();
         let mut event_router: [AudioEventTarget; ROUTER_CAPACITY] =
