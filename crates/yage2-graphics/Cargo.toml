@@ -10,13 +10,13 @@ windows = { version = "0.61.1", features = ["Win32_System_LibraryLoader", "Win32
 x11 = "2.21.0"
 
 [dependencies]
+yage2-core = { path = "../yage2-core" }
 ash = "0.38"
 log = "0.4.27"
-bitflags = "2.9.1"
-yage2-core = { path = "../yage2-core" }
-
-[build-dependencies]
-vergen = { version = "8.3.2", features = ["build", "cargo", "git", "gitcl", "rustc", "si"] }
+crossbeam-queue = "0.3.12"
+evenio = "0.6.0"
+glam = "0.30.5"
+triple_buffer = "8.1.1"
 
 [profile.release]
 lto = true

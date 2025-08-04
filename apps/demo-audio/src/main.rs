@@ -135,8 +135,8 @@ fn main_loop_profile_handler(r: Receiver<MainLoopProfileFrame>) {
 
     info!(
         "Main loop: {:.1}tps ({:.1}%)",
-        r.event.tick_tps_av,
-        r.event.tick_time_av / allowed_time * 1000.0
+        r.event.tick_tps.average(),
+        r.event.tick_time.average() / allowed_time * 1000.0
     );
 }
 
@@ -145,7 +145,7 @@ fn player_profile_handler(r: Receiver<PlayerProfileFrame>) {
 
     // Number of samples that actually processed by one render call
     // (assuming that no underruns happens).
-    let av_actual_samples = frame.sample_rate as f32 / frame.render_tps_av as f32;
+    let av_actual_samples = frame.sample_rate as f32 / frame.render_tps.average();
     // Calculate the allowed time for one render call
     let allowed_time = av_actual_samples / frame.sample_rate as f32 * 1000.0;
 
@@ -153,20 +153,20 @@ fn player_profile_handler(r: Receiver<PlayerProfileFrame>) {
     // (since the thread is not running).
     // Assume that the events thread has the same maximum allowed time
     // as the renderer thread.
-    let events_load_precent = if frame.events_tps_av == 0.0 {
+    let events_load_precent = if frame.events_tps.average() == 0.0 {
         0.0
     } else {
-        frame.events_av / allowed_time * 100.0
+        frame.events.average() / allowed_time * 100.0
     };
 
     info!(
         "T: {:.0}. Render: {:.1}ms ({:.1}%). Ev {:.1}ms ({:.1}%) ({:.0})",
-        frame.render_tps_av,
-        frame.render_av,
-        frame.render_av / allowed_time * 100.0,
-        frame.events_av,
+        frame.render_tps.average(),
+        frame.render.average(),
+        frame.render.average() / allowed_time * 100.0,
+        frame.events.average(),
         events_load_precent,
-        frame.events_tps_av,
+        frame.events_tps.average(),
     );
 }
 
@@ -188,7 +188,7 @@ fn main() {
     log::set_max_level(log::LevelFilter::Debug);
 
     let mut world = World::new();
-    let _ = GameController::setup(&mut world);
+    GameController::setup(&mut world);
 
     world.add_handler(timeout_handler);
     world.add_handler(player_handler);

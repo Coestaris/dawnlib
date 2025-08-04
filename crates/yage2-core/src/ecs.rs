@@ -1,4 +1,4 @@
-use crate::profile::{PeriodProfiler, TickProfiler};
+use crate::profile::{PeriodProfiler, ProfileFrame, TickProfiler};
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver};
 use evenio::fetch::Single;
@@ -23,17 +23,9 @@ pub struct StopEventLoop;
 /// Event sent every second with profiling data about the main loop.
 #[derive(GlobalEvent)]
 pub struct MainLoopProfileFrame {
-    pub tick_time_min: f32,
-    pub tick_time_max: f32,
-    pub tick_time_av: f32,
-    pub tick_tps_min: f32,
-    pub tick_tps_max: f32,
-    pub tick_tps_av: f32,
+    pub tick_time: ProfileFrame,
+    pub tick_tps: ProfileFrame,
 }
-
-/// Generic component for storing the position of an entity in 3D space.
-#[derive(Component, Debug)]
-pub struct Position(Vec3);
 
 /// Generic component for storing the 'main camera' of the game.
 /// Can be used to identify the listener position in the audio system,
@@ -45,9 +37,9 @@ pub struct Head {
 }
 
 trait MainLoopProfilerTrait {
-    fn tick_start(&self);
-    fn tick_end(&mut self);
-    fn profile(&mut self, world: &mut World);
+    fn tick_start(&self) {}
+    fn tick_end(&mut self) {}
+    fn profile(&mut self, world: &mut World) {}
 }
 
 struct MainLoopProfiler {
@@ -83,17 +75,10 @@ impl MainLoopProfilerTrait for MainLoopProfiler {
             self.last_profile_time = std::time::Instant::now();
             self.tick_profiler.update();
 
-            let (tick_time_min, tick_time_av, tick_time_max) = self.period_profiler.get_stat();
-            let (tick_tps_min, tick_tps_av, tick_tps_max) = self.tick_profiler.get_stat();
-
             // Call the handler with the profile frame
             world.send(MainLoopProfileFrame {
-                tick_time_min,
-                tick_time_max,
-                tick_time_av,
-                tick_tps_min,
-                tick_tps_max,
-                tick_tps_av,
+                tick_time: self.period_profiler.get_frame(),
+                tick_tps: self.tick_profiler.get_frame(),
             });
         }
     }
@@ -101,13 +86,7 @@ impl MainLoopProfilerTrait for MainLoopProfiler {
 
 struct DummyMainLoopProfiler;
 
-impl MainLoopProfilerTrait for DummyMainLoopProfiler {
-    fn tick_start(&self) {}
-
-    fn tick_end(&mut self) {}
-
-    fn profile(&mut self, _world: &mut World) {}
-}
+impl MainLoopProfilerTrait for DummyMainLoopProfiler {}
 
 /// Runs the main loop of the application.
 /// Every `tps` ticks per second, it sends a `Tick` event to the ECS.

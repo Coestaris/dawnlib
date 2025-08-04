@@ -19,7 +19,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::{atomic::AtomicBool, Arc};
 use std::thread::{Builder, JoinHandle};
 use yage2_core::ecs::Tick;
-use yage2_core::profile::{PeriodProfiler, TickProfiler};
+use yage2_core::profile::{PeriodProfiler, ProfileFrame, TickProfiler};
 
 const STATISTICS_THREAD_NAME: &str = "aud_stats";
 const EVENTS_QUEUE_CAPACITY: usize = 1024;
@@ -29,41 +29,31 @@ const PROFILE_QUEUE_CAPACITY: usize = 32;
 #[derive(GlobalEvent)]
 pub struct PlayerProfileFrame {
     // Time consumed by the renderer (in milliseconds)
-    pub render_min: f32,
-    pub render_av: f32,
-    pub render_max: f32,
-
+    pub render: ProfileFrame,
     // Number of ticks per second the renderer was called
-    pub render_tps_min: f32,
-    pub render_tps_av: f32,
-    pub render_tps_max: f32,
-
+    pub render_tps: ProfileFrame,
     // Time consumed by the event processing (in milliseconds)
-    pub events_min: f32,
-    pub events_av: f32,
-    pub events_max: f32,
-
+    pub events: ProfileFrame,
     // Number of events processed per second
-    pub events_tps_min: f32,
-    pub events_tps_av: f32,
-    pub events_tps_max: f32,
-
-    // Manager parameters
+    pub events_tps: ProfileFrame,
+    // Player parameters
     pub sample_rate: SampleRate,
     pub channels: ChannelsCount,
     pub block_size: SamplesCount,
 }
 
 trait PlayerProfilerTrait {
-    fn events_start(&self);
-    fn events_end(&self, processed: usize);
-    fn renderer_start(&self);
-    fn renderer_end(&self);
+    fn events_start(&self) {}
+    fn events_end(&self, _processed: usize) {}
+    fn renderer_start(&self) {}
+    fn renderer_end(&self) {}
     fn spawn_thread(
         self: Arc<Self>,
-        stop_signal: Arc<AtomicBool>,
-        sender: Arc<ArrayQueue<PlayerProfileFrame>>,
-    ) -> Result<(), PlayerError>;
+        _stop_signal: Arc<AtomicBool>,
+        _sender: Arc<ArrayQueue<PlayerProfileFrame>>,
+    ) -> Result<(), PlayerError> {
+        Ok(())
+    }
 }
 
 struct PlayerProfiler {
@@ -124,62 +114,34 @@ impl PlayerProfilerTrait for PlayerProfiler {
                     self.renderer_tps.update();
                     self.events_tps.update();
 
-                    let (render_min, render_av, render_max) = self.renderer_time.get_stat();
-                    let (render_tps_min, render_tps_av, render_tps_max) =
-                        self.renderer_tps.get_stat();
-                    let (events_min, events_av, events_max) = self.events.get_stat();
-                    let (events_tps_min, events_tps_av, events_tps_max) =
-                        self.events_tps.get_stat();
-
                     let frame = PlayerProfileFrame {
-                        render_min,
-                        render_av,
-                        render_max,
-                        render_tps_min,
-                        render_tps_av,
-                        render_tps_max,
-                        events_min,
-                        events_av,
-                        events_max,
-                        events_tps_min,
-                        events_tps_av,
-                        events_tps_max,
+                        render: self.renderer_time.get_frame(),
+                        render_tps: self.renderer_tps.get_frame(),
+                        events: self.events.get_frame(),
+                        events_tps: self.events_tps.get_frame(),
                         sample_rate: self.sample_rate,
                         channels: CHANNELS_COUNT,
                         block_size: BLOCK_SIZE,
                     };
 
                     // Send the profile frame to the queue
-                    sender.push(frame);
+                    let _ = sender.push(frame);
 
                     // Sleep for a short duration to avoid busy-waiting
                     std::thread::sleep(std::time::Duration::from_millis(1000));
                 }
             })
-            .map_err(|_| PlayerError::FailedToSpawnStatisticsThread)?;
+            .map_err(|_| PlayerError::ProfilerSetupFailed)?;
         Ok(())
     }
 }
 
 struct DummyPlayerProfiler;
 
-impl PlayerProfilerTrait for DummyPlayerProfiler {
-    fn events_start(&self) {}
-    fn events_end(&self, _: usize) {}
-    fn renderer_start(&self) {}
-    fn renderer_end(&self) {}
-
-    fn spawn_thread(
-        self: Arc<Self>,
-        _: Arc<AtomicBool>,
-        _: Arc<ArrayQueue<PlayerProfileFrame>>,
-    ) -> Result<(), PlayerError> {
-        Ok(())
-    }
-}
+impl PlayerProfilerTrait for DummyPlayerProfiler {}
 
 /// The audio player is a component that handles audio output and processing.
-/// It is responsible for rendering audio from a source (like a music 
+/// It is responsible for rendering audio from a source (like a music
 /// track or sound effect) and sending it to the audio backend for playback.
 #[derive(Component)]
 pub struct Player {
@@ -209,7 +171,7 @@ pub enum PlayerError {
     InvalidSampleRate(SampleRate),
     InvalidChannels(ChannelsCount),
     InvalidBufferSize(SamplesCount),
-    FailedToSpawnStatisticsThread,
+    ProfilerSetupFailed,
     FailedToStartBackend(PlayerBackendError),
     FailedToCreateBackend(PlayerBackendError),
 }
@@ -226,7 +188,7 @@ impl Display for PlayerError {
             PlayerError::InvalidBufferSize(size) => {
                 write!(f, "Invalid buffer size: {}", size)
             }
-            PlayerError::FailedToSpawnStatisticsThread => {
+            PlayerError::ProfilerSetupFailed => {
                 write!(f, "Failed to spawn statistics thread")
             }
             PlayerError::FailedToStartBackend(err) => {
@@ -282,14 +244,14 @@ impl Player {
 
         // Setup profiler
         let stop_signal = Arc::new(AtomicBool::new(false));
-        let profiler_arc = Arc::new(profiler);
+        let profiler = Arc::new(profiler);
         let profiler_queue = Arc::new(ArrayQueue::<PlayerProfileFrame>::new(
             PROFILE_QUEUE_CAPACITY,
         ));
-        profiler_arc
+        profiler
             .clone()
             .spawn_thread(Arc::clone(&stop_signal), Arc::clone(&profiler_queue))
-            .map_err(|_| PlayerError::FailedToSpawnStatisticsThread)?;
+            .map_err(|_| PlayerError::ProfilerSetupFailed)?;
 
         // Should not be here, since DSP processing is not required
         // for the player, but for convincing we will call it here.
@@ -309,19 +271,19 @@ impl Player {
         backend
             .open(move |output: &mut MappedInterleavedBuffer<f32>| {
                 // Process events from the queue
-                profiler_arc.events_start();
+                profiler.events_start();
                 let mut processed_events = 0;
                 while let Some(event) = events_queue_clone.pop() {
                     // Process the event
                     sink.dispatch(&event);
                     processed_events += 1;
                 }
-                profiler_arc.events_end(processed_events);
+                profiler.events_end(processed_events);
 
                 // Render the audio output
-                profiler_arc.renderer_start();
+                profiler.renderer_start();
                 sink.render(output);
-                profiler_arc.renderer_end();
+                profiler.renderer_end();
             })
             .map_err(PlayerError::FailedToStartBackend)?;
 

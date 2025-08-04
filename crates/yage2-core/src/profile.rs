@@ -3,6 +3,30 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
 
+pub struct ProfileFrame {
+    min: f32,
+    average: f32,
+    max: f32,
+}
+
+impl ProfileFrame {
+    pub fn new(min: f32, average: f32, max: f32) -> Self {
+        Self { min, average, max }
+    }
+
+    pub fn min(&self) -> f32 {
+        self.min
+    }
+
+    pub fn average(&self) -> f32 {
+        self.average
+    }
+
+    pub fn max(&self) -> f32 {
+        self.max
+    }
+}
+
 pub struct TickProfiler {
     start: Arc<AtomicU64>,
     ticks: Arc<AtomicU32>,
@@ -79,14 +103,14 @@ impl TickProfiler {
     }
 
     /* In milliseconds */
-    pub fn get_stat(&self) -> (f32, f32, f32) {
+    pub fn get_frame(&self) -> ProfileFrame {
         let (min_average, average, max_average) = (
             self.min_average_us.load(Relaxed),
             self.average_us.load(Relaxed),
             self.max_average_us.load(Relaxed),
         );
 
-        (
+        ProfileFrame::new(
             min_average as f32 / 1000.0,
             average as f32 / 1000.0,
             max_average as f32 / 1000.0,
@@ -151,13 +175,13 @@ impl PeriodProfiler {
     }
 
     /* In milliseconds */
-    pub fn get_stat(&self) -> (f32, f32, f32) {
+    pub fn get_frame(&self) -> ProfileFrame {
         // Return the statistics for the period counter
         let min = self.min_us.load(Relaxed);
         let current = self.current_us.load(Relaxed);
         let max = self.max_us.load(Relaxed);
 
-        (
+        ProfileFrame::new(
             min as f32 / 1000.0,
             current as f32 / 1000.0,
             max as f32 / 1000.0,
@@ -212,8 +236,8 @@ impl MinMaxProfiler {
     }
 
     /* In milliseconds */
-    pub fn get_stat(&self) -> (f32, f32, f32) {
-        (
+    pub fn get_stat(&self) -> ProfileFrame {
+        ProfileFrame::new(
             self.min.load(Relaxed) as f32,
             self.average.load(Relaxed) as f32,
             self.max.load(Relaxed) as f32,
