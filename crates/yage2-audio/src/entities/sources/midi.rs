@@ -110,10 +110,6 @@ pub struct MidiPlayer<const VOICES_COUNT: usize> {
     midi: Resource,
 }
 
-fn leak<T>(value: T) -> &'static T {
-    Box::leak(Box::new(value))
-}
-
 impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
     pub fn new<'a>(
         midi: Resource,
@@ -121,35 +117,34 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
     ) -> (
         MidiPlayer<VOICES_COUNT>,
         Bus<
-            'a,
-            Multiplexer2Effect<'a, FirFilterEffect<32>, SoftClipEffect>,
-            MultiplexerSource<'a, Bus<'a, BypassEffect, WaveformSource>, VOICES_COUNT>,
+            Multiplexer2Effect<FirFilterEffect<32>, SoftClipEffect>,
+            MultiplexerSource<Bus<BypassEffect, WaveformSource>, VOICES_COUNT>,
         >,
     ) {
         let mut voices: [Voice; VOICES_COUNT] = unsafe { std::mem::zeroed() };
         let mut busses: [_; VOICES_COUNT] = unsafe { std::mem::zeroed() };
         let mut rng = tinyrand::Wyrand::default();
         for i in 0..VOICES_COUNT {
-            let source = leak(WaveformSource::new(None));
-            let bus_effect = leak(BypassEffect::new());
+            let source = WaveformSource::new(None);
+            let bus_effect = BypassEffect::new();
 
-            busses[i] = leak(Bus::new(
-                bus_effect,
-                source,
-                Some(1.0 / VOICES_COUNT as f32),
-                Some(rng.next_u32() as f32 / u32::MAX as f32 * 0.8 - 0.4),
-            ));
             voices[i] = Voice {
                 target: source.get_id(),
                 note: Note::default(),
                 playing: false,
             };
+            busses[i] = Bus::new(
+                bus_effect,
+                source,
+                Some(1.0 / VOICES_COUNT as f32),
+                Some(rng.next_u32() as f32 / u32::MAX as f32 * 0.8 - 0.4),
+            );
         }
-        let source = leak(MultiplexerSource::new(busses));
+        let source = MultiplexerSource::new(busses);
 
-        let filter = leak(FirFilterEffect::new_from_design(5000.0, sample_rate as f32));
-        let clipper = leak(SoftClipEffect::new(0.5, 2.0));
-        let master_effect = leak(Multiplexer2Effect::new(filter, clipper));
+        let filter = FirFilterEffect::new_from_design(5000.0, sample_rate as f32);
+        let clipper = SoftClipEffect::new(0.5, 2.0);
+        let master_effect = Multiplexer2Effect::new(filter, clipper);
 
         (
             MidiPlayer {

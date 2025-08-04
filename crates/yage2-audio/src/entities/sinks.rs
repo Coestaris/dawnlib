@@ -103,7 +103,7 @@ mod tests {
 
         let source = TestSource::new();
         let effect = BypassEffect::new();
-        let bus = Bus::new(&effect, &source, None, None);
+        let bus = Bus::new(effect, source, None, None);
         let mut sink = InterleavedSink::new(bus, 44100);
 
         let mut output: [f32; 33 * 2] = [0.0; 33 * 2];
@@ -135,7 +135,7 @@ mod tests {
 
         let source = TestSource::new();
         let effect = BypassEffect::new();
-        let bus = Bus::new(&effect, &source, None, None);
+        let bus = Bus::new(effect, source, None, None);
         let mut sink = InterleavedSink::new(bus, 44100);
 
         let mut output: [f32; 33 * 2] = [0.0; 33 * 2];

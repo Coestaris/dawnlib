@@ -1,3 +1,4 @@
+use std::cell::UnsafeCell;
 use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
 use crate::sample::PlanarBlock;
 use crate::{SampleRate, SamplesCount};
@@ -7,38 +8,29 @@ pub mod effects;
 pub mod events;
 pub mod sinks;
 pub mod sources;
+
 #[repr(C)]
 #[derive(Debug)]
-pub struct NodeRef<'a, T> {
-    ptr: *const T,
-    _marker: std::marker::PhantomData<&'a T>,
+pub struct NodeCell<T> {
+    // Using UnsafeCell to allow interior mutability
+    node: UnsafeCell<Box<T>>,
 }
+unsafe impl<T> Send for NodeCell<T> where T: Send {}
+unsafe impl<T> Sync for NodeCell<T> where T: Sync {}
 
-impl<'a, T> NodeRef<'a, T> {
-    pub fn to_static(&self) -> NodeRef<'static, T> {
-        NodeRef {
-            ptr: self.ptr as *const T,
-            _marker: std::marker::PhantomData,
-        }
-    }
-}
-unsafe impl<'a, T> Send for NodeRef<'a, T> where T: Send {}
-unsafe impl<'a, T> Sync for NodeRef<'a, T> where T: Sync {}
-
-impl<'a, T> NodeRef<'a, T> {
-    pub fn new(reference: &'a T) -> Self {
-        NodeRef {
-            ptr: reference as *const T,
-            _marker: std::marker::PhantomData,
+impl<T> NodeCell<T> {
+    pub fn new(node: T) -> Self {
+        NodeCell {
+            node: UnsafeCell::new(Box::new(node)),
         }
     }
 
-    pub(crate) fn as_ref(&self) -> &'a T {
-        unsafe { &*self.ptr }
+    pub(crate) fn as_ref(&self) -> &T {
+        unsafe { &*self.node.get() }
     }
 
-    pub(crate) fn as_mut(&self) -> &'a mut T {
-        unsafe { &mut *(self.ptr as *mut T) }
+    pub(crate) fn as_mut(&self) -> &mut T {
+        unsafe { &mut *self.node.get() }
     }
 }
 

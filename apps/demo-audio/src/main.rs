@@ -77,14 +77,12 @@ impl GameController {
 
     fn setup_audio_pipeline(world: &mut World) -> AudioEventTargetId {
         // Setup Audio Pipeline
-        fn leak<T>(value: T) -> &'static T {
-            Box::leak(Box::new(value))
-        }
-        let actors_source = leak(ActorsSource::new(
+        let actors_source = ActorsSource::new(
             DistanceGainFunction::Constant(1.0),
             DistanceLPFFunction::Constant(0.0),
-        ));
-        let clipper = leak(SoftClipEffect::new(0.5, 0.1));
+        );
+        let actors_source_target = actors_source.get_id();
+        let clipper = SoftClipEffect::new(0.5, 0.1);
         let bus = Bus::new(clipper, actors_source, None, None);
 
         // Start Audio Player (output)
@@ -95,7 +93,7 @@ impl GameController {
         // (moved to the ECS storage)
         player.attach_to_ecs(world);
 
-        actors_source.get_id()
+        actors_source_target
     }
 
     pub fn setup(world: &mut World) {
@@ -142,10 +140,9 @@ fn main_loop_profile_handler(r: Receiver<MainLoopProfileFrame>) {
     );
 }
 
-
 fn player_profile_handler(r: Receiver<PlayerProfileFrame>) {
     let frame = r.event;
-    
+
     // Number of samples that actually processed by one render call
     // (assuming that no underruns happens).
     let av_actual_samples = frame.sample_rate as f32 / frame.render_tps_av as f32;
