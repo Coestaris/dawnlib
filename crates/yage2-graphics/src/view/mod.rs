@@ -4,9 +4,10 @@ mod darwin;
 // TODO: Support for Wayland
 mod x11;
 
-use crate::event::Event;
-use std::sync::mpsc::Sender;
+use crate::input::InputEvent;
 use ash::vk;
+use crossbeam_queue::ArrayQueue;
+use std::sync::Arc;
 
 #[cfg(target_os = "macos")]
 pub mod view_impl {
@@ -56,7 +57,7 @@ pub(crate) enum TickResult {
 }
 
 pub(crate) trait ViewTrait {
-    fn open(cfg: ViewConfig, events_sender: Sender<Event>) -> Result<Self, ViewError>
+    fn open(cfg: ViewConfig, events_sender: Arc<ArrayQueue<InputEvent>>) -> Result<Self, ViewError>
     where
         Self: Sized;
 

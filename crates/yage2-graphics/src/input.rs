@@ -1,83 +1,143 @@
-use std::collections::HashMap;
-use std::sync::mpsc::Receiver;
-use std::sync::Arc;
-use yage2_core::profile::TickProfiler;
-use crate::event::{Event, KeyCode, MouseButton};
+use evenio::event::GlobalEvent;
 
-pub struct InputManager {
-    receiver: Receiver<Event>,
-    eps: Arc<TickProfiler>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MouseButton {
+    Unknown(u32),
 
-    // Maps mouse buttons to their pressed state
-    buttons_state: HashMap<MouseButton, bool>,
-    // Maps keys to their pressed state
-    keys_state: HashMap<KeyCode, bool>,
-    // Current mouse position
-    mouse_position: (f32, f32),
+    Left,
+    Right,
+    Middle,
+    Special(u8),
 }
 
-impl InputManager {
-    pub(crate) fn new(receiver: Receiver<Event>, eps: Arc<TickProfiler>) -> Self {
-        InputManager {
-            receiver,
-            eps,
-            buttons_state: HashMap::new(),
-            keys_state: HashMap::new(),
-            mouse_position: (0.0, 0.0), // Initialize mouse position to (0, 0)
-        }
-    }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum KeyCode {
+    Unknown(u32, u32),
 
-    pub(crate) fn poll_events(&mut self) -> Vec<Event> {
-        let mut events: Vec<Event> = Vec::new();
+    // A-Z keys. Always uppercase.
+    Latin(char),
+    Cyrillic(char),
+    Digit(u8),
 
-        /* Poll the receiver for new events and return them.
-         * This method can be called to retrieve events without blocking. */
-        while let Ok(event) = self.receiver.try_recv() {
-            events.push(event);
-        }
+    // Function keys
+    BackSpace,
+    Tab,
+    Linefeed,
+    Clear,
+    Return,
+    Pause,
+    ScrollLock,
+    SysReq,
+    Escape,
+    Delete,
+    Home,
+    Left,
+    Up,
+    Right,
+    Down,
+    PageUp,
+    PageDown,
+    End,
+    Begin,
+    WinL,
+    WinR,
+    App,
+    Select,
+    Print,
+    Execute,
+    Insert,
+    Undo,
+    Redo,
+    Menu,
+    Find,
+    Cancel,
+    Help,
+    Break,
+    ModeSwitch,
+    NumLock,
+    Function(u8),
+    ShiftL,
+    ShiftR,
+    ControlL,
+    ControlR,
+    CapsLock,
+    ShiftLock,
+    MetaL,
+    MetaR,
+    AltL,
+    AltR,
+    SuperL,
+    SuperR,
+    HyperL,
+    HyperR,
+    Space,
 
-        #[cfg(debug_assertions)]
-        self.eps.tick(events.len() as u32);
-        events
-    }
+    /* Printable keys */
+    Exclam,
+    Quotedbl,
+    NumberSign,
+    Dollar,
+    Percent,
+    Ampersand,
+    Apostrophe,
+    ParenLeft,
+    ParenRight,
+    Asterisk,
+    Plus,
+    Comma,
+    Minus,
+    Period,
+    Slash,
+    Colon,
+    Semicolon,
+    Less,
+    Equal,
+    Greater,
+    Question,
+    At,
+    BracketLeft,
+    BracketRight,
+    Backslash,
+    AsciiCircum,
+    Underscore,
+    Grave,
+    BraceLeft,
+    BraceRight,
+    Bar,
+    Tilde,
 
-    pub(crate) fn on_event(&mut self, event: &Event) {
-        match event {
-            Event::KeyPress(key) => {
-                self.keys_state.insert(*key, true);
-            }
-            Event::KeyRelease(key) => {
-                self.keys_state.insert(*key, false);
-            }
-            Event::MouseMove { x, y } => {
-                self.mouse_position = (*x, *y);
-            }
-            Event::MouseButtonPress(button) => {
-                self.buttons_state.insert(*button, true);
-            }
-            Event::MouseButtonRelease(button) => {
-                self.buttons_state.insert(*button, false);
-            }
-            _ => {}
-        }
-    }
+    /* Keypad keys */
+    KPSpace,
+    KPTab,
+    KPEnter,
+    KPHome,
+    KPLeft,
+    KPUp,
+    KPRight,
+    KPDown,
+    KPPageUp,
+    KPPageDown,
+    KPEnd,
+    KPBegin,
+    KPInsert,
+    KPDelete,
+    KPEqual,
+    KPMultiply,
+    KPAdd,
+    KPSeparator,
+    KPSubtract,
+    KPDecimal,
+    KPDivide,
+    KPDigit(u8),
+}
 
-    /* Handy methods to retrieve input state */
-    pub fn mouse_position(&self) -> (f32, f32) {
-        self.mouse_position
-    }
-
-    pub fn key_pressed(&self, key: KeyCode) -> bool {
-        match self.keys_state.get(&key) {
-            Some(&pressed) => pressed,
-            None => false,
-        }
-    }
-
-    pub fn mouse_button_pressed(&self, button: MouseButton) -> bool {
-        match self.buttons_state.get(&button) {
-            Some(&pressed) => pressed,
-            None => false,
-        }
-    }
+#[derive(GlobalEvent, Debug, Clone)]
+pub enum InputEvent {
+    KeyPress(KeyCode),
+    KeyRelease(KeyCode),
+    CharInput(char),
+    MouseMove { x: f32, y: f32 },
+    MouseScroll { delta_x: f32, delta_y: f32 },
+    MouseButtonPress(MouseButton),
+    MouseButtonRelease(MouseButton),
 }

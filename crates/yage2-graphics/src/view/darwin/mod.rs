@@ -1,4 +1,4 @@
-use crate::event::Event;
+use crate::input::Event;
 use crate::view::{TickResult, ViewHandle, ViewTrait};
 use std::sync::mpsc::Sender;
 

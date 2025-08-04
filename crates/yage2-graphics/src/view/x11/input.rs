@@ -1,4 +1,4 @@
-use crate::event::{KeyCode, MouseButton};
+use crate::input::{KeyCode, MouseButton};
 use std::os::raw::{c_uchar, c_uint};
 use x11::xlib::{Display, ShiftMask};
 

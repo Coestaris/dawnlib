@@ -1,15 +1,13 @@
-use crate::event::Event;
-use crate::view::{TickResult, ViewConfig, ViewTrait};
-use crate::vulkan::objects::surface::{Surface, ViewHandle};
-use crate::vulkan::GraphicsError;
+use crate::input::InputEvent;
+use crate::view::{TickResult, ViewConfig, ViewHandle, ViewTrait};
 use ash::{vk, Entry, Instance};
-use log::{debug, info};
+use log::{debug, info, warn};
 use std::ffi::{c_char, c_uint};
 use std::ptr::addr_of_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread;
+use crossbeam_queue::ArrayQueue;
 use x11::xlib;
 use x11::xlib::{
     Atom, ButtonPressMask, ButtonReleaseMask, CWEventMask, ClientMessage, CopyFromParent,
@@ -60,7 +58,7 @@ pub(crate) struct View {
 fn process_events_sync(
     display: *mut Display,
     close_atom: Atom,
-    events_sender: &Sender<Event>,
+    events_sender: &ArrayQueue<InputEvent>,
 ) -> Result<bool, ViewError> {
     let event = unsafe {
         let mut event: XEvent = std::mem::zeroed();
@@ -88,45 +86,35 @@ fn process_events_sync(
             let keycode = unsafe { event.key.keycode };
             let keystate = unsafe { event.key.state };
             let key = input::convert_key(display, keycode, keystate);
-            if let Err(e) = events_sender.send(Event::KeyPress(key)) {
-                debug!("Failed to send KeyPress event: {:?}", e);
-            }
+            events_sender.push(InputEvent::KeyPress(key)).unwrap();
         }
 
         xlib::KeyRelease => {
             let keycode = unsafe { event.key.keycode };
             let keystate = unsafe { event.key.state };
             let key = input::convert_key(display, keycode, keystate);
-            if let Err(e) = events_sender.send(Event::KeyRelease(key)) {
-                debug!("Failed to send KeyRelease event: {:?}", e);
-            }
+            events_sender.push(InputEvent::KeyRelease(key)).unwrap();
         }
 
         xlib::ButtonPress => {
             let button = unsafe { event.button.button };
             let mouse_button = input::convert_mouse(button);
-            if let Err(e) = events_sender.send(Event::MouseButtonPress(mouse_button)) {
-                debug!("Failed to send MouseButtonPress event: {:?}", e);
-            }
+            events_sender.push(InputEvent::MouseButtonPress(mouse_button)).unwrap();
         }
 
         xlib::ButtonRelease => {
             let button = unsafe { event.button.button };
             let mouse_button = input::convert_mouse(button);
-            if let Err(e) = events_sender.send(Event::MouseButtonRelease(mouse_button)) {
-                debug!("Failed to send MouseButtonRelease event: {:?}", e);
-            }
+            events_sender.push(InputEvent::MouseButtonRelease(mouse_button)).unwrap();
         }
 
         xlib::MotionNotify => {
             let x = unsafe { event.motion.x };
             let y = unsafe { event.motion.y };
-            if let Err(e) = events_sender.send(Event::MouseMove {
+            events_sender.push(InputEvent::MouseMove {
                 x: x as f32,
                 y: y as f32,
-            }) {
-                debug!("Failed to send MouseMove event: {:?}", e);
-            }
+            }).unwrap();
         }
 
         _ => {
@@ -138,7 +126,7 @@ fn process_events_sync(
 }
 
 impl ViewTrait for View {
-    fn open(cfg: ViewConfig, events_sender: Sender<Event>) -> Result<Self, ViewError> {
+    fn open(cfg: ViewConfig, events_sender: Arc<ArrayQueue<InputEvent>>) -> Result<Self, ViewError> {
         unsafe {
             debug!("Opening X11 display");
             let display = XOpenDisplay(std::ptr::null());
