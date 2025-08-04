@@ -1,4 +1,4 @@
-use crate::entities::{BlockInfo, AudioEventType, AudioEventTarget, AudioEventTargetId, NodeRef, Source};
+use crate::entities::{BlockInfo, AudioEventType, AudioEventTarget, AudioEventTargetId, NodeCell, Source};
 use crate::sample::PlanarBlock;
 use log::debug;
 
@@ -8,49 +8,49 @@ pub enum MultiplexerSourceEvent {
 }
 
 /// Multiplexer for 1 source (with the same type)
-pub struct Multiplexer1Source<'a, T1: Source> {
+pub struct Multiplexer1Source<T1: Source> {
     id: AudioEventTargetId,
     cached: bool,
-    source1: NodeRef<'a, T1>,
+    source1: NodeCell<T1>,
     output: PlanarBlock<f32>,
 }
 
 /// Multiplexer for 2 sources (with different types)
-pub struct Multiplexer2Source<'a, T1: Source, T2: Source> {
+pub struct Multiplexer2Source<T1: Source, T2: Source> {
     id: AudioEventTargetId,
     cached: bool,
-    source1: NodeRef<'a, T1>,
-    source2: NodeRef<'a, T2>,
+    source1: NodeCell<T1>,
+    source2: NodeCell<T2>,
     output: PlanarBlock<f32>,
 }
 
 /// Multiplexer for 3 sources (with different types)
-pub struct Multiplexer3Source<'a, T1: Source, T2: Source, T3: Source> {
+pub struct Multiplexer3Source<T1: Source, T2: Source, T3: Source> {
     id: AudioEventTargetId,
     cached: bool,
-    source1: NodeRef<'a, T1>,
-    source2: NodeRef<'a, T2>,
-    source3: NodeRef<'a, T3>,
+    source1: NodeCell<T1>,
+    source2: NodeCell<T2>,
+    source3: NodeCell<T3>,
     output: PlanarBlock<f32>,
 }
 
 /// Multiplexer for 4 sources (with different types)
-pub struct Multiplexer4Source<'a, T1: Source, T2: Source, T3: Source, T4: Source> {
+pub struct Multiplexer4Source<T1: Source, T2: Source, T3: Source, T4: Source> {
     id: AudioEventTargetId,
     cached: bool,
-    source1: NodeRef<'a, T1>,
-    source2: NodeRef<'a, T2>,
-    source3: NodeRef<'a, T3>,
-    source4: NodeRef<'a, T4>,
+    source1: NodeCell<T1>,
+    source2: NodeCell<T2>,
+    source3: NodeCell<T3>,
+    source4: NodeCell<T4>,
     output: PlanarBlock<f32>,
 }
 
 /// Multiplexer for N sources, where N is a compile-time constant
 /// Note that all sources must have the same type `T`
-pub struct MultiplexerSource<'a, T: Source, const N: usize> {
+pub struct MultiplexerSource<T: Source, const N: usize> {
     id: AudioEventTargetId,
     cached: bool,
-    sources: [NodeRef<'a, T>; N],
+    sources: [NodeCell<T>; N],
     output: PlanarBlock<f32>,
 }
 
@@ -60,9 +60,9 @@ fn dispatch_multiplexer<T: Source, const N: usize>(ptr: *mut u8, event: &AudioEv
     multiplexer.dispatch(event);
 }
 
-impl<'a, T: Source, const N: usize> MultiplexerSource<'a, T, N> {
-    pub fn new(sources: [&'a T; N]) -> Self {
-        let sources_refs: [NodeRef<'a, T>; N] = sources.map(|s| NodeRef::new(s));
+impl<T: Source, const N: usize> MultiplexerSource<T, N> {
+    pub fn new(sources: [T; N]) -> Self {
+        let sources_refs: [NodeCell<T>; N] = sources.map(|s| NodeCell::new(s));
         MultiplexerSource {
             id: AudioEventTargetId::new(),
             cached: false,
@@ -80,7 +80,7 @@ impl<'a, T: Source, const N: usize> MultiplexerSource<'a, T, N> {
     }
 }
 
-impl<'a, T: Source, const N: usize> Source for MultiplexerSource<'a, T, N> {
+impl<T: Source, const N: usize> Source for MultiplexerSource<T, N> {
     fn get_targets(&self) -> Vec<AudioEventTarget> {
         self.sources
             .iter()
@@ -128,12 +128,12 @@ fn dispatch_multiplexer1<T1: Source>(ptr: *mut u8, event: &AudioEventType) {
     multiplexer.dispatch(event);
 }
 
-impl<'a, T1: Source> Multiplexer1Source<'a, T1> {
-    pub fn new(source1: &'a T1) -> Self {
+impl<T1: Source> Multiplexer1Source<T1> {
+    pub fn new(source1: T1) -> Self {
         Multiplexer1Source {
             id: AudioEventTargetId::new(),
             cached: false,
-            source1: NodeRef::new(source1),
+            source1: NodeCell::new(source1),
             output: PlanarBlock::default(),
         }
     }
@@ -147,7 +147,7 @@ impl<'a, T1: Source> Multiplexer1Source<'a, T1> {
     }
 }
 
-impl<'a, T1: Source> Source for Multiplexer1Source<'a, T1> {
+impl<T1: Source> Source for Multiplexer1Source<T1> {
     fn get_targets(&self) -> Vec<AudioEventTarget> {
         let mut targets = self.source1.as_ref().get_targets();
         targets.push(self.create_event_target());
@@ -186,13 +186,13 @@ fn dispatch_multiplexer2<T1: Source, T2: Source>(ptr: *mut u8, event: &AudioEven
     multiplexer.dispatch(event);
 }
 
-impl<'a, T1: Source, T2: Source> Multiplexer2Source<'a, T1, T2> {
-    pub fn new(source1: &'a T1, source2: &'a T2) -> Self {
+impl<T1: Source, T2: Source> Multiplexer2Source<T1, T2> {
+    pub fn new(source1: T1, source2: T2) -> Self {
         Multiplexer2Source {
             id: AudioEventTargetId::new(),
             cached: false,
-            source1: NodeRef::new(source1),
-            source2: NodeRef::new(source2),
+            source1: NodeCell::new(source1),
+            source2: NodeCell::new(source2),
             output: PlanarBlock::default(),
         }
     }
@@ -206,7 +206,7 @@ impl<'a, T1: Source, T2: Source> Multiplexer2Source<'a, T1, T2> {
     }
 }
 
-impl<'a, T1: Source, T2: Source> Source for Multiplexer2Source<'a, T1, T2> {
+impl<T1: Source, T2: Source> Source for Multiplexer2Source<T1, T2> {
     fn get_targets(&self) -> Vec<AudioEventTarget> {
         let mut targets = self.source1.as_ref().get_targets();
         targets.extend(self.source2.as_ref().get_targets());
@@ -249,14 +249,14 @@ fn dispatch_multiplexer3<T1: Source, T2: Source, T3: Source>(ptr: *mut u8, event
     multiplexer.dispatch(event);
 }
 
-impl<'a, T1: Source, T2: Source, T3: Source> Multiplexer3Source<'a, T1, T2, T3> {
-    pub fn new(source1: &'a T1, source2: &'a T2, source3: &'a T3) -> Self {
+impl<T1: Source, T2: Source, T3: Source> Multiplexer3Source<T1, T2, T3> {
+    pub fn new(source1: T1, source2: T2, source3: T3) -> Self {
         Multiplexer3Source {
             id: AudioEventTargetId::new(),
             cached: false,
-            source1: NodeRef::new(source1),
-            source2: NodeRef::new(source2),
-            source3: NodeRef::new(source3),
+            source1: NodeCell::new(source1),
+            source2: NodeCell::new(source2),
+            source3: NodeCell::new(source3),
             output: PlanarBlock::default(),
         }
     }
@@ -270,7 +270,7 @@ impl<'a, T1: Source, T2: Source, T3: Source> Multiplexer3Source<'a, T1, T2, T3> 
     }
 }
 
-impl<'a, T1: Source, T2: Source, T3: Source> Source for Multiplexer3Source<'a, T1, T2, T3> {
+impl<T1: Source, T2: Source, T3: Source> Source for Multiplexer3Source<T1, T2, T3> {
     fn get_targets(&self) -> Vec<AudioEventTarget> {
         let mut targets = self.source1.as_ref().get_targets();
         targets.extend(self.source2.as_ref().get_targets());
@@ -320,15 +320,15 @@ fn dispatch_multiplexer4<T1: Source, T2: Source, T3: Source, T4: Source>(
     multiplexer.dispatch(event);
 }
 
-impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Multiplexer4Source<'a, T1, T2, T3, T4> {
-    pub fn new(source1: &'a T1, source2: &'a T2, source3: &'a T3, source4: &'a T4) -> Self {
+impl<T1: Source, T2: Source, T3: Source, T4: Source> Multiplexer4Source<T1, T2, T3, T4> {
+    pub fn new(source1: T1, source2: T2, source3: T3, source4: T4) -> Self {
         Multiplexer4Source {
             id: AudioEventTargetId::new(),
             cached: false,
-            source1: NodeRef::new(source1),
-            source2: NodeRef::new(source2),
-            source3: NodeRef::new(source3),
-            source4: NodeRef::new(source4),
+            source1: NodeCell::new(source1),
+            source2: NodeCell::new(source2),
+            source3: NodeCell::new(source3),
+            source4: NodeCell::new(source4),
             output: PlanarBlock::default(),
         }
     }
@@ -342,8 +342,8 @@ impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Multiplexer4Source<'a, 
     }
 }
 
-impl<'a, T1: Source, T2: Source, T3: Source, T4: Source> Source
-    for Multiplexer4Source<'a, T1, T2, T3, T4>
+impl<T1: Source, T2: Source, T3: Source, T4: Source> Source
+    for Multiplexer4Source<T1, T2, T3, T4>
 {
     fn get_targets(&self) -> Vec<AudioEventTarget> {
         let mut targets = self.source1.as_ref().get_targets();
@@ -400,7 +400,7 @@ mod tests {
         detect_features();
 
         let source = TestSource::new();
-        let mut mux = Multiplexer1Source::new(&source);
+        let mut mux = Multiplexer1Source::new(source);
 
         mux.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -420,7 +420,7 @@ mod tests {
 
         let source1 = TestSource::new();
         let source2 = TestSource::new();
-        let mut mux = Multiplexer2Source::new(&source1, &source2);
+        let mut mux = Multiplexer2Source::new(source1, source2);
 
         mux.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -441,7 +441,7 @@ mod tests {
         let source1 = TestSource::new();
         let source2 = TestSource::new();
         let source3 = TestSource::new();
-        let mut mux = Multiplexer3Source::new(&source1, &source2, &source3);
+        let mut mux = Multiplexer3Source::new(source1, source2, source3);
 
         mux.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -463,7 +463,7 @@ mod tests {
         let source2 = TestSource::new();
         let source3 = TestSource::new();
         let source4 = TestSource::new();
-        let mut mux = Multiplexer4Source::new(&source1, &source2, &source3, &source4);
+        let mut mux = Multiplexer4Source::new(source1, source2, source3, source4);
 
         mux.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -484,7 +484,7 @@ mod tests {
         let source1 = TestSource::new();
         let source2 = TestSource::new();
         let source3 = TestSource::new();
-        let mut mux = MultiplexerSource::new([&source1, &source2, &source3]);
+        let mut mux = MultiplexerSource::new([source1, source2, source3]);
 
         mux.frame_start();
         let info = BlockInfo::new(0, 44_100);

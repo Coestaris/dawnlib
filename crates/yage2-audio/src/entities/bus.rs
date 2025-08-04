@@ -1,10 +1,10 @@
-use crate::entities::{BlockInfo, Effect, AudioEventType, AudioEventTarget, AudioEventTargetId, NodeRef, Source};
+use crate::entities::{BlockInfo, Effect, AudioEventType, AudioEventTarget, AudioEventTargetId, NodeCell, Source};
 use crate::sample::PlanarBlock;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BusEvent {}
 
-pub struct Bus<'a, E, S>
+pub struct Bus<E, S>
 where
     E: Effect,
     S: Source,
@@ -13,8 +13,8 @@ where
     cached: bool,
     gain: f32,
     pan: f32,
-    effect: NodeRef<'a, E>,
-    source: NodeRef<'a, S>,
+    effect: NodeCell<E>,
+    source: NodeCell<S>,
     output: PlanarBlock<f32>,
 }
 
@@ -27,16 +27,16 @@ where
     bus.dispatch(event);
 }
 
-impl<'a, E, S> Bus<'a, E, S>
+impl<E, S> Bus<E, S>
 where
     E: Effect,
     S: Source,
 {
-    pub fn new(effect: &'a E, source: &'a S, gain: Option<f32>, pan: Option<f32>) -> Self {
+    pub fn new(effect: E, source: S, gain: Option<f32>, pan: Option<f32>) -> Self {
         Bus {
             id: AudioEventTargetId::new(),
-            effect: NodeRef::<'a>::new(effect),
-            source: NodeRef::<'a>::new(source),
+            effect: NodeCell::new(effect),
+            source: NodeCell::new(source),
             output: PlanarBlock::default(),
             gain: gain.unwrap_or(1.0),
             pan: pan.unwrap_or(0.0),
@@ -53,7 +53,7 @@ where
     }
 }
 
-impl<E, S> Source for Bus<'_, E, S>
+impl<E, S> Source for Bus<E, S>
 where
     E: Effect,
     S: Source,
@@ -118,7 +118,7 @@ mod tests {
 
         let effect = BypassEffect::new();
         let source = TestSource::new();
-        let mut bus = Bus::new(&effect, &source, None, None);
+        let mut bus = Bus::new(effect, source, None, None);
 
         for i in 0..10 {
             bus.frame_start();
@@ -140,7 +140,7 @@ mod tests {
 
         let effect = BypassEffect::new();
         let source = TestSource::new();
-        let mut bus = Bus::new(&effect, &source, Some(0.5), None);
+        let mut bus = Bus::new(effect, source, Some(0.5), None);
 
         for i in 0..10 {
             bus.frame_start();
@@ -162,7 +162,7 @@ mod tests {
 
         let effect = BypassEffect::new();
         let source = TestSource::new();
-        let mut bus = Bus::new(&effect, &source, None, Some(1.0));
+        let mut bus = Bus::new(effect, source, None, Some(1.0));
 
         bus.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -173,7 +173,9 @@ mod tests {
             assert_eq!(output.samples[LEFT_CHANNEL][i], 0.0);
         }
 
-        let mut bus = Bus::new(&effect, &source, None, Some(-1.0));
+        let effect = BypassEffect::new();
+        let source = TestSource::new();
+        let mut bus = Bus::new(effect, source, None, Some(-1.0));
 
         bus.frame_start();
         let info = BlockInfo::new(0, 44_100);
@@ -191,7 +193,7 @@ mod tests {
 
         let effect = BypassEffect::new();
         let source = TestSource::new();
-        let mut bus = Bus::new(&effect, &source, None, None);
+        let mut bus = Bus::new(effect, source, None, None);
         let info = BlockInfo::new(0, 44_100);
 
         b.iter(|| {

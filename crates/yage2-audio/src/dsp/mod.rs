@@ -271,7 +271,7 @@ impl PlanarBlock<f32> {
         use addm::*;
         accelerated!("aarch64", 4, ARM_HAS_NEON, neon_block_m4);
         accelerated!("aarch64", 4, ARM_HAS_SVE, sve_block_m4);
-        accelerated!("x86_64", 32, X86_HAS_AVX512, avx512_block_m32);
+        // accelerated!("x86_64", 32, X86_HAS_AVX512, avx512_block_m32); TODO: Sometimes causes a crash
         accelerated!("x86_64", 32, X86_HAS_AVX2, avx2_block_m32);
         accelerated!("x86_64", 32, X86_HAS_AVX, avx_block_m32);
         accelerated!("x86_64", 32, X86_HAS_SSE42, sse42_block_m32);
