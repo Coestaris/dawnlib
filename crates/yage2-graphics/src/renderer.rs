@@ -1,7 +1,6 @@
 use crate::input::InputEvent;
 use crate::renderable::{Material, Position, Renderable, RenderableMesh, Rotation, Scale};
-use crate::view::{TickResult, View, ViewConfig, ViewError, ViewTrait};
-use crate::vulkan::Error;
+use crate::view::{TickResult, View, ViewConfig, ViewError, ViewHandle, ViewTrait};
 use crossbeam_queue::ArrayQueue;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver, Sender};
@@ -22,10 +21,25 @@ pub(crate) struct RendererTickResult {
     pub drawn_primitives: usize,
 }
 
+pub(crate) trait RendererBackendTrait {
+    fn new(
+        config: RendererBackendConfig,
+        view_handle: ViewHandle,
+    ) -> Result<Self, RendererBackendError>
+    where
+        Self: Sized;
+
+    fn tick(
+        &mut self,
+        renderables: &[Renderable],
+    ) -> Result<RendererTickResult, RendererBackendError>;
+}
+
+#[cfg(feature = "gl")]
 mod backend_impl {
-    pub type RendererBackend = crate::vulkan::Renderer;
-    pub type RendererBackendConfig = crate::vulkan::RendererConfig;
-    pub type RendererBackendError = crate::vulkan::Error;
+    pub type RendererBackend = crate::gl::GLRenderer;
+    pub type RendererBackendConfig = crate::gl::GLRendererConfig;
+    pub type RendererBackendError = crate::gl::GLRendererError;
 }
 
 pub use backend_impl::*;

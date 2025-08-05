@@ -5,7 +5,6 @@ mod darwin;
 mod x11;
 
 use crate::input::InputEvent;
-use ash::vk;
 use crossbeam_queue::ArrayQueue;
 use std::sync::Arc;
 
@@ -18,6 +17,15 @@ pub mod view_impl {
     pub(crate) type View = darwin::View;
 }
 
+// OpenGL has a lot of platform-dependent code,
+// so we define a trait for the view handle
+#[cfg(feature = "gl")]
+pub(crate) trait ViewHandleTrait {
+    fn create_context(&mut self, fps: usize, vsync: bool) -> Result<(), ViewError>;
+    fn get_proc_addr(&self, symbol: &str) -> Result<*const std::ffi::c_void, ViewError>;
+    fn swap_buffers(&self) -> Result<(), ViewError>;
+}
+
 #[cfg(target_os = "linux")]
 pub mod view_impl {
     use crate::view::x11;
@@ -25,22 +33,11 @@ pub mod view_impl {
     pub type PlatformSpecificViewConfig = x11::PlatformSpecificViewConfig;
     pub type ViewError = x11::ViewError;
     pub(crate) type View = x11::View;
+
+    pub use crate::view::x11::ViewHandle;
 }
 
 pub use view_impl::*;
-
-pub(crate) enum ViewHandle {
-    Darwin {},
-    Windows {
-        hinstance: vk::HINSTANCE,
-        hwnd: vk::HWND,
-    },
-    X11 {
-        display: *mut vk::Display,
-        window: vk::Window,
-    },
-    Wayland,
-}
 
 #[derive(Debug, Clone)]
 pub struct ViewConfig {

@@ -38,7 +38,10 @@ impl GameController {
             width: 800,
             height: 600,
         };
-        let backend_config = RendererBackendConfig {};
+        let backend_config = RendererBackendConfig {
+            fps: REFRESH_RATE as usize,
+            vsync: true,
+        };
         let renderer = Renderer::new(view_config, backend_config, true).unwrap();
         renderer.attach_to_ecs(world);
     }
