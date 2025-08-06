@@ -1891,6 +1891,7 @@ dependencies = [
 name = "yage2-core"
 version = "0.1.0"
 dependencies = [
+ "crossbeam-queue",
  "dashmap",
  "evenio",
  "glam",
