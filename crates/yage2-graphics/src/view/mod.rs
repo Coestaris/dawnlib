@@ -15,6 +15,8 @@ pub mod view_impl {
     pub type PlatformSpecificViewConfig = darwin::PlatformSpecificViewConfig;
     pub type ViewError = darwin::ViewError;
     pub(crate) type View = darwin::View;
+
+    pub use crate::view::darwin::ViewHandle;
 }
 
 // OpenGL has a lot of platform-dependent code,

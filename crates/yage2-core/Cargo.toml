@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 libc = "0.2.172"
 log = "0.4.27"
+crossbeam-queue = "0.3.12"
 glam = "0.30.5"
 evenio = { version = "0.6.0", features = ["std", "rayon"] }
 
