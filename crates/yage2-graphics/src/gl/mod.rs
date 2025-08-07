@@ -4,7 +4,7 @@ use crate::renderable::Renderable;
 use crate::renderer::{
     RendererBackendConfig, RendererBackendError, RendererBackendTrait, RendererTickResult,
 };
-use crate::view::{ViewHandle, ViewHandleTrait};
+use crate::view::{ViewError, ViewHandle};
 use std::fmt::{Display, Formatter};
 
 pub struct GLRenderer {
@@ -17,6 +17,16 @@ pub struct GLRendererConfig {
 
 #[derive(Debug, Clone)]
 pub enum GLRendererError {}
+
+// OpenGL has a lot of platform-dependent code,
+// so we define a trait for the view handle.
+// Bless the Rust for dealing with circular dependencies with such ease.
+#[cfg(feature = "gl")]
+pub(crate) trait ViewHandleOpenGL {
+    fn create_context(&mut self, fps: usize, vsync: bool) -> Result<(), ViewError>;
+    fn get_proc_addr(&self, symbol: &str) -> Result<*const std::ffi::c_void, ViewError>;
+    fn swap_buffers(&self) -> Result<(), ViewError>;
+}
 
 impl Display for GLRendererError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

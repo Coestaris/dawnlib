@@ -5,7 +5,7 @@ use crate::{SamplesCount, BLOCK_SIZE};
 use glam::Vec3;
 use std::cmp::min;
 use std::collections::HashMap;
-use yage2_core::resources::Resource;
+use yage2_core::resources::resource::Resource;
 
 const MAX_ACTORS: usize = 1024;
 
@@ -270,7 +270,7 @@ impl Source for ActorsSource {
                 let lpf_cutoff = self.lpf_func.cutoff(distance);
 
                 // Copy audio data from the clip to the output
-                let clip = clip.downcast_ref::<ClipResource>().unwrap();
+                let clip = clip.cast::<ClipResource>();
                 let to_copy = min(BLOCK_SIZE, clip.len - actor.playback_position);
 
                 let mut block = PlanarBlock::default();

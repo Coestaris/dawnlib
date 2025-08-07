@@ -1,5 +1,5 @@
 use crate::input::InputEvent;
-use crate::view::{TickResult, ViewConfig, ViewHandleTrait, ViewTrait};
+use crate::view::{TickResult, ViewConfig, ViewTrait};
 use crossbeam_queue::ArrayQueue;
 use log::{debug, info, warn};
 use std::ffi::{c_char, c_int, c_uint};
@@ -21,6 +21,7 @@ use x11::xlib::{
     XFree, XFreeColormap, XInternAtom, XMapRaised, XMapWindow, XNextEvent, XOpenDisplay,
     XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes, XStoreName, XSync, XVisualInfo,
 };
+use crate::gl::ViewHandleOpenGL;
 
 mod input;
 
@@ -500,7 +501,7 @@ pub struct ViewHandle {
 }
 
 #[cfg(feature = "gl")]
-impl ViewHandleTrait for ViewHandle {
+impl ViewHandleOpenGL for ViewHandle {
     fn create_context(&mut self, fps: usize, vsync: bool) -> Result<(), crate::view::ViewError> {
         unsafe {
             debug!("Creating GLX context");

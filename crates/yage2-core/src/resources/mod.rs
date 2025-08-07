@@ -1,5 +1,5 @@
-mod r#ref;
-mod resource;
-mod reader;
-mod factory;
-mod manager;
+pub mod resource;
+pub mod reader;
+pub mod factory;
+pub mod manager;
+pub(crate) mod registry;

@@ -1,11 +1,12 @@
 use common::logging::CommonLogger;
-use common::resources::YARCResourceManagerIO;
+use common::resources::YARCRead;
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::world::World;
 use log::info;
+use std::time::Duration;
 use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop, Tick};
-use yage2_core::resources::{ResourceManager, ResourceManagerConfig, ResourceType};
+use yage2_core::resources::manager::ResourceManager;
 use yage2_graphics::input::{InputEvent, KeyCode};
 use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererProfileFrame};
 use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
@@ -13,17 +14,7 @@ use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
 const REFRESH_RATE: f32 = 60.0;
 
 #[derive(Component)]
-struct GameController {
-    resource_manager: ResourceManager,
-}
-
-impl Drop for GameController {
-    fn drop(&mut self) {
-        info!("GameController dropped");
-        self.resource_manager
-            .finalize_all(ResourceType::ShaderSPIRV);
-    }
-}
+struct GameController {}
 
 impl GameController {
     fn attach_to_ecs(self, world: &mut World) {
@@ -46,21 +37,22 @@ impl GameController {
         renderer.attach_to_ecs(world);
     }
 
-    pub fn setup_resource_manager() -> ResourceManager {
+    pub fn setup_resource_manager(world: &mut World) {
         // Setup resource manager
-        let resource_manager = ResourceManager::new(ResourceManagerConfig {
-            backend: Box::new(YARCResourceManagerIO::new("demo_graphics.yarc".to_string())),
-        });
-        resource_manager.poll_io().unwrap();
-        resource_manager
+        let reader = YARCRead::new("demo_graphics.yarc".to_string());
+        let mut manager = ResourceManager::new(reader);
+        manager.read().unwrap(); // Read resource from the disk
+        manager.query_load_all().unwrap(); // Queue all resources for loading
+        manager.fence_loading(Duration::from_secs(1)).unwrap(); // Wait for all resources to load
+        
+        // Move the resource manager to the world
+        let entity = world.spawn();
+        world.insert(entity, manager);
     }
 
     pub fn setup(world: &mut World) {
         Self::setup_graphics(world);
-        GameController {
-            resource_manager: Self::setup_resource_manager(),
-        }
-        .attach_to_ecs(world);
+        GameController {}.attach_to_ecs(world);
     }
 }
 

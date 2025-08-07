@@ -19,15 +19,6 @@ pub mod view_impl {
     pub use crate::view::darwin::ViewHandle;
 }
 
-// OpenGL has a lot of platform-dependent code,
-// so we define a trait for the view handle
-#[cfg(feature = "gl")]
-pub(crate) trait ViewHandleTrait {
-    fn create_context(&mut self, fps: usize, vsync: bool) -> Result<(), ViewError>;
-    fn get_proc_addr(&self, symbol: &str) -> Result<*const std::ffi::c_void, ViewError>;
-    fn swap_buffers(&self) -> Result<(), ViewError>;
-}
-
 #[cfg(target_os = "linux")]
 pub mod view_impl {
     use crate::view::x11;

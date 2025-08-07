@@ -32,6 +32,17 @@ pub struct ResourceHeader {
     pub checksum: ResourceChecksum,
 }
 
+impl Default for ResourceHeader {
+    fn default() -> Self {
+        ResourceHeader {
+            name: String::new(),
+            tags: Vec::new(),
+            resource_type: ResourceType::Unknown,
+            checksum: ResourceChecksum::default(),
+        }
+    }
+}
+
 pub trait ResourceReader {
     fn has_updates(&self) -> bool;
     fn enumerate_resources(&mut self) -> Result<HashMap<ResourceID, ResourceHeader>, String>;
