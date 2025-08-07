@@ -1,32 +1,32 @@
 use log::info;
 use std::collections::HashMap;
-use yage2_core::resources::reader::{ResourceHeader, ResourceReader};
-use yage2_core::resources::resource::ResourceID;
+use yage2_core::assets::reader::{AssetHeader, ResourceReader};
+use yage2_core::assets::AssetID;
 
 fn get_current_exe() -> std::path::PathBuf {
     std::env::current_exe().expect("Failed to get current executable path")
 }
 
-pub struct YARCRead {
+pub struct YARCReader {
     filename: String,
-    containers: HashMap<ResourceID, yage2_yarc::Container>,
+    containers: HashMap<AssetID, yage2_yarc::Container>,
 }
 
-impl YARCRead {
-    pub fn new(filename: String) -> YARCRead {
-        YARCRead {
+impl YARCReader {
+    pub fn new(filename: String) -> YARCReader {
+        YARCReader {
             filename,
             containers: HashMap::new(),
         }
     }
 }
 
-impl ResourceReader for YARCRead {
+impl ResourceReader for YARCReader {
     fn has_updates(&self) -> bool {
         true
     }
 
-    fn enumerate_resources(&mut self) -> Result<HashMap<ResourceID, ResourceHeader>, String> {
+    fn enumerate_resources(&mut self) -> Result<HashMap<AssetID, AssetHeader>, String> {
         self.containers =
             yage2_yarc::read(get_current_exe().parent().unwrap().join(&self.filename))
                 .map_err(|e| format!("Failed to read resources: {}", e.to_string()))?;
@@ -49,7 +49,7 @@ impl ResourceReader for YARCRead {
         Ok(result)
     }
 
-    fn load(&mut self, name: ResourceID) -> Result<Vec<u8>, String> {
+    fn load(&mut self, name: AssetID) -> Result<Vec<u8>, String> {
         if let Some(container) = self.containers.get(&name) {
             info!("Loading resource: {}", name);
             // TODO: get rid of clone

@@ -1,8 +1,8 @@
-use crate::resources::reader::ResourceHeader;
-use crate::resources::resource::{ResourceID, ResourceType};
 use crossbeam_queue::ArrayQueue;
 use std::ptr::NonNull;
 use std::sync::Arc;
+use crate::assets::reader::AssetHeader;
+use crate::assets::{AssetID, AssetType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct QueryID(usize);
@@ -21,17 +21,17 @@ impl QueryID {
 }
 
 pub enum InMessage {
-    Load(QueryID, ResourceID, Vec<u8>, ResourceHeader),
-    Free(QueryID, ResourceID),
+    Load(QueryID, AssetID, Vec<u8>, AssetHeader),
+    Free(QueryID, AssetID),
 }
 
 pub enum OutMessage {
-    Loaded(QueryID, ResourceID, NonNull<()>),
-    Freed(QueryID, ResourceID),
+    Loaded(QueryID, AssetID, NonNull<()>),
+    Freed(QueryID, AssetID),
 }
 
 struct FactoryBindingInner {
-    pub resource_type: ResourceType,
+    pub asset_type: AssetType,
     pub in_queue: Arc<ArrayQueue<InMessage>>,
     pub out_queue: Arc<ArrayQueue<OutMessage>>,
 }
@@ -41,19 +41,19 @@ pub struct FactoryBinding(Arc<FactoryBindingInner>);
 
 impl FactoryBinding {
     pub fn new(
-        resource_type: ResourceType,
+        asset_type: AssetType,
         in_queue: Arc<ArrayQueue<InMessage>>,
         out_queue: Arc<ArrayQueue<OutMessage>>,
     ) -> Self {
         FactoryBinding(Arc::new(FactoryBindingInner {
-            resource_type,
+            asset_type,
             in_queue,
             out_queue,
         }))
     }
 
-    pub fn resource_type(&self) -> ResourceType {
-        self.0.resource_type
+    pub fn asset_type(&self) -> AssetType {
+        self.0.asset_type
     }
 
     pub fn in_queue(&self) -> Arc<ArrayQueue<InMessage>> {

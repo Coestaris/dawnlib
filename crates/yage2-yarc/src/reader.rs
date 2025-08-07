@@ -3,7 +3,7 @@ use log::info;
 use std::collections::HashMap;
 use std::io::Read;
 use tar::Archive;
-use yage2_core::resources::resource::ResourceID;
+use yage2_core::assets::AssetID;
 
 #[derive(Default)]
 pub struct Container {
@@ -31,13 +31,13 @@ impl std::fmt::Display for ReadError {
     }
 }
 
-fn read_from_reader<R>(reader: R) -> Result<HashMap<ResourceID, Container>, ReadError>
+fn read_from_reader<R>(reader: R) -> Result<HashMap<AssetID, Container>, ReadError>
 where
     R: Read,
 {
     let mut archive = Archive::new(reader);
 
-    let mut containers: HashMap<ResourceID, Container> = HashMap::new();
+    let mut containers: HashMap<AssetID, Container> = HashMap::new();
     for entry in archive.entries().map_err(ReadError::ReadTarError)? {
         let mut entry = entry.map_err(ReadError::ReadTarError)?;
 
@@ -64,7 +64,7 @@ where
                 .to_string();
 
             let container = containers
-                .entry(ResourceID::new(we.clone()))
+                .entry(AssetID::new(we.clone()))
                 .or_insert_with(|| Container::default());
 
             if extension == "toml" {
@@ -84,7 +84,7 @@ where
 
 pub fn read_from_file_compressed<P: AsRef<std::path::Path>>(
     input: P,
-) -> Result<HashMap<ResourceID, Container>, ReadError> {
+) -> Result<HashMap<AssetID, Container>, ReadError> {
     let file = std::fs::File::open(input).unwrap();
     let buf_reader = std::io::BufReader::new(file);
     let decoder = flate2::read::GzDecoder::new(buf_reader);
@@ -94,14 +94,14 @@ pub fn read_from_file_compressed<P: AsRef<std::path::Path>>(
 
 pub fn read_from_file_uncompressed<P: AsRef<std::path::Path>>(
     input: P,
-) -> Result<HashMap<ResourceID, Container>, ReadError> {
+) -> Result<HashMap<AssetID, Container>, ReadError> {
     let file = std::fs::File::open(input).unwrap();
     let buf_reader = std::io::BufReader::new(file);
 
     read_from_reader(buf_reader)
 }
 
-pub fn read<P: AsRef<std::path::Path>>(input: P) -> Result<HashMap<ResourceID, Container>, ReadError> {
+pub fn read<P: AsRef<std::path::Path>>(input: P) -> Result<HashMap<AssetID, Container>, ReadError> {
     match read_from_file_compressed(input.as_ref()) {
         Err(ReadError::ReadTarError(e)) => {
             // Try to read as non-compressed tar

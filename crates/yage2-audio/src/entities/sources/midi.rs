@@ -13,7 +13,7 @@ use log::warn;
 use std::thread::sleep;
 use std::time::Duration;
 use tinyrand::Rand;
-use yage2_core::resources::resource::Resource;
+use yage2_core::assets::Asset;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteName {
@@ -107,12 +107,12 @@ pub struct MidiPlayer<const VOICES_COUNT: usize> {
     voices: [Voice; VOICES_COUNT],
     // Currently processing event index
     index: usize,
-    midi: Resource,
+    midi: Asset,
 }
 
 impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
     pub fn new<'a>(
-        midi: Resource,
+        midi: Asset,
         sample_rate: SampleRate,
     ) -> (
         MidiPlayer<VOICES_COUNT>,

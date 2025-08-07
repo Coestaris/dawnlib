@@ -1,10 +1,10 @@
-use crate::ecs::Tick;
-use crate::resources::factory::{FactoryBinding, InMessage, OutMessage, QueryID};
-use crate::resources::reader::ResourceReader;
-use crate::resources::registry::{
+use crate::assets::factory::{FactoryBinding, InMessage, OutMessage, QueryID};
+use crate::assets::reader::ResourceReader;
+use crate::assets::registry::{
     QueriesRegistry, ResourceRegistryItem, ResourceState, ResourcesRegistry,
 };
-use crate::resources::resource::{Resource, ResourceID, ResourceType};
+use crate::assets::{Asset, AssetID, AssetType};
+use crate::ecs::Tick;
 use crossbeam_queue::ArrayQueue;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver, Sender};
@@ -17,15 +17,15 @@ use std::sync::Arc;
 #[derive(GlobalEvent)]
 pub enum ResourceEvent {
     QueryCompleted(QueryID),
-    ResourceLoaded(ResourceID),
-    ResourceFreed(ResourceID),
+    ResourceLoaded(AssetID),
+    ResourceFreed(AssetID),
     AllResourcesLoaded,
     AllResourcesFreed,
 }
 
 #[derive(Component)]
 pub struct ResourceManager {
-    factories: HashMap<ResourceType, FactoryBinding>,
+    factories: HashMap<AssetType, FactoryBinding>,
     out_queue: Arc<ArrayQueue<OutMessage>>,
     registry: ResourcesRegistry,
     queries: QueriesRegistry,
@@ -47,7 +47,7 @@ impl ResourceManager {
         })
     }
 
-    pub fn create_factory_biding(&mut self, resource_type: ResourceType) -> FactoryBinding {
+    pub fn create_factory_biding(&mut self, resource_type: AssetType) -> FactoryBinding {
         if self.factories.contains_key(&resource_type) {
             panic!(
                 "Factory for resource type {:?} already registered",
@@ -77,7 +77,7 @@ impl ResourceManager {
         }
     }
 
-    fn select_factory(&self, id: &ResourceID) -> Result<&FactoryBinding, String> {
+    fn select_factory(&self, id: &AssetID) -> Result<&FactoryBinding, String> {
         if let Some(item) = self.registry.get(id) {
             if let Some(factory) = self.factories.get(&item.header.resource_type) {
                 Ok(factory)
@@ -92,13 +92,13 @@ impl ResourceManager {
         }
     }
 
-    fn select_item(&self, id: &ResourceID) -> Result<&ResourceRegistryItem, String> {
+    fn select_item(&self, id: &AssetID) -> Result<&ResourceRegistryItem, String> {
         self.registry
             .get(id)
             .ok_or_else(|| format!("Resource with ID {} not found", id))
     }
 
-    fn query_load_inner(&self, qid: QueryID, id: ResourceID) -> Result<QueryID, String> {
+    fn query_load_inner(&self, qid: QueryID, id: AssetID) -> Result<QueryID, String> {
         let factory = self.select_factory(&id)?;
         let item = self.select_item(&id)?;
         match &item.state {
@@ -122,7 +122,7 @@ impl ResourceManager {
         Ok(qid)
     }
 
-    pub fn query_free_inner(&self, qid: QueryID, id: ResourceID) -> Result<QueryID, String> {
+    pub fn query_free_inner(&self, qid: QueryID, id: AssetID) -> Result<QueryID, String> {
         let factory = self.select_factory(&id)?;
         let item = self.select_item(&id)?;
         match &item.state {
@@ -149,7 +149,7 @@ impl ResourceManager {
         Ok(qid)
     }
 
-    fn query_load(&self, id: ResourceID) -> Result<QueryID, String> {
+    fn query_load(&self, id: AssetID) -> Result<QueryID, String> {
         let qid = QueryID::new();
         self.query_load_inner(qid, id)
     }
@@ -162,7 +162,7 @@ impl ResourceManager {
         Ok(qid)
     }
 
-    pub fn query_free(&self, id: ResourceID) -> Result<QueryID, String> {
+    pub fn query_free(&self, id: AssetID) -> Result<QueryID, String> {
         let qid = QueryID::new();
         self.query_free_inner(qid, id)
     }
@@ -175,13 +175,13 @@ impl ResourceManager {
         Ok(qid)
     }
 
-    pub fn get_resource(&self, id: ResourceID) -> Option<Resource> {
+    pub fn get_resource(&self, id: AssetID) -> Option<Asset> {
         if let Some(item) = self.registry.get(&id) {
             match &item.state {
                 ResourceState::Loaded(ptr) => {
                     let in_use = item.in_use.clone();
                     in_use.store(true, std::sync::atomic::Ordering::SeqCst);
-                    let resource = Resource::new(in_use, ptr.cast::<()>());
+                    let resource = Asset::new(in_use, ptr.cast::<()>());
                     Some(resource)
                 }
                 ResourceState::Freed => None,
