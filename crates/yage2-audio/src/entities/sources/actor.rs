@@ -5,7 +5,7 @@ use crate::{SamplesCount, BLOCK_SIZE};
 use glam::Vec3;
 use std::cmp::min;
 use std::collections::HashMap;
-use yage2_core::resources::resource::Resource;
+use yage2_core::assets::Asset;
 
 const MAX_ACTORS: usize = 1024;
 
@@ -29,7 +29,7 @@ pub enum ActorsSourceEvent {
         id: Option<ActorID>,
         pos: Vec3,
         gain: f32,
-        clip: Resource,
+        clip: Asset,
     },
     RemoveActor(ActorID),
     ChangeActorPosition {
@@ -50,11 +50,11 @@ struct Voice {
     position: Vec3,
     gain: f32,
     playback_position: SamplesCount,
-    clip: Option<Resource>,
+    clip: Option<Asset>,
 }
 
 impl Voice {
-    pub fn new(id: ActorID, position: Vec3, gain: f32, clip: Resource) -> Self {
+    pub fn new(id: ActorID, position: Vec3, gain: f32, clip: Asset) -> Self {
         Voice {
             id,
             position,

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use yage2_core::resources::reader::ResourceHeader;
-use yage2_core::resources::resource::ResourceType;
+use yage2_core::assets::reader::AssetHeader;
+use yage2_core::assets::AssetType;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ShaderType {
@@ -81,53 +81,53 @@ pub enum TypeSpecificMetadata {
 }
 
 impl TypeSpecificMetadata {
-    pub fn default_for(resource_type: ResourceType) -> Self {
+    pub fn default_for(resource_type: AssetType) -> Self {
         match resource_type {
-            ResourceType::ShaderGLSL | ResourceType::ShaderSPIRV | ResourceType::ShaderHLSL => {
+            AssetType::ShaderGLSL | AssetType::ShaderSPIRV | AssetType::ShaderHLSL => {
                 TypeSpecificMetadata::Shader(ShaderMetadata::default())
             }
-            ResourceType::AudioFLAC | ResourceType::AudioWAV | ResourceType::AudioOGG => {
+            AssetType::AudioFLAC | AssetType::AudioWAV | AssetType::AudioOGG => {
                 TypeSpecificMetadata::Audio(AudioMetadata::default())
             }
-            ResourceType::ImagePNG | ResourceType::ImageJPEG | ResourceType::ImageBMP => {
+            AssetType::ImagePNG | AssetType::ImageJPEG | AssetType::ImageBMP => {
                 TypeSpecificMetadata::Image(ImageMetadata::default())
             }
-            ResourceType::FontTTF | ResourceType::FontOTF => {
+            AssetType::FontTTF | AssetType::FontOTF => {
                 TypeSpecificMetadata::Font(FontMetadata::default())
             }
-            ResourceType::ModelOBJ | ResourceType::ModelFBX | ResourceType::ModelGLTF => {
+            AssetType::ModelOBJ | AssetType::ModelFBX | AssetType::ModelGLTF => {
                 TypeSpecificMetadata::Model(ModelMetadata::default())
             }
             _ => TypeSpecificMetadata::Unknown,
         }
     }
 
-    pub fn suitable_for(&self, resource_type: ResourceType) -> bool {
+    pub fn suitable_for(&self, resource_type: AssetType) -> bool {
         match self {
             TypeSpecificMetadata::Shader(_) => {
-                resource_type == ResourceType::ShaderGLSL
-                    || resource_type == ResourceType::ShaderSPIRV
-                    || resource_type == ResourceType::ShaderHLSL
+                resource_type == AssetType::ShaderGLSL
+                    || resource_type == AssetType::ShaderSPIRV
+                    || resource_type == AssetType::ShaderHLSL
             }
             TypeSpecificMetadata::Audio(_) => {
                 matches!(
                     resource_type,
-                    ResourceType::AudioFLAC | ResourceType::AudioWAV | ResourceType::AudioOGG
+                    AssetType::AudioFLAC | AssetType::AudioWAV | AssetType::AudioOGG
                 )
             }
             TypeSpecificMetadata::Image(_) => {
                 matches!(
                     resource_type,
-                    ResourceType::ImagePNG | ResourceType::ImageJPEG | ResourceType::ImageBMP
+                    AssetType::ImagePNG | AssetType::ImageJPEG | AssetType::ImageBMP
                 )
             }
             TypeSpecificMetadata::Font(_) => {
-                matches!(resource_type, ResourceType::FontTTF | ResourceType::FontOTF)
+                matches!(resource_type, AssetType::FontTTF | AssetType::FontOTF)
             }
             TypeSpecificMetadata::Model(_) => {
                 matches!(
                     resource_type,
-                    ResourceType::ModelOBJ | ResourceType::ModelFBX | ResourceType::ModelGLTF
+                    AssetType::ModelOBJ | AssetType::ModelFBX | AssetType::ModelGLTF
                 )
             }
             TypeSpecificMetadata::Unknown => false,
@@ -144,7 +144,7 @@ impl Default for TypeSpecificMetadata {
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ResourceMetadata {
     #[serde(default)]
-    pub header: ResourceHeader,
+    pub header: AssetHeader,
     #[serde(default)]
     pub type_specific: TypeSpecificMetadata,
 }
@@ -180,5 +180,5 @@ pub struct Manifest {
     pub tool_version: String,
     pub date_created: String,
     pub write_options: WriteOptions,
-    pub headers: Vec<ResourceHeader>,
+    pub headers: Vec<AssetHeader>,
 }

@@ -1,12 +1,12 @@
 use std::cell::RefCell;
-use crate::resources::reader::ResourceHeader;
-use crate::resources::resource::ResourceID;
+use crate::assets::reader::AssetHeader;
+use crate::assets::AssetID;
 use log::{info, warn};
 use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use crate::resources::factory::QueryID;
+use crate::assets::factory::QueryID;
 
 pub(crate) enum ResourceState {
     Raw(Vec<u8>),
@@ -15,19 +15,19 @@ pub(crate) enum ResourceState {
 }
 
 pub(crate) struct ResourceRegistryItem {
-    pub(crate) header: ResourceHeader,
+    pub(crate) header: AssetHeader,
     pub(crate) state: ResourceState,
     pub(crate) in_use: Arc<AtomicBool>,
 }
 
-pub(crate) struct ResourcesRegistry(HashMap<ResourceID, ResourceRegistryItem>);
+pub(crate) struct ResourcesRegistry(HashMap<AssetID, ResourceRegistryItem>);
 
 impl ResourcesRegistry {
     pub fn new() -> Self {
         ResourcesRegistry(HashMap::new())
     }
 
-    pub fn push(&mut self, id: ResourceID, raw: Vec<u8>, header: ResourceHeader) {
+    pub fn push(&mut self, id: AssetID, raw: Vec<u8>, header: AssetHeader) {
         info!(
             "Registering resource: {} (type {:?})",
             id, header.resource_type
@@ -45,15 +45,15 @@ impl ResourcesRegistry {
         );
     }
 
-    pub fn get(&self, id: &ResourceID) -> Option<&ResourceRegistryItem> {
+    pub fn get(&self, id: &AssetID) -> Option<&ResourceRegistryItem> {
         self.0.get(id)
     }
 
-    pub fn get_mut(&mut self, id: &ResourceID) -> Option<&mut ResourceRegistryItem> {
+    pub fn get_mut(&mut self, id: &AssetID) -> Option<&mut ResourceRegistryItem> {
         self.0.get_mut(id)
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = &ResourceID> {
+    pub fn keys(&self) -> impl Iterator<Item = &AssetID> {
         self.0.keys()
     }
 

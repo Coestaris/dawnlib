@@ -10,8 +10,8 @@ use log::{debug, info};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use tempdir::TempDir;
-use yage2_core::resources::reader::{ResourceChecksum, ResourceHeader};
-use yage2_core::resources::resource::ResourceType;
+use yage2_core::assets::reader::{ResourceChecksum, AssetHeader};
+use yage2_core::assets::AssetType;
 use yage2_core::utils::format_now;
 
 #[derive(Debug)]
@@ -33,7 +33,7 @@ pub enum WriterError {
 
     UnsupportedCompression(Compression),
     UnsupportedChecksumAlgorithm(ChecksumAlgorithm),
-    UnsupportedResourceType(ResourceType),
+    UnsupportedResourceType(AssetType),
     UnknownResourceType(String),
 }
 
@@ -113,32 +113,32 @@ fn normalize_name<P: AsRef<std::path::Path>>(path: P) -> String {
         .replace(|c: char| !c.is_alphanumeric() && c != '_', "")
 }
 
-fn extension_to_resource_type(ext: &str) -> Result<(ResourceType, PreProcessor<'_>), WriterError> {
+fn extension_to_resource_type(ext: &str) -> Result<(AssetType, PreProcessor<'_>), WriterError> {
     Ok(match ext {
         // Shader types
-        "glsl" => (ResourceType::ShaderGLSL, compile_glsl_shader),
-        "spv" => (ResourceType::ShaderSPIRV, dummy_preprocessor),
-        "hlsl" => (ResourceType::ShaderHLSL, dummy_preprocessor),
+        "glsl" => (AssetType::ShaderGLSL, compile_glsl_shader),
+        "spv" => (AssetType::ShaderSPIRV, dummy_preprocessor),
+        "hlsl" => (AssetType::ShaderHLSL, dummy_preprocessor),
 
         // Audio types
-        "midi" | "mid" | "rmi" => (ResourceType::AudioMIDI, dummy_preprocessor),
-        "flac" => (ResourceType::AudioFLAC, resample_flac_file),
-        "wav" => (ResourceType::AudioWAV, resample_wav_file),
-        "ogg" => (ResourceType::AudioOGG, resample_ogg_file),
+        "midi" | "mid" | "rmi" => (AssetType::AudioMIDI, dummy_preprocessor),
+        "flac" => (AssetType::AudioFLAC, resample_flac_file),
+        "wav" => (AssetType::AudioWAV, resample_wav_file),
+        "ogg" => (AssetType::AudioOGG, resample_ogg_file),
 
         // Image types
-        "png" => (ResourceType::ImagePNG, dummy_preprocessor),
-        "jpg" | "jpeg" => (ResourceType::ImageJPEG, dummy_preprocessor),
-        "bmp" => (ResourceType::ImageBMP, dummy_preprocessor),
+        "png" => (AssetType::ImagePNG, dummy_preprocessor),
+        "jpg" | "jpeg" => (AssetType::ImageJPEG, dummy_preprocessor),
+        "bmp" => (AssetType::ImageBMP, dummy_preprocessor),
 
         // Font types
-        "ttf" => (ResourceType::FontTTF, dummy_preprocessor),
-        "otf" => (ResourceType::FontOTF, dummy_preprocessor),
+        "ttf" => (AssetType::FontTTF, dummy_preprocessor),
+        "otf" => (AssetType::FontOTF, dummy_preprocessor),
 
         // Model types
-        "obj" => (ResourceType::ModelOBJ, dummy_preprocessor),
-        "fbx" => (ResourceType::ModelFBX, dummy_preprocessor),
-        "gltf" | "glb" => (ResourceType::ModelGLTF, dummy_preprocessor),
+        "obj" => (AssetType::ModelOBJ, dummy_preprocessor),
+        "fbx" => (AssetType::ModelFBX, dummy_preprocessor),
+        "gltf" | "glb" => (AssetType::ModelGLTF, dummy_preprocessor),
 
         _ => {
             // If the extension is not recognized, return an error
@@ -187,7 +187,7 @@ fn create_manifest(create_options: WriteOptions, containers: &[Container]) -> Ma
 
 fn validate_metadata<P: AsRef<std::path::Path>>(
     metadata_path: P,
-    resource_type: ResourceType,
+    resource_type: AssetType,
     name: &str,
 ) -> Result<ResourceMetadata, WriterError> {
     let metadata_content =
@@ -197,7 +197,7 @@ fn validate_metadata<P: AsRef<std::path::Path>>(
 
     // If some fields are missing, the serde will fill them with defaults, 
     // But we need to ensure that the resource type matches
-    if metadata.header.resource_type == ResourceType::Unknown {
+    if metadata.header.resource_type == AssetType::Unknown {
         metadata.header.resource_type = resource_type;
     } else if metadata.header.resource_type != resource_type {
         return Err(WriterError::ValidateMetadataFailed(
@@ -237,10 +237,10 @@ fn validate_metadata<P: AsRef<std::path::Path>>(
 }
 
 fn create_metadata<P: AsRef<std::path::Path>>(
-    resource_type: ResourceType,
+    resource_type: AssetType,
     name: &str,
 ) -> Result<ResourceMetadata, WriterError> {
-    let mut header = ResourceHeader::default();
+    let mut header = AssetHeader::default();
     header.name = name.to_string();
     header.resource_type = resource_type;
 

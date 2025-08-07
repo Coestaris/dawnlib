@@ -60,10 +60,10 @@ pub(crate) mod wav {
     use std::mem;
     use std::ptr::NonNull;
     use std::sync::Arc;
+    use yage2_core::assets::factory::{FactoryBinding, InMessage, OutMessage};
+    use yage2_core::assets::{AssetID, AssetType};
+    use yage2_core::assets::reader::AssetHeader;
     use yage2_core::ecs::Tick;
-    use yage2_core::resources::factory::{FactoryBinding, InMessage, OutMessage};
-    use yage2_core::resources::reader::ResourceHeader;
-    use yage2_core::resources::resource::{ResourceID, ResourceType};
 
     #[derive(Component)]
     pub struct WAVResourceFactory {
@@ -72,7 +72,7 @@ pub(crate) mod wav {
         out_queue: Option<Arc<ArrayQueue<OutMessage>>>,
     }
 
-    static mut STORAGE: OnceCell<HashMap<ResourceID, Box<ClipResource>>> = OnceCell::new();
+    static mut STORAGE: OnceCell<HashMap<AssetID, Box<ClipResource>>> = OnceCell::new();
 
     impl WAVResourceFactory {
         pub fn new(sample_rate: SampleRate) -> Self {
@@ -90,7 +90,7 @@ pub(crate) mod wav {
         }
 
         pub fn bind(&mut self, binding: FactoryBinding) {
-            assert_eq!(binding.resource_type(), ResourceType::AudioWAV);
+            assert_eq!(binding.asset_type(), AssetType::AudioWAV);
             self.in_queue = Some(binding.in_queue());
             self.out_queue = Some(binding.out_queue());
         }
@@ -164,7 +164,7 @@ pub(crate) mod wav {
         }
     }
 
-    fn parse(sample_rate: SampleRate, header: &ResourceHeader, raw: &[u8]) -> Option<ClipResource> {
+    fn parse(sample_rate: SampleRate, header: &AssetHeader, raw: &[u8]) -> Option<ClipResource> {
         let mut buf_reader = std::io::Cursor::new(raw);
         match hound::WavReader::new(&mut buf_reader) {
             Ok(mut reader) => {
@@ -245,10 +245,10 @@ pub(crate) mod midi {
     use std::ptr::NonNull;
     use std::sync::Arc;
     use evenio::component::Component;
+    use yage2_core::assets::factory::{FactoryBinding, InMessage, OutMessage};
+    use yage2_core::assets::{AssetID, AssetType};
+    use yage2_core::assets::reader::AssetHeader;
     use yage2_core::ecs::Tick;
-    use yage2_core::resources::factory::{FactoryBinding, InMessage, OutMessage};
-    use yage2_core::resources::reader::ResourceHeader;
-    use yage2_core::resources::resource::{ResourceID, ResourceType};
 
     pub enum MIDIEvent {
         NoteOn { channel: u8, note: u8, velocity: u8 },
@@ -260,7 +260,7 @@ pub(crate) mod midi {
         pub events: Vec<MIDIEvent>,
     }
 
-    static mut STORAGE: OnceCell<HashMap<ResourceID, Box<MIDIResource>>> = OnceCell::new();
+    static mut STORAGE: OnceCell<HashMap<AssetID, Box<MIDIResource>>> = OnceCell::new();
 
     impl MIDIResource {
         pub fn new(events: Vec<MIDIEvent>) -> Self {
@@ -289,7 +289,7 @@ pub(crate) mod midi {
         }
 
         pub fn bind(&mut self, binding: FactoryBinding) {
-            assert_eq!(binding.resource_type(), ResourceType::AudioMIDI);
+            assert_eq!(binding.asset_type(), AssetType::AudioMIDI);
             self.in_queue = Some(binding.in_queue());
             self.out_queue = Some(binding.out_queue());
         }
@@ -363,7 +363,7 @@ pub(crate) mod midi {
         }
     }
 
-    fn parse(header: &ResourceHeader, raw: &[u8]) -> Option<MIDIResource> {
+    fn parse(header: &AssetHeader, raw: &[u8]) -> Option<MIDIResource> {
         let smf = midly::Smf::parse(raw)
             .map_err(|e| format!("Failed to parse MIDI: {}", e))
             .ok()?;

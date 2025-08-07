@@ -1,4 +1,4 @@
-use crate::resources::resource::{ResourceID, ResourceType};
+use crate::assets::{AssetID, AssetType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -21,23 +21,23 @@ impl Default for ResourceChecksum {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ResourceHeader {
+pub struct AssetHeader {
     #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
-    pub resource_type: ResourceType,
+    pub resource_type: AssetType,
     #[serde(default)]
     pub checksum: ResourceChecksum,
 }
 
-impl Default for ResourceHeader {
+impl Default for AssetHeader {
     fn default() -> Self {
-        ResourceHeader {
+        AssetHeader {
             name: String::new(),
             tags: Vec::new(),
-            resource_type: ResourceType::Unknown,
+            resource_type: AssetType::Unknown,
             checksum: ResourceChecksum::default(),
         }
     }
@@ -45,6 +45,6 @@ impl Default for ResourceHeader {
 
 pub trait ResourceReader {
     fn has_updates(&self) -> bool;
-    fn enumerate_resources(&mut self) -> Result<HashMap<ResourceID, ResourceHeader>, String>;
-    fn load(&mut self, id: ResourceID) -> Result<Vec<u8>, String>;
+    fn enumerate_resources(&mut self) -> Result<HashMap<AssetID, AssetHeader>, String>;
+    fn load(&mut self, id: AssetID) -> Result<Vec<u8>, String>;
 }

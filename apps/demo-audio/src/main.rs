@@ -1,5 +1,5 @@
 use common::logging::CommonLogger;
-use common::resources::YARCRead;
+use common::resources::YARCReader;
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::fetch::Single;
@@ -17,10 +17,9 @@ use yage2_audio::entities::sources::actor::{
 };
 use yage2_audio::player::{Player, PlayerProfileFrame};
 use yage2_audio::resources::{MIDIResourceFactory, WAVResourceFactory};
+use yage2_core::assets::manager::{ResourceEvent, ResourceManager};
+use yage2_core::assets::{Asset, AssetID, AssetType};
 use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop, Tick};
-use yage2_core::resources::factory::FactoryBinding;
-use yage2_core::resources::manager::{ResourceEvent, ResourceManager};
-use yage2_core::resources::resource::{Resource, ResourceID, ResourceType};
 
 #[cfg(target_os = "linux")]
 // Alsa backend works A LOT better with 44,100 Hz sample rate
@@ -44,15 +43,15 @@ impl GameController {
 
     pub fn setup_resource_manager(world: &mut World) {
         // Setup resource manager
-        let read = YARCRead::new("demo_audio.yarc".to_string());
+        let read = YARCReader::new("demo_audio.yarc".to_string());
         let mut resource_manager = ResourceManager::new(read).unwrap();
 
         let mut wav_factory = WAVResourceFactory::new(SAMPLE_RATE);
-        wav_factory.bind(resource_manager.create_factory_biding(ResourceType::AudioWAV));
+        wav_factory.bind(resource_manager.create_factory_biding(AssetType::AudioWAV));
         wav_factory.attach_to_ecs(world);
 
         let mut midi_factory = MIDIResourceFactory::new();
-        midi_factory.bind(resource_manager.create_factory_biding(ResourceType::AudioMIDI));
+        midi_factory.bind(resource_manager.create_factory_biding(AssetType::AudioMIDI));
         midi_factory.attach_to_ecs(world);
 
         resource_manager.query_load_all().unwrap();
@@ -89,7 +88,7 @@ impl GameController {
         .attach_to_ecs(world);
     }
 
-    pub fn add_audio_actor(&self, pos: Vec3, gain: f32, clip: Resource) -> (AudioEvent, ActorID) {
+    pub fn add_audio_actor(&self, pos: Vec3, gain: f32, clip: Asset) -> (AudioEvent, ActorID) {
         let actor_id = ActorID::new();
         (
             AudioEvent::new(
@@ -161,7 +160,7 @@ fn player_handler(
 ) {
     if matches!(e.event, ResourceEvent::AllResourcesLoaded) {
         let clip = rm
-            .get_resource(ResourceID::new("loop".to_string()))
+            .get_resource(AssetID::new("loop".to_string()))
             .unwrap();
         sender.send(gc.add_audio_actor(Vec3::ZERO, 0.7, clip).0);
         gc.counter += 1;

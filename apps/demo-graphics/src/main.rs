@@ -1,5 +1,5 @@
 use common::logging::CommonLogger;
-use common::resources::YARCRead;
+use common::resources::YARCReader;
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::world::World;
@@ -39,7 +39,7 @@ impl GameController {
 
     pub fn setup_resource_manager(world: &mut World) {
         // Setup resource manager
-        let reader = YARCRead::new("demo_graphics.yarc".to_string());
+        let reader = YARCReader::new("demo_graphics.yarc".to_string());
         let mut manager = ResourceManager::new(reader);
         manager.read().unwrap(); // Read resource from the disk
         manager.query_load_all().unwrap(); // Queue all resources for loading
