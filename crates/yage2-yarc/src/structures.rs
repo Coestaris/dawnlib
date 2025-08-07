@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use yage2_core::resources::{ResourceHeader, ResourceType};
+use yage2_core::resources::reader::ResourceHeader;
+use yage2_core::resources::resource::ResourceType;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ShaderType {

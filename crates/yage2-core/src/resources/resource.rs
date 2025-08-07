@@ -1,6 +1,9 @@
-use crate::resources::r#ref::ResourceRef;
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::any::{Any, TypeId};
+use std::ptr::NonNull;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ResourceType {
@@ -35,6 +38,12 @@ pub enum ResourceType {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ResourceID(String);
 
+impl ResourceID {
+    pub fn new(str: String) -> ResourceID {
+        ResourceID(str)
+    }
+}
+
 impl std::fmt::Display for ResourceID {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "ResourceID({})", self.0)
@@ -47,23 +56,26 @@ impl Default for ResourceType {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Resource {
     type_id: TypeId,
-    cell: ResourceRef,
+    in_use: Arc<AtomicBool>,
+    ptr: NonNull<()>,
 }
 
 impl Resource {
-    pub fn new<T>(cell: ResourceRef) -> Self
+    pub fn new<T>(in_use: Arc<AtomicBool>, cell: NonNull<T>) -> Resource
     where
         T: Any + Send + Sync,
     {
         Resource {
             type_id: TypeId::of::<T>(),
-            cell,
+            in_use,
+            ptr: cell.cast(),
         }
     }
 
-    fn deref<'a, T>(self) -> &'a T
+    pub fn cast<'a, T>(&self) -> &'a T
     where
         T: Any + Send + Sync,
     {
@@ -71,6 +83,20 @@ impl Resource {
             panic!("Resource type mismatch");
         }
 
-        unsafe { self.cell.deref::<T>() }
+        unsafe { &*self.ptr.as_ptr().cast::<T>() }
     }
 }
+
+impl Drop for Resource {
+    fn drop(&mut self) {
+        debug!("Resource of type {:?} is being dropped", self.type_id);
+
+        // Tell the manager that this resource is no longer in use
+        if self.in_use.load(std::sync::atomic::Ordering::SeqCst) {
+            panic!("Resource is still in use");
+        }
+    }
+}
+
+unsafe impl Send for Resource {}
+unsafe impl Sync for Resource {}

@@ -1,5 +1,5 @@
 use common::logging::CommonLogger;
-use common::resources::YARCResourceManagerIO;
+use common::resources::YARCRead;
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::fetch::Single;
@@ -16,11 +16,11 @@ use yage2_audio::entities::sources::actor::{
     ActorID, ActorsSource, ActorsSourceEvent, DistanceGainFunction, DistanceLPFFunction,
 };
 use yage2_audio::player::{Player, PlayerProfileFrame};
-use yage2_audio::resources::{
-    FLACResourceFactory, MIDIResourceFactory, OGGResourceFactory, WAVResourceFactory,
-};
+use yage2_audio::resources::{MIDIResourceFactory, WAVResourceFactory};
 use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop, Tick};
-use yage2_core::resources::{Resource, ResourceManager, ResourceManagerConfig, ResourceType};
+use yage2_core::resources::factory::FactoryBinding;
+use yage2_core::resources::manager::{ResourceEvent, ResourceManager};
+use yage2_core::resources::resource::{Resource, ResourceID, ResourceType};
 
 #[cfg(target_os = "linux")]
 // Alsa backend works A LOT better with 44,100 Hz sample rate
@@ -33,15 +33,7 @@ const REFRESH_RATE: f32 = 60.0; // Main loop refresh rate in ticks per second
 #[derive(Component)]
 struct GameController {
     actors_source_target: AudioEventTargetId,
-    resource_manager: ResourceManager,
     counter: usize,
-}
-
-impl Drop for GameController {
-    fn drop(&mut self) {
-        info!("GameController dropped");
-        self.resource_manager.finalize_all(ResourceType::AudioWAV);
-    }
 }
 
 impl GameController {
@@ -50,29 +42,21 @@ impl GameController {
         world.insert(entity, self);
     }
 
-    pub fn setup_resource_manager() -> ResourceManager {
+    pub fn setup_resource_manager(world: &mut World) {
         // Setup resource manager
-        let resource_manager = ResourceManager::new(ResourceManagerConfig {
-            backend: Box::new(YARCResourceManagerIO::new("demo_audio.yarc".to_string())),
-        });
-        resource_manager.register_factory(
-            ResourceType::AudioWAV,
-            Arc::new(WAVResourceFactory::new(SAMPLE_RATE)),
-        );
-        resource_manager.register_factory(
-            ResourceType::AudioOGG,
-            Arc::new(OGGResourceFactory::new(SAMPLE_RATE)),
-        );
-        resource_manager.register_factory(
-            ResourceType::AudioFLAC,
-            Arc::new(FLACResourceFactory::new(SAMPLE_RATE)),
-        );
-        resource_manager.register_factory(
-            ResourceType::AudioMIDI,
-            Arc::new(MIDIResourceFactory::new()),
-        );
-        resource_manager.poll_io().unwrap();
-        resource_manager
+        let read = YARCRead::new("demo_audio.yarc".to_string());
+        let mut resource_manager = ResourceManager::new(read).unwrap();
+
+        let mut wav_factory = WAVResourceFactory::new(SAMPLE_RATE);
+        wav_factory.bind(resource_manager.create_factory_biding(ResourceType::AudioWAV));
+        wav_factory.attach_to_ecs(world);
+
+        let mut midi_factory = MIDIResourceFactory::new();
+        midi_factory.bind(resource_manager.create_factory_biding(ResourceType::AudioMIDI));
+        midi_factory.attach_to_ecs(world);
+
+        resource_manager.query_load_all().unwrap();
+        resource_manager.attach_to_ecs(world);
     }
 
     fn setup_audio_pipeline(world: &mut World) -> AudioEventTargetId {
@@ -89,8 +73,7 @@ impl GameController {
         let sink = InterleavedSink::new(bus, SAMPLE_RATE);
         let player = Player::new(SAMPLE_RATE, PlayerBackendConfig {}, sink, true).unwrap();
 
-        // Allow player to receive events from the ECS
-        // (moved to the ECS storage)
+        // Allow player to receive events from the ECS (moved to the ECS storage)
         player.attach_to_ecs(world);
 
         actors_source_target
@@ -98,9 +81,9 @@ impl GameController {
 
     pub fn setup(world: &mut World) {
         // Move controller to the ECS
+        Self::setup_resource_manager(world);
         GameController {
             actors_source_target: Self::setup_audio_pipeline(world),
-            resource_manager: Self::setup_resource_manager(),
             counter: 0,
         }
         .attach_to_ecs(world);
@@ -171,12 +154,15 @@ fn player_profile_handler(r: Receiver<PlayerProfileFrame>) {
 }
 
 fn player_handler(
-    _: Receiver<Tick>,
+    e: Receiver<ResourceEvent>,
     mut gc: Single<&mut GameController>,
+    mut rm: Single<&mut ResourceManager>,
     mut sender: Sender<AudioEvent>,
 ) {
-    if gc.counter == 0 {
-        let clip = gc.resource_manager.get_resource("loop").unwrap();
+    if matches!(e.event, ResourceEvent::AllResourcesLoaded) {
+        let clip = rm
+            .get_resource(ResourceID::new("loop".to_string()))
+            .unwrap();
         sender.send(gc.add_audio_actor(Vec3::ZERO, 0.7, clip).0);
         gc.counter += 1;
     }

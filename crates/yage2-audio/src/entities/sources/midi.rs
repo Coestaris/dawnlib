@@ -13,7 +13,7 @@ use log::warn;
 use std::thread::sleep;
 use std::time::Duration;
 use tinyrand::Rand;
-use yage2_core::resources::Resource;
+use yage2_core::resources::resource::Resource;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteName {
@@ -206,7 +206,7 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
     pub fn play(&mut self, player: &Player) {
         // Using indirection to not borrow self mutably
         let r = self.midi.clone();
-        let r = r.downcast_ref::<MIDIResource>().unwrap();
+        let r = r.cast::<MIDIResource>();
         let events = &r.events;
 
         while self.index < events.len() {

@@ -10,7 +10,8 @@ use log::{debug, info};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use tempdir::TempDir;
-use yage2_core::resources::{ResourceChecksum, ResourceHeader, ResourceType};
+use yage2_core::resources::reader::{ResourceChecksum, ResourceHeader};
+use yage2_core::resources::resource::ResourceType;
 use yage2_core::utils::format_now;
 
 #[derive(Debug)]
