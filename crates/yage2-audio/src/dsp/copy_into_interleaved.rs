@@ -117,7 +117,6 @@ pub unsafe fn avx_block_m32(input: &PlanarBlock<f32>, output: &mut InterleavedBl
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "sse4.2")]
 pub unsafe fn sse42_block_m32(input: &PlanarBlock<f32>, output: &mut InterleavedBlock<f32>) {
-    use core::arch::x86_64::*;
     todo!();
 }
 

@@ -1,7 +1,7 @@
 mod assets;
 mod bindings;
 
-use crate::gl::assets::TextureAssetFactory;
+use crate::gl::assets::{ShaderAssetFactory, TextureAssetFactory};
 use crate::renderable::Renderable;
 use crate::renderer::{
     RendererBackendConfig, RendererBackendError, RendererBackendTrait, RendererTickResult,
@@ -13,15 +13,19 @@ use yage2_core::assets::factory::FactoryBinding;
 pub struct GLRenderer {
     view_handle: ViewHandle,
     texture_factory: Option<TextureAssetFactory>,
-    shader_factory: Option<TextureAssetFactory>,
+    shader_factory: Option<ShaderAssetFactory>,
 }
 pub struct GLRendererConfig {
+    pub fps: usize,
+    pub vsync: bool,
     pub texture_factory_binding: Option<FactoryBinding>,
     pub shader_factory_binding: Option<FactoryBinding>,
 }
 
 #[derive(Debug, Clone)]
-pub enum GLRendererError {}
+pub enum GLRendererError {
+    ViewError(ViewError),
+}
 
 // OpenGL has a lot of platform-dependent code,
 // so we define a trait for the view handle.
@@ -68,7 +72,7 @@ impl RendererBackendTrait for GLRenderer {
             None
         };
         let shader_factory = if let Some(binding) = cfg.shader_factory_binding {
-            let mut factory = TextureAssetFactory::new();
+            let mut factory = ShaderAssetFactory::new();
             factory.bind(binding);
             Some(factory)
         } else {
@@ -99,7 +103,9 @@ impl RendererBackendTrait for GLRenderer {
             bindings::Clear(bindings::COLOR_BUFFER_BIT);
         }
 
-        self.view_handle.swap_buffers().unwrap();
+        self.view_handle
+            .swap_buffers()
+            .map_err(GLRendererError::ViewError)?;
 
         Ok(RendererTickResult {
             draw_calls: 0,

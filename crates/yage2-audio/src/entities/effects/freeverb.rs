@@ -1,4 +1,4 @@
-use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
+use crate::entities::events::{AudioEventTarget, AudioEventTargetId, AudioEventType};
 use crate::entities::{BlockInfo, Effect};
 use crate::sample::PlanarBlock;
 
@@ -79,7 +79,7 @@ impl FreeverbEffect {
         tuning.apply(&mut freeverb);
         freeverb
     }
-    
+
     pub fn get_id(&self) -> AudioEventTargetId {
         self.id
     }

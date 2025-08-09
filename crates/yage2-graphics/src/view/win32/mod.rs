@@ -1,35 +1,41 @@
 mod input;
 
-use crate::engine::application::{Application, ApplicationConfig, ApplicationError};
-use crate::engine::graphics::Graphics;
-use crate::engine::input::Event;
-use crate::engine::vulkan::{GraphicsError};
-use crate::engine::vulkan::graphics::{Graphics, VulkanGraphicsInitArgs};
-use crate::engine::vulkan::objects::surface::Surface;
-use crate::engine::window::{Window, WindowConfig, WindowFactory};
-use crate::platforms::win32::input::{convert_key, convert_mouse_button};
+use crate::gl::ViewHandleOpenGL;
+use crate::input::InputEvent;
+use crate::view::win32::input::{convert_key, convert_mouse_button};
+use crate::view::{TickResult, ViewConfig, ViewTrait};
+use crossbeam_queue::ArrayQueue;
 use log::{debug, info, warn};
-use std::ffi::c_char;
+use std::ffi::{c_char, c_void};
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use windows::core::{HSTRING, PCWSTR};
+use windows::core::{s, HSTRING, PCSTR, PCWSTR};
 use windows::Win32::Foundation::{
-    GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WIN32_ERROR, WPARAM,
+    GetLastError, FARPROC, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WIN32_ERROR, WPARAM,
 };
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC, HDC};
+use windows::Win32::Graphics::OpenGL::{
+    wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglGetProcAddress, wglMakeCurrent,
+    ChoosePixelFormat, SetPixelFormat, SwapBuffers, HGLRC, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW,
+    PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
+};
+use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetModuleHandleW, GetProcAddress};
 use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcA, DestroyWindow, DispatchMessageA, GetMessageA, PostQuitMessage,
-    RegisterClassW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, WINDOW_EX_STYLE, WM_DESTROY,
-    WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONDOWN, WM_RBUTTONUP, WNDCLASSW, WS_OVERLAPPEDWINDOW,
-    WS_VISIBLE,
+    CreateWindowExW, DefWindowProcA, DestroyWindow, DispatchMessageA, GetMessageA, PostMessageW,
+    PostQuitMessage, RegisterClassW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, WINDOW_EX_STYLE,
+    WM_APP, WM_CLOSE, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONDOWN,
+    WM_RBUTTONUP, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+pub struct PlatformSpecificViewConfig {}
+
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub enum Win32Error {
+pub enum ViewError {
     InvalidHWND(),
     InvalidHINSTANCE(),
     InvalidClassName(String),
@@ -40,68 +46,63 @@ pub enum Win32Error {
     SetWindowTextError(WIN32_ERROR),
     ShowWindowError(WIN32_ERROR),
     UpdateWindowError(WIN32_ERROR),
-
-    GraphicsCreateError(GraphicsError),
-    VulkanCreateSurfaceError(ash::vk::Result),
-    VulkanUpdateSurfaceError(GraphicsError),
+    InvalidHDC,
+    InvalidPixelFormat,
+    ContextCreationError(WIN32_ERROR),
+    FunctionLoadError(WIN32_ERROR, String),
 }
 
-#[allow(dead_code)]
-pub struct Win32Window {
-    hwnd: HWND,
-    hinstance: HINSTANCE,
-    graphics: Graphics,
-    events_sender: Sender<Event>,
+impl std::fmt::Display for ViewError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ViewError::InvalidHWND() => write!(f, "Invalid HWND"),
+            ViewError::InvalidHINSTANCE() => write!(f, "Invalid HINSTANCE"),
+            ViewError::InvalidClassName(name) => write!(f, "Invalid class name: {}", name),
+            ViewError::GetInstanceError(err) => {
+                write!(f, "Failed to get instance handle: {:?}", err)
+            }
+            ViewError::RegisterClassError(err) => {
+                write!(f, "Failed to register window class: {:?}", err)
+            }
+            ViewError::CreateWindowError(err) => write!(f, "Failed to create window: {:?}", err),
+            ViewError::SetWindowTextError(err) => {
+                write!(f, "Failed to set window title: {:?}", err)
+            }
+            ViewError::ShowWindowError(err) => write!(f, "Failed to show window: {:?}", err),
+            ViewError::UpdateWindowError(err) => write!(f, "Failed to update window: {:?}", err),
+            ViewError::InvalidHDC => write!(f, "Invalid HDC"),
+            ViewError::InvalidPixelFormat => write!(f, "Invalid pixel format"),
+            ViewError::ContextCreationError(err) => {
+                write!(f, "Failed to create OpenGL context: {:?}", err)
+            }
+            ViewError::FunctionLoadError(err, symbol) => {
+                write!(f, "Failed to load function '{}': {:?}", symbol, err)
+            }
+        }
+    }
 }
+
+impl std::error::Error for ViewError {}
 
 const CLASS_NAME: &str = "Yage2 Window Class";
+pub const WM_APP_QUIT_REQUESTED: u32 = WM_APP + 1;
 
-pub struct Win32Application {
-    window_factory: Win32WindowFactory,
+pub(crate) struct View {
+    hwnd: HWND,
+    hinstance: HINSTANCE,
+    events_sender: Arc<ArrayQueue<InputEvent>>,
 }
 
-impl Application<Win32Window, Win32Error, Graphics, GraphicsError>
-    for Win32Application
-{
-    fn new(
-        config: ApplicationConfig,
-    ) -> Result<Win32Application, ApplicationError<Win32Error, GraphicsError>>
-    where
-        Self: Sized,
-    {
-        debug!("Creating Win32 application with config: {:?}", config);
-        let window_factory =
-            Win32WindowFactory::new(config.window_config).map_err(ApplicationError::InitError)?;
-        Ok(Win32Application { window_factory })
-    }
-
-    fn get_window_factory(
-        &self,
-    ) -> Arc<dyn WindowFactory<Win32Window, Win32Error, Graphics> + Send + Sync> {
-        Arc::new(self.window_factory.clone())
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Win32WindowFactory {
-    config: WindowConfig,
-}
-
-impl WindowFactory<Win32Window, Win32Error, Graphics> for Win32WindowFactory {
-    fn new(config: WindowConfig) -> Result<Self, Win32Error>
-    where
-        Self: Sized,
-    {
-        debug!("Creating Win32 window factory with config: {:?}", config);
-        Ok(Win32WindowFactory { config })
-    }
-
-    fn create_window(&self, events_sender: Sender<Event>) -> Result<Win32Window, Win32Error> {
+impl ViewTrait for View {
+    fn open(
+        cfg: ViewConfig,
+        events_sender: Arc<ArrayQueue<InputEvent>>,
+    ) -> Result<Self, crate::view::ViewError> {
         unsafe {
             debug!("Retrieving the instance handle");
             let hinstance = match GetModuleHandleW(None) {
                 Ok(handle) => Ok(HINSTANCE::from(handle)),
-                Err(_) => Err(Win32Error::GetInstanceError(get_last_error())),
+                Err(_) => Err(ViewError::GetInstanceError(get_last_error())),
             }?;
 
             debug!("Registering window class. class_name={}", CLASS_NAME);
@@ -113,14 +114,11 @@ impl WindowFactory<Win32Window, Win32Error, Graphics> for Win32WindowFactory {
                 lpfnWndProc: Some(default_proc),
                 ..Default::default()
             }) {
-                0 => Err(Win32Error::RegisterClassError(get_last_error())),
+                0 => Err(ViewError::RegisterClassError(get_last_error())),
                 atom => Ok(atom),
             }?;
 
-            debug!(
-                "Creating window. w={}, h={}",
-                self.config.width, self.config.height
-            );
+            debug!("Creating window. w={}, h={}", cfg.width, cfg.height);
             let title = HSTRING::from("TItle");
             let hwnd = match CreateWindowExW(
                 WINDOW_EX_STYLE(0),
@@ -129,61 +127,38 @@ impl WindowFactory<Win32Window, Win32Error, Graphics> for Win32WindowFactory {
                 WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
-                self.config.width.cast_signed(),
-                self.config.height.cast_signed(),
+                cfg.width as i32,
+                cfg.height as i32,
                 None,
                 None,
                 hinstance.into(),
                 None,
             ) {
                 Ok(hwnd) => Ok(hwnd),
-                Err(_) => Err(Win32Error::CreateWindowError(get_last_error())),
+                Err(_) => Err(ViewError::CreateWindowError(get_last_error())),
             }?;
 
-            debug!("Creating Vulkan graphics");
-            let graphics = Graphics::new(VulkanGraphicsInitArgs {
-                instance_extensions: vec![ash::khr::win32_surface::NAME.as_ptr() as *const c_char],
-                device_extensions: vec![],
-                layers: vec![],
-                surface_constructor: Box::new(|entry, instance| {
-                    debug!("Creating Win32 Vulkan surface");
-                    Surface::new(
-                        entry,
-                        instance,
-                        hinstance.0 as ash::vk::HINSTANCE,
-                        hwnd.0 as ash::vk::HWND,
-                        Some("win32_surface".to_string())
-                    )
-                }),
-            })
-            .map_err(Win32Error::GraphicsCreateError)?;
-
             info!("WIN32 Window with Vulkan graphics created successfully");
-            Ok(Win32Window {
+            Ok(View {
                 hwnd,
                 hinstance,
-                graphics,
                 events_sender,
             })
         }
     }
-}
 
-fn get_last_error() -> WIN32_ERROR {
-    unsafe { GetLastError() }
-}
+    fn get_handle(&self) -> ViewHandle {
+        ViewHandle {
+            hwnd: self.hwnd,
+            hinstance: self.hinstance,
+            ctx: None,
+            hdc: None,
+            opengl32_hmod: None,
+        }
+    }
 
-/* Global atomic flag to signal the application to stop.
- * This is used to handle the WM_DESTROY message and gracefully exit
- * the application.
- * TODO: Consider using a more sophisticated event loop or message handling system.
- */
-static DESTROYED: AtomicBool = AtomicBool::new(false);
-
-impl Window<Win32Error, Graphics> for Win32Window {
-    fn tick(&mut self) -> Result<bool, Win32Error> {
-        let res = !DESTROYED.load(std::sync::atomic::Ordering::Relaxed);
-
+    fn tick(&mut self) -> TickResult {
+        let mut closed = false;
         let mut msg = MSG::default();
         while unsafe { GetMessageA(&mut msg, Some(self.hwnd), 0, 0).0 != 0 } {
             unsafe {
@@ -192,72 +167,243 @@ impl Window<Win32Error, Graphics> for Win32Window {
 
             /* Process the message synchronously
              * to make things simpler */
-            let event: Event;
+            let event: InputEvent;
             match msg.message {
+                WM_APP_QUIT_REQUESTED => {
+                    debug!("WM_APP_QUIT_REQUESTED received, closing the window");
+                    closed = true;
+                    continue;
+                }
                 WM_KEYDOWN => {
-                    event = Event::KeyPress(convert_key(VIRTUAL_KEY(msg.wParam.0 as u16)));
+                    event = InputEvent::KeyPress(convert_key(VIRTUAL_KEY(msg.wParam.0 as u16)));
                 }
                 WM_KEYUP => {
-                    event = Event::KeyRelease(convert_key(VIRTUAL_KEY(msg.wParam.0 as u16)));
+                    event = InputEvent::KeyRelease(convert_key(VIRTUAL_KEY(msg.wParam.0 as u16)));
                 }
                 WM_LBUTTONDOWN => {
-                    event = Event::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
+                    event = InputEvent::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 WM_LBUTTONUP => {
-                    event = Event::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
+                    event =
+                        InputEvent::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 WM_MBUTTONDOWN => {
-                    event = Event::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
+                    event = InputEvent::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 WM_MBUTTONUP => {
-                    event = Event::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
+                    event =
+                        InputEvent::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 WM_MOUSEMOVE => {
                     let x = (msg.lParam.0 as i32 & 0xFFFF) as f32;
                     let y = (msg.lParam.0 >> 16) as i32 as f32;
-                    event = Event::MouseMove { x, y };
+                    event = InputEvent::MouseMove { x, y };
                 }
                 WM_MOUSEWHEEL => {
                     let delta = (msg.wParam.0 as i32 >> 16) as f32 / 120.0; // Convert to standard scroll units
-                    event = Event::MouseScroll {
+                    event = InputEvent::MouseScroll {
                         delta_x: 0.0,
                         delta_y: delta,
                     };
                 }
                 WM_RBUTTONDOWN => {
-                    event = Event::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
+                    event = InputEvent::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 WM_RBUTTONUP => {
-                    event = Event::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
+                    event =
+                        InputEvent::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
                 }
                 _ => {
-                    return Ok(res);
+                    return if !closed {
+                        TickResult::Continue
+                    } else {
+                        TickResult::Closed
+                    }
                 }
             }
 
-            if let Err(e) = self.events_sender.send(event) {
+            if let Err(e) = self.events_sender.push(event) {
                 warn!("Failed to send event: {:?}", e);
             }
         }
 
-        Ok(res)
-    }
-
-    fn kill(&mut self) -> Result<(), Win32Error> {
-        if !self.hwnd.is_invalid() {
-            // Ignore the result, as we are just cleaning up
-            let _ = unsafe { DestroyWindow(self.hwnd) };
+        if !closed {
+            TickResult::Continue
+        } else {
+            TickResult::Closed
         }
-        Ok(())
     }
 
-    fn get_graphics(&mut self) -> &mut Graphics {
-        &mut self.graphics
+    fn set_size(&self, width: usize, height: usize) {
+        todo!()
+    }
+
+    fn set_title(&self, title: &str) {
+        todo!()
     }
 }
 
+impl Drop for View {
+    fn drop(&mut self) {
+        info!("Destroying WIN32 window and releasing resources");
+        unsafe {
+            if !self.hwnd.is_invalid() {
+                DestroyWindow(self.hwnd).ok();
+            }
+        }
+    }
+}
+
+pub struct ViewHandle {
+    hwnd: HWND,
+    hinstance: HINSTANCE,
+    ctx: Option<HGLRC>,
+    hdc: Option<HDC>,
+
+    opengl32_hmod: Option<HMODULE>,
+}
+
+#[cfg(feature = "gl")]
+
+impl ViewHandle {
+    unsafe fn load_gl_proc(&self, symbol: &str) -> Option<*const c_void> {
+        unsafe {
+            // Convert the symbol to a C-style string
+            let c = std::ffi::CString::new(symbol).ok()?;
+
+            // 1) Trying to get a pointer via wglGetProcAddress (fore >1.1 and extensions)
+            let p =
+                unsafe { wglGetProcAddress(PCSTR(c.as_ptr() as _)) }.map(|f| f as *const c_void);
+
+            // wglGetProcAddress can return NULL and some other values
+            // that are not valid function pointers.
+            if let Some(ptr) = p {
+                let iv = [1usize, 2, 3, usize::MAX];
+                if !iv.contains(&(ptr as usize)) {
+                    return Some(ptr);
+                }
+            }
+
+            // 2) Fallback to GetProcAddress
+            // This is needed for OpenGL 1.0 and some core functions.
+            // It will return NULL if the function is not found.
+            let hmod = if let Some(hmod) = self.opengl32_hmod {
+                hmod
+            } else {
+                if let Ok(hmod) = GetModuleHandleA(s!("opengl32.dll")) {
+                    debug!("Loaded opengl32.dll module handle");
+                    hmod
+                } else {
+                    // If we can't get the module handle, return None
+                    warn!("Failed to get module handle for opengl32.dll");
+                    return None;
+                }
+            };
+
+            let p2 = GetProcAddress(hmod, PCSTR(c.as_ptr() as _))?;
+            Some(p2 as *const c_void)
+        }
+    }
+}
+
+#[cfg(feature = "gl")]
+impl ViewHandleOpenGL for ViewHandle {
+    fn create_context(&mut self, fps: usize, vsync: bool) -> Result<(), crate::view::ViewError> {
+        unsafe {
+            let pfd = PIXELFORMATDESCRIPTOR {
+                nSize: size_of::<PIXELFORMATDESCRIPTOR>() as u16,
+                nVersion: 1,
+                dwFlags: PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER,
+                iPixelType: PFD_TYPE_RGBA,
+                cColorBits: 32,
+                cDepthBits: 24,
+                cStencilBits: 8,
+                ..Default::default()
+            };
+
+            let hdc = GetDC(Some(self.hwnd));
+            if hdc.is_invalid() {
+                return Err(ViewError::InvalidHDC);
+            }
+
+            let pixel_format = ChoosePixelFormat(hdc, &pfd);
+            SetPixelFormat(hdc, pixel_format, &pfd).map_err(|_| ViewError::InvalidPixelFormat)?;
+
+            let hglrc = wglCreateContext(hdc)
+                .map_err(|_| ViewError::ContextCreationError(get_last_error()))?;
+            wglMakeCurrent(hdc, hglrc)
+                .map_err(|_| ViewError::ContextCreationError(get_last_error()))?;
+
+            // Set the OpenGL context
+            self.hdc = Some(hdc);
+            self.ctx = Some(hglrc);
+
+            info!("OpenGL context created successfully");
+            Ok(())
+        }
+    }
+
+    fn get_proc_addr(&self, symbol: &str) -> Result<*const c_void, crate::view::ViewError> {
+        debug!("Loading OpenGL function: {}", symbol);
+
+        if self.hdc.is_none() || self.ctx.is_none() {
+            return Err(ViewError::InvalidHDC);
+        }
+        #[cfg(debug_assertions)]
+        unsafe {
+            assert!(
+                !wglGetCurrentContext().is_invalid(),
+                "No current OpenGL context"
+            );
+        }
+
+        unsafe {
+            self.load_gl_proc(symbol)
+                .ok_or_else(|| ViewError::FunctionLoadError(get_last_error(), symbol.to_string()))
+        }
+    }
+
+    fn swap_buffers(&self) -> Result<(), crate::view::ViewError> {
+        if self.hdc.is_none() || self.ctx.is_none() {
+            return Err(ViewError::InvalidHDC);
+        }
+
+        unsafe {
+            if SwapBuffers(self.hdc.unwrap()).is_err() {
+                return Err(ViewError::ContextCreationError(get_last_error()));
+            }
+
+            Ok(())
+        }
+    }
+}
+
+impl Drop for ViewHandle {
+    fn drop(&mut self) {
+        info!("Destroying OpenGL context and releasing resources");
+
+        if self.hdc.is_none() || self.ctx.is_none() {
+            return;
+        }
+
+        let hdc = self.hdc.unwrap();
+        let hglrc = self.ctx.unwrap();
+
+        unsafe {
+            // Delete the OpenGL context
+            wglDeleteContext(hglrc).ok();
+            // Release the device context
+            ReleaseDC(Some(self.hwnd), hdc);
+        }
+    }
+}
+
+fn get_last_error() -> WIN32_ERROR {
+    unsafe { GetLastError() }
+}
+
 unsafe extern "system" fn default_proc(
-    window: HWND,
+    hwnd: HWND,
     message: u32,
     wparam: WPARAM,
     lparam: LPARAM,
@@ -265,15 +411,21 @@ unsafe extern "system" fn default_proc(
     match message {
         WM_PAINT => LRESULT(0),
 
+        WM_CLOSE => {
+            /* Send a custom message to request the application to quit */
+            PostMessageW(Some(hwnd), WM_APP_QUIT_REQUESTED, WPARAM(0), LPARAM(0));
+            /* Block the message loop until the window is destroyed */
+            LRESULT(0)
+        }
+
         WM_DESTROY => {
             debug!("WM_DESTROY received, destroying window");
-            DESTROYED.store(true, std::sync::atomic::Ordering::Relaxed);
             unsafe {
                 PostQuitMessage(0);
             }
             LRESULT(0)
         }
 
-        _ => unsafe { DefWindowProcA(window, message, wparam, lparam) },
+        _ => unsafe { DefWindowProcA(hwnd, message, wparam, lparam) },
     }
 }

@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{Builder, JoinHandle};
 use triple_buffer::{triple_buffer, Input, Output};
-use yage2_core::ecs::Tick;
+use yage2_core::ecs::{StopEventLoop, Tick};
 use yage2_core::profile::{PeriodProfiler, ProfileFrame, TickProfiler};
 
 pub(crate) struct RendererTickResult {
@@ -253,23 +253,30 @@ impl Renderer {
         // Setup renderer
         let inputs_queue = Arc::new(ArrayQueue::<InputEvent>::new(INPUTS_QUEUE_CAPACITY));
         let inputs_queue_clone = inputs_queue.clone();
-        let stop_signal_clone = stop_signal.clone();
+        let stop_signal_clone1 = stop_signal.clone();
+        let stop_signal_clone2 = stop_signal.clone();
         let initial = vec![];
         let (renderables_buffer_input, renderables_buffer_output) =
             triple_buffer::<Vec<Renderable>>(&initial);
         let handle = Builder::new()
             .name("renderer".to_string())
             .spawn(move || {
-                Self::renderer(
+                let err = Self::renderer(
                     view_config,
                     backend_config,
                     inputs_queue_clone,
                     renderables_buffer_output,
                     profiler,
-                    stop_signal_clone,
-                )
-                .unwrap();
+                    stop_signal_clone1,
+                );
+
+                // Request other threads to stop
+                stop_signal_clone2.store(true, Ordering::SeqCst);
                 info!("Renderer thread finished");
+
+                if let Err(e) = err {
+                    warn!("Renderer thread error: {:?}", e);
+                }
             })
             .map_err(|_| RendererError::RendererThreadSetupFailed)?;
 
@@ -301,7 +308,7 @@ impl Renderer {
 
         info!("Renderer thread started");
         let mut result = Ok(());
-        while !stop_signal.load(Ordering::Relaxed) {
+        while !stop_signal.load(Ordering::SeqCst) {
             profiler.view_tick_start();
             match view.tick() {
                 TickResult::Continue => {
@@ -338,7 +345,7 @@ impl Renderer {
             profiler.backend_tick_end();
         }
 
-        stop_signal.store(true, Ordering::Relaxed);
+        stop_signal.store(true, Ordering::SeqCst);
         result
     }
 
@@ -350,11 +357,28 @@ impl Renderer {
     /// Also, if you enabled profiling, it will send profiling data as `RendererProfileFrame`
     /// events to the ECS every second.
     ///
+    /// Additionally, if the Window or Renderer is closed/failed the event loop will be stopped
+    /// by sending a `StopEventLoop` event to the ECS.
+    ///
     /// This function moves the player into the ECS world.
     pub fn attach_to_ecs(self, world: &mut World) {
         // Setup the renderer player entity in the ECS
         let renderer_entity = world.spawn();
         world.insert(renderer_entity, self);
+
+        // If renderer loop is closed or stopped,
+        // we need to stop the event loop
+        fn view_closed_handler(
+            _: Receiver<Tick>,
+            renderer: Single<&Renderer>,
+            mut sender: Sender<StopEventLoop>,
+        ) {
+            // Check if the view was closed, if so, send a global event to stop the event loop
+            if renderer.0.stop_signal.load(Ordering::Relaxed) {
+                info!("View closed, stopping the event loop");
+                sender.send(StopEventLoop);
+            }
+        }
 
         fn profile_handler(
             _: Receiver<Tick>,
@@ -431,6 +455,7 @@ impl Renderer {
         // Add handlers to the ECS to process inputs and profiling
         world.add_handler(profile_handler);
         world.add_handler(inputs_handler);
+        world.add_handler(view_closed_handler);
         // Add a handler to collect renderables from the ECS
         world.add_handler(collect_renderables);
     }

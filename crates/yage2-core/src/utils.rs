@@ -21,7 +21,6 @@ pub fn format_now() -> Option<String> {
         let mut ret = mem::zeroed();
         #[cfg(windows)]
         {
-            use libc::localtime_s;
             libc::localtime_s(addr_of_mut!(ret), &datetime);
         }
         #[cfg(unix)]

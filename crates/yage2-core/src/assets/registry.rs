@@ -1,13 +1,13 @@
-use std::any::TypeId;
-use std::cell::RefCell;
+use crate::assets::factory::AssetQueryID;
 use crate::assets::reader::AssetHeader;
 use crate::assets::AssetID;
 use log::{info, warn};
+use std::any::TypeId;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
-use crate::assets::factory::AssetQueryID;
 
 pub(crate) enum AssetState {
     Raw(Vec<u8>),
@@ -29,10 +29,7 @@ impl AssetRegistry {
     }
 
     pub fn push(&mut self, id: AssetID, raw: Vec<u8>, header: AssetHeader) {
-        info!(
-            "Registering asset: {} (type {:?})",
-            id, header.asset_type
-        );
+        info!("Registering asset: {} (type {:?})", id, header.asset_type);
 
         let state = AssetState::Raw(raw);
         self.0.insert(
@@ -71,7 +68,7 @@ impl AssetRegistry {
 }
 
 pub(crate) struct QueriesRegistry {
-    queries: RefCell<Vec<AssetQueryID>>
+    queries: RefCell<Vec<AssetQueryID>>,
 }
 
 impl QueriesRegistry {

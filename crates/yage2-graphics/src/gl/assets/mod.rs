@@ -54,7 +54,7 @@ impl TextureAssetFactory {
     }
 
     pub fn bind(&mut self, binding: FactoryBinding) {
-        assert_eq!(binding.asset_type(), AssetType::ShaderSPIRV);
+        assert_eq!(binding.asset_type(), AssetType::ImagePNG);
         self.basic_factory.bind(binding);
     }
 

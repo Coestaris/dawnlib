@@ -27,8 +27,8 @@ impl GameController {
     pub fn setup_asset_hub(world: &mut World) -> (FactoryBinding, FactoryBinding) {
         let reader = YARCReader::new("demo_graphics.yarc".to_string());
         let mut manager = AssetHub::new(reader).unwrap();
-        
-        // Unlike other factories, shader and texture assets are 
+
+        // Unlike other factories, shader and texture assets are
         // managed directly by the renderer, instead of processing assets
         // in the main loop (via ECS).
         let shader_binding = manager.create_factory_biding(AssetType::ShaderSPIRV);
@@ -51,10 +51,12 @@ impl GameController {
             height: 600,
         };
         let backend_config = RendererBackendConfig {
+            fps: REFRESH_RATE as usize,
             shader_factory_binding: Some(shader_binding),
             texture_factory_binding: Some(texture_binding),
+            vsync: true,
         };
-        
+
         let renderer = Renderer::new(view_config, backend_config, true).unwrap();
         renderer.attach_to_ecs(world);
     }
