@@ -1,4 +1,4 @@
-use crate::backend::{PlayerBackendTrait, InternalBackendConfig};
+use crate::backend::{InternalBackendConfig, PlayerBackendTrait};
 use crate::sample::{MappedInterleavedBuffer, Sample, SampleCode};
 use crate::{ChannelsCount, SampleRate, SamplesCount};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -58,7 +58,7 @@ pub(crate) struct Player<S> {
 }
 
 #[cfg(target_os = "macos")]
-// Internal CPAL implementation for MacOS has weird issues with Send 
+// Internal CPAL implementation for MacOS has weird issues with Send
 // and Sync traits. I'll deal with it later.
 unsafe impl<S> Send for Player<S> where S: Sample + Send {}
 

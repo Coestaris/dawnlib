@@ -1,4 +1,4 @@
-use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
+use crate::entities::events::{AudioEventTarget, AudioEventTargetId, AudioEventType};
 use crate::entities::{BlockInfo, Source};
 use crate::sample::PlanarBlock;
 use tinyrand::Wyrand;
@@ -61,7 +61,7 @@ impl WaveformSource {
 
 mod dsp {
     use crate::entities::BlockInfo;
-    use crate::sample::{PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
+    use crate::sample::PlanarBlock;
     use crate::{BLOCK_SIZE, CHANNELS_COUNT};
     use tinyrand::Rand;
 

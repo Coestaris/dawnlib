@@ -1,5 +1,7 @@
 #[cfg(target_os = "macos")]
 mod darwin;
+#[cfg(target_os = "windows")]
+mod win32;
 #[cfg(target_os = "linux")]
 // TODO: Support for Wayland
 mod x11;
@@ -28,6 +30,17 @@ pub mod view_impl {
     pub(crate) type View = x11::View;
 
     pub use crate::view::x11::ViewHandle;
+}
+
+#[cfg(target_os = "windows")]
+pub mod view_impl {
+    use crate::view::win32;
+
+    pub type PlatformSpecificViewConfig = win32::PlatformSpecificViewConfig;
+    pub type ViewError = win32::ViewError;
+    pub(crate) type View = win32::View;
+
+    pub use crate::view::win32::ViewHandle;
 }
 
 pub use view_impl::*;

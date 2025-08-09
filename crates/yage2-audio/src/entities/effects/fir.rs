@@ -1,7 +1,7 @@
 use crate::entities::events::{AudioEventTarget, AudioEventTargetId, AudioEventType};
 use crate::entities::{BlockInfo, Effect};
 use crate::sample::{PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
-use crate::{BLOCK_SIZE, CHANNELS_COUNT};
+use crate::BLOCK_SIZE;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FirFilterEffectEvent {

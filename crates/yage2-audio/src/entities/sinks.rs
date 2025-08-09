@@ -1,4 +1,4 @@
-use crate::entities::events::{AudioEvent, AudioEventTarget, AudioEventTargetId};
+use crate::entities::events::{AudioEvent, AudioEventTarget};
 use crate::entities::{BlockInfo, Source};
 use crate::sample::{InterleavedBlock, InterleavedSample, MappedInterleavedBuffer};
 use crate::{SampleRate, BLOCK_SIZE};
@@ -23,7 +23,7 @@ unsafe impl<T: Source> Sync for InterleavedSink<T> {}
 impl<T: Source> InterleavedSink<T> {
     // This takes addresses of the master's components.
     // If they are not statically allocated on the heap, UB may occur.
-    // Use with caution. 
+    // Use with caution.
     pub fn new(master: T, sample_rate: SampleRate) -> Self {
         let targets = master.get_targets();
         let mut event_router: [AudioEventTarget; ROUTER_CAPACITY] =
@@ -50,7 +50,10 @@ impl<T: Source> InterleavedSink<T> {
         }
         #[cfg(debug_assertions)]
         if self.event_router[index].get_id().as_usize() == 0 {
-            panic!("InterleavedSink: Event target ID {} is not registered in the router", index);
+            panic!(
+                "InterleavedSink: Event target ID {} is not registered in the router",
+                index
+            );
         }
 
         // Dispatch the event to the target

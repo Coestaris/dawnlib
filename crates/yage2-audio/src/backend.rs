@@ -17,7 +17,7 @@ pub(crate) struct InternalBackendConfig {
     pub sample_rate: SampleRate,
     /// Number of channels in the audio stream
     pub channels: ChannelsCount,
-    /// Maximum number of samples in a single block 
+    /// Maximum number of samples in a single block
     pub buffer_size: SamplesCount,
 }
 

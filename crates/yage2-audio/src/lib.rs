@@ -1,13 +1,13 @@
 #![feature(test)]
 #![feature(maybe_uninit_slice)]
 
+pub mod assets;
 pub mod backend;
 mod cpal;
 pub mod dsp;
-pub mod player;
-pub mod assets;
-mod sample;
 pub mod entities;
+pub mod player;
+mod sample;
 
 pub type SamplesCount = usize;
 pub type SampleRate = usize;

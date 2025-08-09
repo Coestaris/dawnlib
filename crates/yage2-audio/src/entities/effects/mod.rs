@@ -6,7 +6,7 @@ pub mod soft_clip;
 
 #[cfg(test)]
 mod test {
-    use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
+    use crate::entities::events::{AudioEventTarget, AudioEventTargetId, AudioEventType};
     use crate::entities::{BlockInfo, Effect};
     use crate::sample::PlanarBlock;
     use crate::{BLOCK_SIZE, CHANNELS_COUNT};

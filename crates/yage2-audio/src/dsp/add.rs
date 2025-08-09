@@ -94,19 +94,17 @@ pub unsafe fn neon_block_m4(input: &PlanarBlock<f32>, output: &mut PlanarBlock<f
     }
 }
 
-
 #[inline(never)]
 #[cfg(any(target_arch = "aarch64", target_arch = "arm64ec"))]
 #[target_feature(enable = "sve")]
 pub unsafe fn sve_block_m4(input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>) {
-   todo!()
+    todo!()
 }
 
 #[inline(never)]
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
 pub unsafe fn avx_block_m32(input: &PlanarBlock<f32>, output: &mut PlanarBlock<f32>) {
-    use core::arch::x86_64::*;
     todo!();
 }
 

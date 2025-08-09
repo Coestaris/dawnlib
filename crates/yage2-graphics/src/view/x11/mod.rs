@@ -1,3 +1,4 @@
+use crate::gl::ViewHandleOpenGL;
 use crate::input::InputEvent;
 use crate::view::{TickResult, ViewConfig, ViewTrait};
 use crossbeam_queue::ArrayQueue;
@@ -21,7 +22,6 @@ use x11::xlib::{
     XFree, XFreeColormap, XInternAtom, XMapRaised, XMapWindow, XNextEvent, XOpenDisplay,
     XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes, XStoreName, XSync, XVisualInfo,
 };
-use crate::gl::ViewHandleOpenGL;
 
 mod input;
 

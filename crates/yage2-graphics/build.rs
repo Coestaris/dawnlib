@@ -8,7 +8,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     println!("cargo:rustc-link-lib=X11");
 
-    #[cfg(any(target_os = "linux", feature = "gl"))]
+    #[cfg(all(target_os = "linux", feature = "gl"))]
     println!("cargo:rustc-link-lib=GL");
 
     #[cfg(feature = "gl")]

@@ -1,7 +1,7 @@
-use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 use crate::entities::events::{AudioEventTarget, AudioEventTargetId, AudioEventType};
 use crate::entities::{BlockInfo, Effect};
 use crate::sample::PlanarBlock;
+use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SoftClipEffectEvent {

@@ -1,4 +1,4 @@
-use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
+use crate::entities::events::{AudioEventTarget, AudioEventTargetId, AudioEventType};
 use crate::entities::{Effect, NodeCell};
 use crate::sample::PlanarBlock;
 
@@ -347,9 +347,7 @@ impl<T1: Effect, T2: Effect, T3: Effect, T4: Effect> Multiplexer4Effect<T1, T2, 
     }
 }
 
-impl<T1: Effect, T2: Effect, T3: Effect, T4: Effect> Effect
-    for Multiplexer4Effect<T1, T2, T3, T4>
-{
+impl<T1: Effect, T2: Effect, T3: Effect, T4: Effect> Effect for Multiplexer4Effect<T1, T2, T3, T4> {
     fn get_targets(&self) -> Vec<AudioEventTarget> {
         vec![self.create_event_target()]
     }

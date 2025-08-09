@@ -5,7 +5,7 @@ edition = "2021"
 
 [features]
 default = ["gl"]
-gl = ["dep:gl_generator"]
+gl = ["dep:gl_generator", "windows/Win32_Graphics_OpenGL"]
 
 [dependencies]
 yage2-core = { path = "../yage2-core" }

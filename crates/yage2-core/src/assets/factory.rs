@@ -41,6 +41,12 @@ pub enum OutMessage {
     Freed(AssetQueryID, AssetID),
 }
 
+// Make rust happy with sending NonNull 
+unsafe impl Send for OutMessage {}
+unsafe impl Sync for OutMessage {}
+unsafe impl Send for InMessage {}
+unsafe impl Sync for InMessage {}
+
 struct FactoryBindingInner {
     pub asset_type: AssetType,
     pub in_queue: Arc<ArrayQueue<InMessage>>,

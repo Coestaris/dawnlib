@@ -1,4 +1,4 @@
-use crate::engine::event::{KeyCode, MouseButton};
+use crate::input::{KeyCode, MouseButton};
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 
 pub(crate) fn convert_key(key: VIRTUAL_KEY) -> KeyCode {
@@ -31,7 +31,6 @@ pub(crate) fn convert_key(key: VIRTUAL_KEY) -> KeyCode {
         VK_Z => KeyCode::Latin('Z'),
 
         // VK_Cyrillic => KeyCode::Cyrillic(char),
-
         VK_0 => KeyCode::Digit(0),
         VK_1 => KeyCode::Digit(1),
         VK_2 => KeyCode::Digit(2),
@@ -186,7 +185,6 @@ pub(crate) fn convert_key(key: VIRTUAL_KEY) -> KeyCode {
         // VK_KPSubtract => KeyCode::KPSubtract,
         // VK_KPDecimal => KeyCode::KPDecimal,
         // VK_KPDivide => KeyCode::KPDivide,
-
         VK_NUMPAD0 => KeyCode::KPDigit(0),
         VK_NUMPAD1 => KeyCode::KPDigit(1),
         VK_NUMPAD2 => KeyCode::KPDigit(2),
@@ -197,7 +195,7 @@ pub(crate) fn convert_key(key: VIRTUAL_KEY) -> KeyCode {
         VK_NUMPAD7 => KeyCode::KPDigit(7),
         VK_NUMPAD8 => KeyCode::KPDigit(8),
         VK_NUMPAD9 => KeyCode::KPDigit(9),
-        
+
         _ => KeyCode::Unknown(key.0 as u32, 0),
     }
 }

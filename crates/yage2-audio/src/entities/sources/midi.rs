@@ -1,3 +1,4 @@
+use crate::assets::{MIDIAsset, MIDIEvent};
 use crate::entities::bus::Bus;
 use crate::entities::effects::bypass::BypassEffect;
 use crate::entities::effects::fir::FirFilterEffect;
@@ -7,7 +8,6 @@ use crate::entities::events::{AudioEvent, AudioEventTargetId, AudioEventType};
 use crate::entities::sources::multiplexer::MultiplexerSource;
 use crate::entities::sources::waveform::{WaveformSource, WaveformSourceEvent, WaveformType};
 use crate::player::Player;
-use crate::assets::{MIDIEvent, MIDIAsset};
 use crate::SampleRate;
 use log::warn;
 use std::thread::sleep;

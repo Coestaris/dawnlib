@@ -1,6 +1,7 @@
-use crate::entities::{BlockInfo, AudioEventType, AudioEventTarget, AudioEventTargetId, NodeCell, Source};
+use crate::entities::{
+    AudioEventTarget, AudioEventTargetId, AudioEventType, BlockInfo, NodeCell, Source,
+};
 use crate::sample::PlanarBlock;
-use log::debug;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum MultiplexerSourceEvent {
@@ -342,9 +343,7 @@ impl<T1: Source, T2: Source, T3: Source, T4: Source> Multiplexer4Source<T1, T2, 
     }
 }
 
-impl<T1: Source, T2: Source, T3: Source, T4: Source> Source
-    for Multiplexer4Source<T1, T2, T3, T4>
-{
+impl<T1: Source, T2: Source, T3: Source, T4: Source> Source for Multiplexer4Source<T1, T2, T3, T4> {
     fn get_targets(&self) -> Vec<AudioEventTarget> {
         let mut targets = self.source1.as_ref().get_targets();
         targets.extend(self.source2.as_ref().get_targets());

@@ -1,7 +1,7 @@
-use std::cell::UnsafeCell;
-use crate::entities::events::{AudioEventType, AudioEventTarget, AudioEventTargetId};
+use crate::entities::events::{AudioEventTarget, AudioEventTargetId, AudioEventType};
 use crate::sample::PlanarBlock;
 use crate::{SampleRate, SamplesCount};
+use std::cell::UnsafeCell;
 
 pub mod bus;
 pub mod effects;
