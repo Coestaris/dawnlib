@@ -430,7 +430,7 @@ impl Renderer {
 
                 // Create a new Renderable instance
                 let renderable = Renderable {
-                    transform: glam::Mat4::from_scale_rotation_translation(
+                    model: glam::Mat4::from_scale_rotation_translation(
                         scale,
                         glam::Quat::from_euler(
                             glam::EulerRot::XYZ,

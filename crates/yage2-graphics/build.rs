@@ -18,7 +18,7 @@ fn main() {
         Registry::new(
             Api::Gl,
             (4, 5),
-            Profile::Core,
+            Profile::Compatibility,
             Fallbacks::All,
             ["GLX_ARB_create_context"],
         )

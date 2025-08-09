@@ -11,7 +11,7 @@ pub struct Rotation(pub(crate) Vec3);
 /// If entity has no `Position` component, it will use the default position (0, 0, 0).
 /// The position is specified in world coordinates.
 #[derive(Component)]
-pub struct Position(pub(crate) Vec3);
+pub struct Position(pub Vec3);
 
 /// ECS component for specifying the scale of a renderable object.
 #[derive(Component)]
@@ -22,7 +22,7 @@ pub struct Scale(pub(crate) Vec3);
 /// If entity has no `RenderableMesh` component, it will not be rendered.
 #[derive(Component)]
 pub struct RenderableMesh {
-    pub(crate) mesh_id: u32, // Identifier for the mesh resource
+    pub mesh_id: u32, // Identifier for the mesh resource
 }
 
 /// ECS component for specifying the material properties of a renderable object.
@@ -46,7 +46,7 @@ impl Default for Material {
 
 #[derive(Clone)]
 pub(crate) struct Renderable {
-    pub(crate) transform: Mat4,
+    pub(crate) model: Mat4,
     pub(crate) mesh_id: u32,
     pub(crate) material: Material,
 }
