@@ -352,6 +352,7 @@ version = "0.1.0"
 dependencies = [
  "common",
  "evenio",
+ "glam",
  "log",
  "yage2-core",
  "yage2-graphics",

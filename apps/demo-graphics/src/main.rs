@@ -2,14 +2,16 @@ use common::assets::YARCReader;
 use common::logging::CommonLogger;
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
+use evenio::fetch::Fetcher;
 use evenio::world::World;
+use glam::*;
 use log::info;
-use std::time::Duration;
 use yage2_core::assets::factory::FactoryBinding;
 use yage2_core::assets::hub::AssetHub;
 use yage2_core::assets::AssetType;
 use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop, Tick};
 use yage2_graphics::input::{InputEvent, KeyCode};
+use yage2_graphics::renderable::{Position, RenderableMesh};
 use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererProfileFrame};
 use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
 
@@ -93,13 +95,6 @@ fn input_events_handler(r: Receiver<InputEvent>, mut s: Sender<StopEventLoop>) {
     }
 }
 
-fn timeout_handler(t: Receiver<Tick>, mut stopper: Sender<StopEventLoop>) {
-    if t.event.time > 10.0 {
-        // Stop the event loop after 10 seconds
-        stopper.send(StopEventLoop);
-    }
-}
-
 fn main() {
     // Initialize the logger
     log::set_logger(&CommonLogger).unwrap();
@@ -108,10 +103,38 @@ fn main() {
     let mut world = World::new();
     GameController::setup(&mut world);
 
+    let quad = world.spawn();
+    world.insert(
+        quad,
+        Position {
+            0: Vec3::new(0.0, 0.0, 0.0),
+        },
+    );
+    world.insert(quad, RenderableMesh { mesh_id: 0 });
+
     world.add_handler(main_loop_profile_handler);
     world.add_handler(renderer_profile_handler);
     world.add_handler(input_events_handler);
-    world.add_handler(timeout_handler);
+
+    world.add_handler(|ie: Receiver<InputEvent>, mut f: Fetcher<&mut Position>| {
+        for pos in f.iter_mut() {
+            match ie.event {
+                InputEvent::KeyPress(KeyCode::Left) => {
+                    pos.0.x -= 0.1;
+                }
+                InputEvent::KeyPress(KeyCode::Right) => {
+                    pos.0.x += 0.1;
+                }
+                InputEvent::KeyPress(KeyCode::Up) => {
+                    pos.0.y += 0.1;
+                }
+                InputEvent::KeyPress(KeyCode::Down) => {
+                    pos.0.y -= 0.1;
+                }
+                _ => {}
+            }
+        }
+    });
 
     run_loop(&mut world, REFRESH_RATE, true);
 }
