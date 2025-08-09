@@ -1,5 +1,5 @@
+use common::assets::YARCReader;
 use common::logging::CommonLogger;
-use common::resources::YARCReader;
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::fetch::Single;
@@ -7,6 +7,7 @@ use evenio::world::World;
 use glam::*;
 use log::info;
 use std::sync::Arc;
+use yage2_audio::assets::{MIDIAssetFactory, WAVAssetFactory};
 use yage2_audio::backend::PlayerBackendConfig;
 use yage2_audio::entities::bus::Bus;
 use yage2_audio::entities::effects::soft_clip::SoftClipEffect;
@@ -16,8 +17,7 @@ use yage2_audio::entities::sources::actor::{
     ActorID, ActorsSource, ActorsSourceEvent, DistanceGainFunction, DistanceLPFFunction,
 };
 use yage2_audio::player::{Player, PlayerProfileFrame};
-use yage2_audio::resources::{MIDIResourceFactory, WAVResourceFactory};
-use yage2_core::assets::manager::{ResourceEvent, ResourceManager};
+use yage2_core::assets::hub::{AssetHub, AssetHubEvent};
 use yage2_core::assets::{Asset, AssetID, AssetType};
 use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop, Tick};
 
@@ -41,21 +41,21 @@ impl GameController {
         world.insert(entity, self);
     }
 
-    pub fn setup_resource_manager(world: &mut World) {
-        // Setup resource manager
-        let read = YARCReader::new("demo_audio.yarc".to_string());
-        let mut resource_manager = ResourceManager::new(read).unwrap();
+    pub fn setup_asset_hub(world: &mut World) {
+        // Setup asset hub
+        let reader = YARCReader::new("demo_audio.yarc".to_string());
+        let mut hub = AssetHub::new(reader).unwrap();
 
-        let mut wav_factory = WAVResourceFactory::new(SAMPLE_RATE);
-        wav_factory.bind(resource_manager.create_factory_biding(AssetType::AudioWAV));
+        let mut wav_factory = WAVAssetFactory::new(SAMPLE_RATE);
+        wav_factory.bind(hub.create_factory_biding(AssetType::AudioWAV));
         wav_factory.attach_to_ecs(world);
 
-        let mut midi_factory = MIDIResourceFactory::new();
-        midi_factory.bind(resource_manager.create_factory_biding(AssetType::AudioMIDI));
+        let mut midi_factory = MIDIAssetFactory::new();
+        midi_factory.bind(hub.create_factory_biding(AssetType::AudioMIDI));
         midi_factory.attach_to_ecs(world);
 
-        resource_manager.query_load_all().unwrap();
-        resource_manager.attach_to_ecs(world);
+        hub.query_load_all().unwrap();
+        hub.attach_to_ecs(world);
     }
 
     fn setup_audio_pipeline(world: &mut World) -> AudioEventTargetId {
@@ -79,8 +79,9 @@ impl GameController {
     }
 
     pub fn setup(world: &mut World) {
+        Self::setup_asset_hub(world);
+
         // Move controller to the ECS
-        Self::setup_resource_manager(world);
         GameController {
             actors_source_target: Self::setup_audio_pipeline(world),
             counter: 0,
@@ -153,15 +154,13 @@ fn player_profile_handler(r: Receiver<PlayerProfileFrame>) {
 }
 
 fn player_handler(
-    e: Receiver<ResourceEvent>,
+    e: Receiver<AssetHubEvent>,
     mut gc: Single<&mut GameController>,
-    mut rm: Single<&mut ResourceManager>,
+    mut rm: Single<&mut AssetHub>,
     mut sender: Sender<AudioEvent>,
 ) {
-    if matches!(e.event, ResourceEvent::AllResourcesLoaded) {
-        let clip = rm
-            .get_resource(AssetID::new("loop".to_string()))
-            .unwrap();
+    if matches!(e.event, AssetHubEvent::AllAssetsLoaded) {
+        let clip = rm.get(AssetID::new("loop".to_string())).unwrap();
         sender.send(gc.add_audio_actor(Vec3::ZERO, 0.7, clip).0);
         gc.counter += 1;
     }

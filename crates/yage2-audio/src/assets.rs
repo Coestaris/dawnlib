@@ -37,96 +37,50 @@ where
     output
 }
 
-pub struct ClipResource {
+pub struct AudioAsset {
     pub sample_rate: SampleRate,
     pub len: SamplesCount,
     pub channels: ChannelsCount,
     pub data: [Vec<f32>; CHANNELS_COUNT],
 }
 
-#[cfg(feature = "resources-wav")]
+#[cfg(feature = "wav-assets")]
 pub(crate) mod wav {
-    use crate::resources::{to_planar_f32, ClipResource};
+    use crate::assets::{to_planar_f32, AudioAsset};
     use crate::{ChannelsCount, SampleRate, CHANNELS_COUNT};
-    use crossbeam_queue::ArrayQueue;
     use evenio::component::Component;
-    use evenio::entity::EntityId;
     use evenio::event::Receiver;
-    use evenio::fetch::{Fetcher, Single};
+    use evenio::fetch::Single;
     use evenio::prelude::World;
     use log::error;
-    use std::cell::OnceCell;
-    use std::collections::HashMap;
-    use std::mem;
-    use std::ptr::NonNull;
-    use std::sync::Arc;
-    use yage2_core::assets::factory::{FactoryBinding, InMessage, OutMessage};
-    use yage2_core::assets::{AssetID, AssetType};
+    use std::io::Cursor;
+    use yage2_core::assets::factory::{BasicFactory, FactoryBinding};
     use yage2_core::assets::reader::AssetHeader;
+    use yage2_core::assets::AssetType;
     use yage2_core::ecs::Tick;
 
     #[derive(Component)]
-    pub struct WAVResourceFactory {
+    pub struct WAVAssetFactory {
         sample_rate: SampleRate,
-        in_queue: Option<Arc<ArrayQueue<InMessage>>>,
-        out_queue: Option<Arc<ArrayQueue<OutMessage>>>,
+        basic_factory: BasicFactory<AudioAsset>,
     }
 
-    static mut STORAGE: OnceCell<HashMap<AssetID, Box<ClipResource>>> = OnceCell::new();
-
-    impl WAVResourceFactory {
+    impl WAVAssetFactory {
         pub fn new(sample_rate: SampleRate) -> Self {
-            if unsafe { STORAGE.get() }.is_none() {
-                unsafe {
-                    STORAGE.set(HashMap::new());
-                }
-            }
-
-            WAVResourceFactory {
+            WAVAssetFactory {
                 sample_rate,
-                in_queue: None,
-                out_queue: None,
+                basic_factory: BasicFactory::new(),
             }
         }
 
         pub fn bind(&mut self, binding: FactoryBinding) {
             assert_eq!(binding.asset_type(), AssetType::AudioWAV);
-            self.in_queue = Some(binding.in_queue());
-            self.out_queue = Some(binding.out_queue());
+            self.basic_factory.bind(binding);
         }
 
         pub fn process_events(&mut self) {
-            if let Some(in_queue) = &self.in_queue {
-                while let Some(msg) = in_queue.pop() {
-                    let storage = unsafe { STORAGE.get_mut().unwrap() };
-                    match msg {
-                        InMessage::Load(qid, id, raw, header) => {
-                            if let Some(clip) = parse(self.sample_rate, &header, &raw) {
-                                let ptr = unsafe {
-                                    storage.insert(id.clone(), Box::new(clip));
-                                    NonNull::new(mem::transmute::<&mut ClipResource, &mut ()>(
-                                        storage.get_mut(&id).unwrap(),
-                                    ))
-                                    .unwrap()
-                                };
-                                if let Some(out_queue) = &self.out_queue {
-                                    out_queue.push(OutMessage::Loaded(qid, id, ptr));
-                                }
-                            } else {
-                                error!("Failed to parse WAV resource: {}", header.name);
-                            }
-                        }
-                        InMessage::Free(qid, id) => {
-                            unsafe {
-                                storage.remove(&id);
-                            }
-                            if let Some(out_queue) = &self.out_queue {
-                                out_queue.push(OutMessage::Freed(qid, id));
-                            }
-                        }
-                    }
-                }
-            }
+            self.basic_factory
+                .process_events(|header, raw| parse(self.sample_rate, &header, &raw), |_| {});
         }
 
         pub fn attach_to_ecs(self, world: &mut World) {
@@ -135,7 +89,7 @@ pub(crate) mod wav {
             let entity = world.spawn();
             world.insert(entity, self);
 
-            fn tick_handler(_: Receiver<Tick>, mut factory: Single<&mut WAVResourceFactory>) {
+            fn tick_handler(_: Receiver<Tick>, mut factory: Single<&mut WAVAssetFactory>) {
                 factory.process_events();
             }
 
@@ -143,29 +97,8 @@ pub(crate) mod wav {
         }
     }
 
-    impl Drop for WAVResourceFactory {
-        fn drop(&mut self) {
-            /* Warn if there's unprocessed events */
-            if let Some(in_queue) = &self.in_queue {
-                if !in_queue.is_empty() {
-                    error!("MIDIResourceFactory dropped with unprocessed events in the queue.");
-                }
-            }
-
-            /* Warn if there's unfreed resources */
-            if let Some(storage) = unsafe { STORAGE.get_mut() } {
-                if !storage.is_empty() {
-                    error!(
-                        "MIDIResourceFactory dropped with unfreed resources: {:?}",
-                        storage.keys()
-                    );
-                }
-            }
-        }
-    }
-
-    fn parse(sample_rate: SampleRate, header: &AssetHeader, raw: &[u8]) -> Option<ClipResource> {
-        let mut buf_reader = std::io::Cursor::new(raw);
+    fn parse(sample_rate: SampleRate, header: &AssetHeader, raw: &[u8]) -> Option<AudioAsset> {
+        let mut buf_reader = Cursor::new(raw);
         match hound::WavReader::new(&mut buf_reader) {
             Ok(mut reader) => {
                 let spec = reader.spec();
@@ -209,7 +142,7 @@ pub(crate) mod wav {
                     }
                 };
 
-                Some(ClipResource {
+                Some(AudioAsset {
                     sample_rate,
                     len: data[0].len(),
                     channels: CHANNELS_COUNT,
@@ -225,29 +158,21 @@ pub(crate) mod wav {
     }
 }
 
-#[cfg(feature = "resources-flac")]
+#[cfg(feature = "flac-assets")]
 pub(crate) mod flac {}
 
-#[cfg(feature = "resources-ogg")]
+#[cfg(feature = "ogg-assets")]
 pub(crate) mod ogg {}
 
 pub(crate) mod midi {
-    use crate::resources::WAVResourceFactory;
-    use crossbeam_queue::ArrayQueue;
+    use evenio::component::Component;
     use evenio::event::Receiver;
     use evenio::fetch::Single;
-    use evenio::prelude::World;
-    use log::error;
+    use evenio::world::World;
     use midly::MidiMessage;
-    use std::cell::OnceCell;
-    use std::collections::HashMap;
-    use std::mem;
-    use std::ptr::NonNull;
-    use std::sync::Arc;
-    use evenio::component::Component;
-    use yage2_core::assets::factory::{FactoryBinding, InMessage, OutMessage};
-    use yage2_core::assets::{AssetID, AssetType};
+    use yage2_core::assets::factory::{BasicFactory, FactoryBinding};
     use yage2_core::assets::reader::AssetHeader;
+    use yage2_core::assets::AssetType;
     use yage2_core::ecs::Tick;
 
     pub enum MIDIEvent {
@@ -256,76 +181,36 @@ pub(crate) mod midi {
         Idle { ms: f32 },
     }
 
-    pub struct MIDIResource {
+    pub struct MIDIAsset {
         pub events: Vec<MIDIEvent>,
     }
 
-    static mut STORAGE: OnceCell<HashMap<AssetID, Box<MIDIResource>>> = OnceCell::new();
-
-    impl MIDIResource {
+    impl MIDIAsset {
         pub fn new(events: Vec<MIDIEvent>) -> Self {
-            MIDIResource { events }
+            MIDIAsset { events }
         }
     }
 
     #[derive(Component)]
-    pub struct MIDIResourceFactory {
-        in_queue: Option<Arc<ArrayQueue<InMessage>>>,
-        out_queue: Option<Arc<ArrayQueue<OutMessage>>>,
+    pub struct MIDIAssetFactory {
+        basic_factory: BasicFactory<MIDIAsset>,
     }
 
-    impl MIDIResourceFactory {
+    impl MIDIAssetFactory {
         pub fn new() -> Self {
-            if unsafe { STORAGE.get() }.is_none() {
-                unsafe {
-                    STORAGE.set(HashMap::new());
-                }
-            }
-
-            MIDIResourceFactory {
-                in_queue: None,
-                out_queue: None,
+            MIDIAssetFactory {
+                basic_factory: BasicFactory::new(),
             }
         }
 
         pub fn bind(&mut self, binding: FactoryBinding) {
             assert_eq!(binding.asset_type(), AssetType::AudioMIDI);
-            self.in_queue = Some(binding.in_queue());
-            self.out_queue = Some(binding.out_queue());
+            self.basic_factory.bind(binding);
         }
 
         pub fn process_events(&mut self) {
-            if let Some(in_queue) = &self.in_queue {
-                while let Some(msg) = in_queue.pop() {
-                    let storage = unsafe { STORAGE.get_mut().unwrap() };
-                    match msg {
-                        InMessage::Load(qid, id, raw, header) => {
-                            if let Some(clip) = parse(&header, &raw) {
-                                let ptr = unsafe {
-                                    storage.insert(id.clone(), Box::new(clip));
-                                    NonNull::new(mem::transmute::<&mut MIDIResource, &mut ()>(
-                                        storage.get_mut(&id).unwrap(),
-                                    ))
-                                    .unwrap()
-                                };
-                                if let Some(out_queue) = &self.out_queue {
-                                    out_queue.push(OutMessage::Loaded(qid, id, ptr));
-                                }
-                            } else {
-                                error!("Failed to parse WAV resource: {}", header.name);
-                            }
-                        }
-                        InMessage::Free(qid, id) => {
-                            unsafe {
-                                storage.remove(&id);
-                            }
-                            if let Some(out_queue) = &self.out_queue {
-                                out_queue.push(OutMessage::Freed(qid, id));
-                            }
-                        }
-                    }
-                }
-            }
+            self.basic_factory
+                .process_events(|header, raw| parse(&header, &raw), |_| {});
         }
 
         pub fn attach_to_ecs(self, world: &mut World) {
@@ -334,7 +219,7 @@ pub(crate) mod midi {
             let entity = world.spawn();
             world.insert(entity, self);
 
-            fn tick_handler(_: Receiver<Tick>, mut factory: Single<&mut MIDIResourceFactory>) {
+            fn tick_handler(_: Receiver<Tick>, mut factory: Single<&mut MIDIAssetFactory>) {
                 factory.process_events();
             }
 
@@ -342,28 +227,7 @@ pub(crate) mod midi {
         }
     }
 
-    impl Drop for MIDIResourceFactory {
-        fn drop(&mut self) {
-            /* Warn if there's unprocessed events */
-            if let Some(in_queue) = &self.in_queue {
-                if !in_queue.is_empty() {
-                    error!("MIDIResourceFactory dropped with unprocessed events in the queue.");
-                }
-            }
-
-            /* Warn if there's unfreed resources */
-            if let Some(storage) = unsafe { STORAGE.get_mut() } {
-                if !storage.is_empty() {
-                    error!(
-                        "MIDIResourceFactory dropped with unfreed resources: {:?}",
-                        storage.keys()
-                    );
-                }
-            }
-        }
-    }
-
-    fn parse(header: &AssetHeader, raw: &[u8]) -> Option<MIDIResource> {
+    fn parse(_: &AssetHeader, raw: &[u8]) -> Option<MIDIAsset> {
         let smf = midly::Smf::parse(raw)
             .map_err(|e| format!("Failed to parse MIDI: {}", e))
             .ok()?;
@@ -459,11 +323,11 @@ pub(crate) mod midi {
             }
         }
 
-        Some(MIDIResource { events })
+        Some(MIDIAsset { events })
     }
 }
 
 pub use {
-    midi::{MIDIEvent, MIDIResource, MIDIResourceFactory},
-    wav::WAVResourceFactory,
+    midi::{MIDIAsset, MIDIAssetFactory, MIDIEvent},
+    wav::WAVAssetFactory,
 };

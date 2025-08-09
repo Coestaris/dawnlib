@@ -1,12 +1,12 @@
 use common::logging::CommonLogger;
-use common::resources::YARCReader;
+use common::assets::YARCReader;
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::world::World;
 use log::info;
 use std::time::Duration;
+use yage2_core::assets::hub::AssetHub;
 use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop, Tick};
-use yage2_core::resources::manager::ResourceManager;
 use yage2_graphics::input::{InputEvent, KeyCode};
 use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererProfileFrame};
 use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
@@ -37,17 +37,13 @@ impl GameController {
         renderer.attach_to_ecs(world);
     }
 
-    pub fn setup_resource_manager(world: &mut World) {
-        // Setup resource manager
+    pub fn setup_asset_hub(world: &mut World) {
         let reader = YARCReader::new("demo_graphics.yarc".to_string());
-        let mut manager = ResourceManager::new(reader);
-        manager.read().unwrap(); // Read resource from the disk
-        manager.query_load_all().unwrap(); // Queue all resources for loading
-        manager.fence_loading(Duration::from_secs(1)).unwrap(); // Wait for all resources to load
+        let mut manager = AssetHub::new(reader).unwrap();
         
-        // Move the resource manager to the world
-        let entity = world.spawn();
-        world.insert(entity, manager);
+        // TODO: Setup factories
+        
+        manager.attach_to_ecs(world);
     }
 
     pub fn setup(world: &mut World) {

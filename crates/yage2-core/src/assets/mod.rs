@@ -1,11 +1,12 @@
 use log::debug;
 use serde::{Deserialize, Serialize};
+use std::any::TypeId;
 use std::ptr::NonNull;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
 
 pub mod factory;
-pub mod manager;
+pub mod hub;
 pub mod reader;
 pub(crate) mod registry;
 
@@ -60,25 +61,40 @@ impl Default for AssetType {
     }
 }
 
-pub trait TypedAsset {
-    const TYPE: AssetType;
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Asset {
-    t: AssetType,
-    in_use: Arc<AtomicBool>,
+    tid: TypeId,
+    rc: Arc<AtomicUsize>,
     ptr: NonNull<()>,
 }
 
+impl Clone for Asset {
+    fn clone(&self) -> Self {
+        // Increment the reference count
+        self.rc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Asset {
+            tid: self.tid,
+            rc: Arc::clone(&self.rc),
+            ptr: self.ptr,
+        }
+    }
+}
+
 impl Asset {
-    pub fn new(t: AssetType, in_use: Arc<AtomicBool>, ptr: NonNull<()>) -> Asset {
-        Asset { t, in_use, ptr }
+    pub fn new(tid: TypeId, rc: Arc<AtomicUsize>, ptr: NonNull<()>) -> Asset {
+        // Increment the reference count
+        rc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        Asset { tid, rc, ptr }
     }
 
-    pub fn cast<'a, T: TypedAsset>(&self) -> &'a T {
-        if self.t != T::TYPE {
-            panic!("Asset type mismatch");
+    pub fn cast<'a, T: 'static>(&self) -> &'a T {
+        if self.tid != TypeId::of::<T>() {
+            panic!(
+                "Asset type mismatch: expected {:?}, found {:?}",
+                TypeId::of::<T>(),
+                self.tid
+            );
         }
 
         unsafe { &*self.ptr.as_ptr().cast::<T>() }
@@ -87,12 +103,10 @@ impl Asset {
 
 impl Drop for Asset {
     fn drop(&mut self) {
-        debug!("Asset of type {:?} is being dropped", self.t);
+        // Decrement the reference count
+        let rc = self.rc.fetch_sub(1, std::sync::atomic::Ordering::Release);
 
-        // Tell the manager that this asset is no longer in use
-        if self.in_use.load(std::sync::atomic::Ordering::SeqCst) {
-            panic!("Asset is still in use");
-        }
+        debug!("Asset of {:?} is dropped. rc: {}", self.tid, rc);
     }
 }
 

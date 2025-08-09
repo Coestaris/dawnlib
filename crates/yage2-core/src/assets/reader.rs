@@ -3,20 +3,20 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ResourceChecksum([u8; 16]);
+pub struct AssetChecksum([u8; 16]);
 
-impl ResourceChecksum {
-    pub fn from_bytes(bytes: &[u8]) -> ResourceChecksum {
+impl AssetChecksum {
+    pub fn from_bytes(bytes: &[u8]) -> AssetChecksum {
         let mut checksum = [0; 16];
         let len = bytes.len().min(16);
         checksum[..len].copy_from_slice(&bytes[..len]);
-        ResourceChecksum(checksum)
+        AssetChecksum(checksum)
     }
 }
 
-impl Default for ResourceChecksum {
+impl Default for AssetChecksum {
     fn default() -> Self {
-        ResourceChecksum([0; 16])
+        AssetChecksum([0; 16])
     }
 }
 
@@ -27,9 +27,9 @@ pub struct AssetHeader {
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default)]
-    pub resource_type: AssetType,
+    pub asset_type: AssetType,
     #[serde(default)]
-    pub checksum: ResourceChecksum,
+    pub checksum: AssetChecksum,
 }
 
 impl Default for AssetHeader {
@@ -37,14 +37,14 @@ impl Default for AssetHeader {
         AssetHeader {
             name: String::new(),
             tags: Vec::new(),
-            resource_type: AssetType::Unknown,
-            checksum: ResourceChecksum::default(),
+            asset_type: AssetType::Unknown,
+            checksum: AssetChecksum::default(),
         }
     }
 }
 
-pub trait ResourceReader {
+pub trait AssetReader {
     fn has_updates(&self) -> bool;
-    fn enumerate_resources(&mut self) -> Result<HashMap<AssetID, AssetHeader>, String>;
+    fn enumerate(&mut self) -> Result<HashMap<AssetID, AssetHeader>, String>;
     fn load(&mut self, id: AssetID) -> Result<Vec<u8>, String>;
 }

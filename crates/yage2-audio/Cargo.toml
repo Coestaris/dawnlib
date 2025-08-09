@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["resources-wav", "resources-flac", "resources-ogg", "resources-midi"]
-resources-wav = ["dep:hound"]
-resources-flac = ["dep:flac"]
-resources-ogg = ["dep:ogg", "dep:lewton"]
-resources-midi = ["dep:midly"]
+default = ["wav-assets", "flac-assets", "ogg-assets", "midi-assets"]
+wav-assets = ["dep:hound"]
+flac-assets = ["dep:flac"]
+ogg-assets = ["dep:ogg", "dep:lewton"]
+midi-assets = ["dep:midly"]
 
 [dependencies]
 yage2-core = { path = "../yage2-core" }

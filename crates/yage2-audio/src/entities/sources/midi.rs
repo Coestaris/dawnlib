@@ -7,7 +7,7 @@ use crate::entities::events::{AudioEvent, AudioEventTargetId, AudioEventType};
 use crate::entities::sources::multiplexer::MultiplexerSource;
 use crate::entities::sources::waveform::{WaveformSource, WaveformSourceEvent, WaveformType};
 use crate::player::Player;
-use crate::resources::{MIDIEvent, MIDIResource};
+use crate::assets::{MIDIEvent, MIDIAsset};
 use crate::SampleRate;
 use log::warn;
 use std::thread::sleep;
@@ -206,7 +206,7 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
     pub fn play(&mut self, player: &Player) {
         // Using indirection to not borrow self mutably
         let r = self.midi.clone();
-        let r = r.cast::<MIDIResource>();
+        let r = r.cast::<MIDIAsset>();
         let events = &r.events;
 
         while self.index < events.len() {
