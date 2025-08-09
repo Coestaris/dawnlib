@@ -1,6 +1,6 @@
-use log::info;
+use log::{debug, info};
 use std::collections::HashMap;
-use yage2_core::assets::reader::{AssetHeader, ResourceReader};
+use yage2_core::assets::reader::{AssetHeader, AssetReader};
 use yage2_core::assets::AssetID;
 
 fn get_current_exe() -> std::path::PathBuf {
@@ -21,22 +21,22 @@ impl YARCReader {
     }
 }
 
-impl ResourceReader for YARCReader {
+impl AssetReader for YARCReader {
     fn has_updates(&self) -> bool {
         true
     }
 
-    fn enumerate_resources(&mut self) -> Result<HashMap<AssetID, AssetHeader>, String> {
+    fn enumerate(&mut self) -> Result<HashMap<AssetID, AssetHeader>, String> {
         self.containers =
             yage2_yarc::read(get_current_exe().parent().unwrap().join(&self.filename))
-                .map_err(|e| format!("Failed to read resources: {}", e.to_string()))?;
+                .map_err(|e| format!("Failed to read assets: {}", e.to_string()))?;
 
-        info!("Loaded {} resources", self.containers.len());
+        info!("Loaded {} assets", self.containers.len());
         for (name, container) in &self.containers {
-            info!(
-                "Resource: {} (type {:?}). Size: {} bytes",
+            debug!(
+                "Asset: {} (type {:?}). Size: {} bytes",
                 name,
-                container.metadata.header.resource_type,
+                container.metadata.header.asset_type,
                 container.binary.len()
             );
         }
@@ -51,11 +51,11 @@ impl ResourceReader for YARCReader {
 
     fn load(&mut self, name: AssetID) -> Result<Vec<u8>, String> {
         if let Some(container) = self.containers.get(&name) {
-            info!("Loading resource: {}", name);
+            debug!("Loading resource: {}", name);
             // TODO: get rid of clone
             Ok(container.binary.clone())
         } else {
-            Err(format!("Resource {} not found", name))
+            Err(format!("Asset {} not found", name))
         }
     }
 }

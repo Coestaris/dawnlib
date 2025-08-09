@@ -81,8 +81,8 @@ pub enum TypeSpecificMetadata {
 }
 
 impl TypeSpecificMetadata {
-    pub fn default_for(resource_type: AssetType) -> Self {
-        match resource_type {
+    pub fn default_for(asset_type: AssetType) -> Self {
+        match asset_type {
             AssetType::ShaderGLSL | AssetType::ShaderSPIRV | AssetType::ShaderHLSL => {
                 TypeSpecificMetadata::Shader(ShaderMetadata::default())
             }
@@ -102,31 +102,31 @@ impl TypeSpecificMetadata {
         }
     }
 
-    pub fn suitable_for(&self, resource_type: AssetType) -> bool {
+    pub fn suitable_for(&self, asset_type: AssetType) -> bool {
         match self {
             TypeSpecificMetadata::Shader(_) => {
-                resource_type == AssetType::ShaderGLSL
-                    || resource_type == AssetType::ShaderSPIRV
-                    || resource_type == AssetType::ShaderHLSL
+                asset_type == AssetType::ShaderGLSL
+                    || asset_type == AssetType::ShaderSPIRV
+                    || asset_type == AssetType::ShaderHLSL
             }
             TypeSpecificMetadata::Audio(_) => {
                 matches!(
-                    resource_type,
+                    asset_type,
                     AssetType::AudioFLAC | AssetType::AudioWAV | AssetType::AudioOGG
                 )
             }
             TypeSpecificMetadata::Image(_) => {
                 matches!(
-                    resource_type,
+                    asset_type,
                     AssetType::ImagePNG | AssetType::ImageJPEG | AssetType::ImageBMP
                 )
             }
             TypeSpecificMetadata::Font(_) => {
-                matches!(resource_type, AssetType::FontTTF | AssetType::FontOTF)
+                matches!(asset_type, AssetType::FontTTF | AssetType::FontOTF)
             }
             TypeSpecificMetadata::Model(_) => {
                 matches!(
-                    resource_type,
+                    asset_type,
                     AssetType::ModelOBJ | AssetType::ModelFBX | AssetType::ModelGLTF
                 )
             }
@@ -142,7 +142,7 @@ impl Default for TypeSpecificMetadata {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct ResourceMetadata {
+pub struct AssetMetadata {
     #[serde(default)]
     pub header: AssetHeader,
     #[serde(default)]

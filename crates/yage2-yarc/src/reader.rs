@@ -1,4 +1,4 @@
-use crate::structures::ResourceMetadata;
+use crate::structures::AssetMetadata;
 use log::info;
 use std::collections::HashMap;
 use std::io::Read;
@@ -9,7 +9,7 @@ use yage2_core::assets::AssetID;
 pub struct Container {
     pub name: String,
     pub binary: Vec<u8>,
-    pub metadata: ResourceMetadata,
+    pub metadata: AssetMetadata,
 }
 
 #[derive(Debug)]
@@ -48,7 +48,7 @@ where
 
         let path = entry.path().map_err(ReadError::IoError)?;
 
-        // Manifest is not actually needed for reading resources,
+        // Manifest is not actually needed for reading assets,
         // but we still read it to ensure compatibility with the format.
         if path != std::path::Path::new(".manifest.toml") {
             // Metadata or binary

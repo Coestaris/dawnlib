@@ -1,55 +1,55 @@
+use std::any::TypeId;
 use std::cell::RefCell;
 use crate::assets::reader::AssetHeader;
 use crate::assets::AssetID;
 use log::{info, warn};
 use std::collections::HashMap;
 use std::ptr::NonNull;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
-use crate::assets::factory::QueryID;
+use crate::assets::factory::AssetQueryID;
 
-pub(crate) enum ResourceState {
+pub(crate) enum AssetState {
     Raw(Vec<u8>),
-    Loaded(NonNull<()>),
+    Loaded(TypeId, NonNull<()>),
     Freed,
 }
 
-pub(crate) struct ResourceRegistryItem {
+pub(crate) struct AssetContainer {
     pub(crate) header: AssetHeader,
-    pub(crate) state: ResourceState,
-    pub(crate) in_use: Arc<AtomicBool>,
+    pub(crate) state: AssetState,
+    pub(crate) rc: Arc<AtomicUsize>,
 }
 
-pub(crate) struct ResourcesRegistry(HashMap<AssetID, ResourceRegistryItem>);
+pub(crate) struct AssetRegistry(HashMap<AssetID, AssetContainer>);
 
-impl ResourcesRegistry {
+impl AssetRegistry {
     pub fn new() -> Self {
-        ResourcesRegistry(HashMap::new())
+        AssetRegistry(HashMap::new())
     }
 
     pub fn push(&mut self, id: AssetID, raw: Vec<u8>, header: AssetHeader) {
         info!(
-            "Registering resource: {} (type {:?})",
-            id, header.resource_type
+            "Registering asset: {} (type {:?})",
+            id, header.asset_type
         );
 
-        let in_use = Arc::new(AtomicBool::new(false));
-        let state = ResourceState::Raw(raw);
+        let state = AssetState::Raw(raw);
         self.0.insert(
             id,
-            ResourceRegistryItem {
+            AssetContainer {
                 header,
                 state,
-                in_use: in_use.clone(),
+                rc: Arc::new(AtomicUsize::new(0)),
             },
         );
     }
 
-    pub fn get(&self, id: &AssetID) -> Option<&ResourceRegistryItem> {
+    pub fn get(&self, id: &AssetID) -> Option<&AssetContainer> {
         self.0.get(id)
     }
 
-    pub fn get_mut(&mut self, id: &AssetID) -> Option<&mut ResourceRegistryItem> {
+    pub fn get_mut(&mut self, id: &AssetID) -> Option<&mut AssetContainer> {
         self.0.get_mut(id)
     }
 
@@ -60,18 +60,18 @@ impl ResourcesRegistry {
     pub fn all_loaded(&self) -> bool {
         self.0
             .values()
-            .all(|item| matches!(item.state, ResourceState::Loaded(_)))
+            .all(|item| matches!(item.state, AssetState::Loaded(_, _)))
     }
 
     pub fn all_freed(&self) -> bool {
         self.0
             .values()
-            .all(|item| matches!(item.state, ResourceState::Freed))
+            .all(|item| matches!(item.state, AssetState::Freed))
     }
 }
 
 pub(crate) struct QueriesRegistry {
-    queries: RefCell<Vec<QueryID>>
+    queries: RefCell<Vec<AssetQueryID>>
 }
 
 impl QueriesRegistry {
@@ -81,7 +81,7 @@ impl QueriesRegistry {
         }
     }
 
-    pub fn add_query(&self, query_id: QueryID) {
+    pub fn add_query(&self, query_id: AssetQueryID) {
         if !self.queries.borrow().contains(&query_id) {
             self.queries.borrow_mut().push(query_id);
         } else {
@@ -89,7 +89,7 @@ impl QueriesRegistry {
         }
     }
 
-    pub fn remove_query(&self, query_id: &QueryID) {
+    pub fn remove_query(&self, query_id: &AssetQueryID) {
         let mut queries = self.queries.borrow_mut();
         if let Some(pos) = queries.iter().position(|q| q == query_id) {
             queries.remove(pos);

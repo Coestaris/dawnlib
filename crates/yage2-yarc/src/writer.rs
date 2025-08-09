@@ -3,14 +3,14 @@ use crate::preprocessors::{
     resample_wav_file, PreProcessor, PreprocessorsError,
 };
 use crate::structures::{
-    ChecksumAlgorithm, Compression, Manifest, ReadMode, ResourceMetadata, TypeSpecificMetadata,
+    AssetMetadata, ChecksumAlgorithm, Compression, Manifest, ReadMode, TypeSpecificMetadata,
     WriteOptions,
 };
 use log::{debug, info};
 use std::fs::File;
 use std::io::{BufReader, Read};
 use tempdir::TempDir;
-use yage2_core::assets::reader::{ResourceChecksum, AssetHeader};
+use yage2_core::assets::reader::{AssetChecksum, AssetHeader};
 use yage2_core::assets::AssetType;
 use yage2_core::utils::format_now;
 
@@ -18,7 +18,7 @@ use yage2_core::utils::format_now;
 struct Container {
     binary_path: std::path::PathBuf,
     metadata_path: std::path::PathBuf,
-    metadata: ResourceMetadata,
+    metadata: AssetMetadata,
 }
 
 #[derive(Debug)]
@@ -33,8 +33,8 @@ pub enum WriterError {
 
     UnsupportedCompression(Compression),
     UnsupportedChecksumAlgorithm(ChecksumAlgorithm),
-    UnsupportedResourceType(AssetType),
-    UnknownResourceType(String),
+    UnsupportedAssetType(AssetType),
+    UnknownAssetType(String),
 }
 
 impl std::fmt::Display for WriterError {
@@ -55,10 +55,10 @@ impl std::fmt::Display for WriterError {
             WriterError::UnsupportedChecksumAlgorithm(a) => {
                 write!(f, "Unsupported checksum algorithm: {:?}", a)
             }
-            WriterError::UnsupportedResourceType(t) => {
-                write!(f, "Unsupported resource type: {:?}", t)
+            WriterError::UnsupportedAssetType(t) => {
+                write!(f, "Unsupported asset type: {:?}", t)
             }
-            WriterError::UnknownResourceType(s) => write!(f, "Unknown resource type: {}", s),
+            WriterError::UnknownAssetType(s) => write!(f, "Unknown asset type: {}", s),
         }
     }
 }
@@ -113,7 +113,7 @@ fn normalize_name<P: AsRef<std::path::Path>>(path: P) -> String {
         .replace(|c: char| !c.is_alphanumeric() && c != '_', "")
 }
 
-fn extension_to_resource_type(ext: &str) -> Result<(AssetType, PreProcessor<'_>), WriterError> {
+fn extension_to_asset_type(ext: &str) -> Result<(AssetType, PreProcessor<'_>), WriterError> {
     Ok(match ext {
         // Shader types
         "glsl" => (AssetType::ShaderGLSL, compile_glsl_shader),
@@ -142,7 +142,7 @@ fn extension_to_resource_type(ext: &str) -> Result<(AssetType, PreProcessor<'_>)
 
         _ => {
             // If the extension is not recognized, return an error
-            return Err(WriterError::UnknownResourceType(ext.to_string()));
+            return Err(WriterError::UnknownAssetType(ext.to_string()));
         }
     })
 }
@@ -150,7 +150,7 @@ fn extension_to_resource_type(ext: &str) -> Result<(AssetType, PreProcessor<'_>)
 fn checksum<P: AsRef<std::path::Path>>(
     path: P,
     algorithm: ChecksumAlgorithm,
-) -> Result<ResourceChecksum, WriterError> {
+) -> Result<AssetChecksum, WriterError> {
     let mut file = BufReader::new(File::open(path).map_err(WriterError::IoError)?);
     let mut content = Vec::new();
     file.read_to_end(&mut content)
@@ -167,7 +167,7 @@ fn checksum<P: AsRef<std::path::Path>>(
         }
     };
 
-    Ok(ResourceChecksum::from_bytes(&hash))
+    Ok(AssetChecksum::from_bytes(&hash))
 }
 
 fn create_manifest(create_options: WriteOptions, containers: &[Container]) -> Manifest {
@@ -187,24 +187,24 @@ fn create_manifest(create_options: WriteOptions, containers: &[Container]) -> Ma
 
 fn validate_metadata<P: AsRef<std::path::Path>>(
     metadata_path: P,
-    resource_type: AssetType,
+    asset_type: AssetType,
     name: &str,
-) -> Result<ResourceMetadata, WriterError> {
+) -> Result<AssetMetadata, WriterError> {
     let metadata_content =
         std::fs::read_to_string(metadata_path.as_ref()).map_err(WriterError::IoError)?;
-    let mut metadata: ResourceMetadata = toml::from_str(&metadata_content)
+    let mut metadata: AssetMetadata = toml::from_str(&metadata_content)
         .map_err(|e| WriterError::ParseMetadataFailed(name.to_string(), e))?;
 
-    // If some fields are missing, the serde will fill them with defaults, 
-    // But we need to ensure that the resource type matches
-    if metadata.header.resource_type == AssetType::Unknown {
-        metadata.header.resource_type = resource_type;
-    } else if metadata.header.resource_type != resource_type {
+    // If some fields are missing, the serde will fill them with defaults,
+    // But we need to ensure that the asset type matches
+    if metadata.header.asset_type == AssetType::Unknown {
+        metadata.header.asset_type = asset_type;
+    } else if metadata.header.asset_type != asset_type {
         return Err(WriterError::ValidateMetadataFailed(
             name.to_string(),
             format!(
-                "Resource type mismatch: expected {:?}, found {:?}",
-                resource_type, metadata.header.resource_type
+                "Asset type mismatch: expected {:?}, found {:?}",
+                asset_type, metadata.header.asset_type
             ),
         ));
     }
@@ -212,16 +212,16 @@ fn validate_metadata<P: AsRef<std::path::Path>>(
     // Ensure the type-specific metadata is set
     match metadata.type_specific {
         TypeSpecificMetadata::Unknown => {
-            metadata.type_specific = TypeSpecificMetadata::default_for(resource_type);
+            metadata.type_specific = TypeSpecificMetadata::default_for(asset_type);
         }
         _ => {
-            // Ensure the type-specific metadata is suitable for the resource type
-            if !metadata.type_specific.suitable_for(resource_type) {
+            // Ensure the type-specific metadata is suitable for the asset type
+            if !metadata.type_specific.suitable_for(asset_type) {
                 return Err(WriterError::ValidateMetadataFailed(
                     name.to_string(),
                     format!(
-                        "Type-specific metadata {:?} is not suitable for resource type {:?}",
-                        metadata.type_specific, resource_type
+                        "Type-specific metadata {:?} is not suitable for asset type {:?}",
+                        metadata.type_specific, asset_type
                     ),
                 ));
             }
@@ -237,16 +237,16 @@ fn validate_metadata<P: AsRef<std::path::Path>>(
 }
 
 fn create_metadata<P: AsRef<std::path::Path>>(
-    resource_type: AssetType,
+    asset_type: AssetType,
     name: &str,
-) -> Result<ResourceMetadata, WriterError> {
+) -> Result<AssetMetadata, WriterError> {
     let mut header = AssetHeader::default();
     header.name = name.to_string();
-    header.resource_type = resource_type;
+    header.asset_type = asset_type;
 
-    Ok(ResourceMetadata {
+    Ok(AssetMetadata {
         header,
-        type_specific: TypeSpecificMetadata::default_for(resource_type),
+        type_specific: TypeSpecificMetadata::default_for(asset_type),
     })
 }
 
@@ -281,16 +281,16 @@ fn prepare_files<P: AsRef<std::path::Path>>(
         }
 
         let mut name = normalize_name(&file);
-        let (resource_type, preprocessor) = extension_to_resource_type(&ext)?;
-        info!("Processing file: {} (type: {:?})", we, resource_type);
+        let (asset_type, preprocessor) = extension_to_asset_type(&ext)?;
+        info!("Processing file: {} (type: {:?})", we, asset_type);
 
         let toml = file.with_extension("toml");
         let mut metadata = if toml.exists() {
             // Metadata object found, validate it
-            validate_metadata(&toml, resource_type, &name)?
+            validate_metadata(&toml, asset_type, &name)?
         } else {
             // If file doesn't exist. Create a new one
-            create_metadata::<P>(resource_type, &name)?
+            create_metadata::<P>(asset_type, &name)?
         };
 
         // Calculate the checksum, in case the preprocessor wants to use it
@@ -313,7 +313,7 @@ fn prepare_files<P: AsRef<std::path::Path>>(
             toml::to_string(&metadata).map_err(WriterError::FormatMetadataFailed)?;
         std::fs::write(&metadata_path, metadata_content).map_err(WriterError::IoError)?;
 
-        // Create the resource entry
+        // Create the asset entry
         containers.push(Container {
             binary_path: dest_path,
             metadata_path,
@@ -335,7 +335,7 @@ fn prepare_files<P: AsRef<std::path::Path>>(
         files_to_archive.push(container.metadata_path);
     }
 
-    info!("Created manifest with {} resources", files_to_archive.len());
+    info!("Created manifest with {} assets", files_to_archive.len());
     Ok(files_to_archive)
 }
 
@@ -346,10 +346,10 @@ fn add_files<W>(
 where
     W: std::io::Write,
 {
-    for resource in files {
-        let mut file = File::open(resource).map_err(WriterError::IoError)?;
+    for asset in files {
+        let mut file = File::open(asset).map_err(WriterError::IoError)?;
         tar_builder
-            .append_file(resource.file_name().unwrap(), &mut file)
+            .append_file(asset.file_name().unwrap(), &mut file)
             .map_err(WriterError::IoError)?;
     }
 
@@ -357,7 +357,7 @@ where
 }
 
 /// Implementation of creating a YARC from a directory
-/// This will involve reading files, normalizing names, and writing to a 
+/// This will involve reading files, normalizing names, and writing to a
 /// .tar or .tar.gz archive with the specified compression and checksum algorithm.
 /// Optionally, for some file types, a preprocessor can be applied (e.g., resampling audio files).
 pub fn write_from_directory<P: AsRef<std::path::Path>>(

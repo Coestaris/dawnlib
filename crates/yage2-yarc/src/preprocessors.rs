@@ -1,4 +1,4 @@
-use crate::structures::{ResourceMetadata, ShaderType, TypeSpecificMetadata};
+use crate::structures::{AssetMetadata, ShaderType, TypeSpecificMetadata};
 use log::{debug, info};
 
 #[derive(Debug)]
@@ -34,9 +34,9 @@ impl std::error::Error for PreprocessorsError {}
 /// and returns a processed file path or an error.
 pub type PreProcessor<'a> = fn(
     &'a std::path::PathBuf,
-    &ResourceMetadata,
+    &AssetMetadata,
     &'a std::path::PathBuf,
-) -> Result<ResourceMetadata, PreprocessorsError>;
+) -> Result<AssetMetadata, PreprocessorsError>;
 
 fn get_glslc_path() -> Option<std::path::PathBuf> {
     if cfg!(target_os = "windows") {
@@ -61,17 +61,14 @@ fn get_cache_directory() -> std::path::PathBuf {
     dirs::data_local_dir().unwrap().join("yage2").join("cache")
 }
 
-fn entry_name(name: &str, resource_metadata: &ResourceMetadata) -> String {
-    let hash_hex = format!(
-        "{:x}",
-        md5::compute(format!("{}{:?}", name, resource_metadata))
-    );
+fn entry_name(name: &str, metadata: &AssetMetadata) -> String {
+    let hash_hex = format!("{:x}", md5::compute(format!("{}{:?}", name, metadata)));
     format!("{}.cache", hash_hex)
 }
 
-fn is_cache_exists(name: &str, resource_metadata: &ResourceMetadata) -> Option<std::path::PathBuf> {
+fn is_cache_exists(name: &str, metadata: &AssetMetadata) -> Option<std::path::PathBuf> {
     let cache_dir = get_cache_directory();
-    let cache_path = cache_dir.join(entry_name(name, resource_metadata));
+    let cache_path = cache_dir.join(entry_name(name, metadata));
 
     if cache_path.exists() {
         Some(cache_path)
@@ -82,14 +79,14 @@ fn is_cache_exists(name: &str, resource_metadata: &ResourceMetadata) -> Option<s
 
 fn create_cache_entry(
     name: &str,
-    resource_metadata: &ResourceMetadata,
+    metadata: &AssetMetadata,
     file: &std::path::PathBuf,
 ) -> Result<std::path::PathBuf, PreprocessorsError> {
     let cache_dir = get_cache_directory();
     std::fs::create_dir_all(&cache_dir).map_err(|e| PreprocessorsError::IOError(e))?;
 
     debug!("Creating cache entry for: {}", name);
-    let cache_path = cache_dir.join(entry_name(name, resource_metadata));
+    let cache_path = cache_dir.join(entry_name(name, metadata));
     if !cache_path.exists() {
         std::fs::copy(file, &cache_path).map_err(|e| PreprocessorsError::IOError(e))?;
     }
@@ -116,9 +113,9 @@ macro_rules! cache_me {
 
 pub fn dummy_preprocessor<'a>(
     path: &'a std::path::PathBuf,
-    metadata: &ResourceMetadata,
+    metadata: &AssetMetadata,
     output_path: &'a std::path::PathBuf,
-) -> Result<ResourceMetadata, PreprocessorsError> {
+) -> Result<AssetMetadata, PreprocessorsError> {
     info!("Copying file: {}", metadata.header.name);
 
     std::fs::copy(path, output_path).map_err(|e| PreprocessorsError::IOError(e))?;
@@ -128,9 +125,9 @@ pub fn dummy_preprocessor<'a>(
 
 fn compile_glsl_shader_impl<'a>(
     path: &'a std::path::PathBuf,
-    metadata: &ResourceMetadata,
+    metadata: &AssetMetadata,
     output_path: &'a std::path::PathBuf,
-) -> Result<ResourceMetadata, PreprocessorsError> {
+) -> Result<AssetMetadata, PreprocessorsError> {
     info!("Compiling GLSL shader: {}", metadata.header.name);
 
     let glslc_path = get_glslc_path().ok_or(PreprocessorsError::GlslCompilerNotFound)?;
@@ -141,9 +138,7 @@ fn compile_glsl_shader_impl<'a>(
             ShaderType::Fragment => command.arg("-fshader-stage=fragment"),
             ShaderType::Compute => command.arg("-fshader-stage=compute"),
             ShaderType::Geometry => command.arg("-fshader-stage=geometry"),
-            ShaderType::TessellationControl => {
-                command.arg("-fshader-stage=tessellation_control")
-            }
+            ShaderType::TessellationControl => command.arg("-fshader-stage=tessellation_control"),
         };
     } else {
         return Err(PreprocessorsError::InvalidMetadata(
@@ -173,9 +168,9 @@ fn compile_glsl_shader_impl<'a>(
 
 pub(crate) fn compile_glsl_shader<'a>(
     path: &'a std::path::PathBuf,
-    metadata: &ResourceMetadata,
+    metadata: &AssetMetadata,
     output_path: &'a std::path::PathBuf,
-) -> Result<ResourceMetadata, PreprocessorsError> {
+) -> Result<AssetMetadata, PreprocessorsError> {
     cache_me!(
         metadata,
         output_path,
@@ -187,10 +182,10 @@ const DESTIONATION_SAMPLE_RATE: u32 = 48_000;
 
 pub fn resample_audio_file<'a>(
     path: &'a std::path::PathBuf,
-    metadata: &ResourceMetadata,
+    metadata: &AssetMetadata,
     format: &str,
     output_path: &'a std::path::PathBuf,
-) -> Result<ResourceMetadata, PreprocessorsError> {
+) -> Result<AssetMetadata, PreprocessorsError> {
     let ffmpeg_path = get_ffmpeg_path().ok_or(PreprocessorsError::FFMpegNotFound)?;
     let mut command = std::process::Command::new(ffmpeg_path);
     command.arg("-i").arg(path);
@@ -221,9 +216,9 @@ pub fn resample_audio_file<'a>(
 
 pub fn resample_ogg_file<'a>(
     path: &'a std::path::PathBuf,
-    metadata: &ResourceMetadata,
+    metadata: &AssetMetadata,
     output_path: &'a std::path::PathBuf,
-) -> Result<ResourceMetadata, PreprocessorsError> {
+) -> Result<AssetMetadata, PreprocessorsError> {
     info!("Resampling OGG file: {}", metadata.header.name);
     cache_me!(
         metadata,
@@ -234,9 +229,9 @@ pub fn resample_ogg_file<'a>(
 
 pub fn resample_flac_file<'a>(
     path: &'a std::path::PathBuf,
-    metadata: &ResourceMetadata,
+    metadata: &AssetMetadata,
     output_path: &'a std::path::PathBuf,
-) -> Result<ResourceMetadata, PreprocessorsError> {
+) -> Result<AssetMetadata, PreprocessorsError> {
     info!("Resampling FLAC file: {}", metadata.header.name);
     cache_me!(
         metadata,
@@ -247,9 +242,9 @@ pub fn resample_flac_file<'a>(
 
 pub fn resample_wav_file<'a>(
     path: &'a std::path::PathBuf,
-    metadata: &ResourceMetadata,
+    metadata: &AssetMetadata,
     output_path: &'a std::path::PathBuf,
-) -> Result<ResourceMetadata, PreprocessorsError> {
+) -> Result<AssetMetadata, PreprocessorsError> {
     info!("Resampling WAV file: {}", metadata.header.name);
     cache_me!(
         metadata,

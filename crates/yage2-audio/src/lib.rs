@@ -5,7 +5,7 @@ pub mod backend;
 mod cpal;
 pub mod dsp;
 pub mod player;
-pub mod resources;
+pub mod assets;
 mod sample;
 pub mod entities;
 

@@ -1,5 +1,5 @@
 use crate::entities::{AudioEventTarget, AudioEventTargetId, AudioEventType, BlockInfo, Source};
-use crate::resources::ClipResource;
+use crate::assets::AudioAsset;
 use crate::sample::PlanarBlock;
 use crate::{SamplesCount, BLOCK_SIZE};
 use glam::Vec3;
@@ -270,7 +270,7 @@ impl Source for ActorsSource {
                 let lpf_cutoff = self.lpf_func.cutoff(distance);
 
                 // Copy audio data from the clip to the output
-                let clip = clip.cast::<ClipResource>();
+                let clip = clip.cast::<AudioAsset>();
                 let to_copy = min(BLOCK_SIZE, clip.len - actor.playback_position);
 
                 let mut block = PlanarBlock::default();
