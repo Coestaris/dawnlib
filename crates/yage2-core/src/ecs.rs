@@ -25,6 +25,7 @@ pub struct StopEventLoop;
 pub struct MainLoopProfileFrame {
     pub tick_time: ProfileFrame,
     pub tick_tps: ProfileFrame,
+    pub average_load: f32, // Average load of the main loop in percent.
 }
 
 /// Generic component for storing the 'main camera' of the game.
@@ -75,10 +76,15 @@ impl MainLoopProfilerTrait for MainLoopProfiler {
             self.last_profile_time = std::time::Instant::now();
             self.tick_profiler.update();
 
+            // Calculate the average load of the main loop
+            let tick_time = self.period_profiler.get_frame();
+            let load = tick_time.average() / self.tick_profiler.get_frame().average();
+
             // Call the handler with the profile frame
             world.send(MainLoopProfileFrame {
-                tick_time: self.period_profiler.get_frame(),
+                tick_time,
                 tick_tps: self.tick_profiler.get_frame(),
+                average_load: load,
             });
         }
     }

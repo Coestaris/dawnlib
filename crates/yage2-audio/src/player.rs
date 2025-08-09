@@ -36,6 +36,9 @@ pub struct PlayerProfileFrame {
     pub events: ProfileFrame,
     // Number of events processed per second
     pub events_tps: ProfileFrame,
+    // Average load of the player in percent
+    pub average_renderer_load: f32,
+    pub average_events_load: f32,
     // Player parameters
     pub sample_rate: SampleRate,
     pub channels: ChannelsCount,
@@ -114,11 +117,34 @@ impl PlayerProfilerTrait for PlayerProfiler {
                     self.renderer_tps.update();
                     self.events_tps.update();
 
+                    // Calculate the average load of the player
+                    // Number of samples that actually processed by one render call
+                    // (assuming that no underruns happens).
+                    let render_tps = self.renderer_tps.get_frame();
+                    let renderer_time = self.renderer_time.get_frame();
+                    let av_actual_samples = self.sample_rate as f32 / render_tps.average();
+                    // Calculate the allowed time for one render call
+                    let allowed_time = av_actual_samples / self.sample_rate as f32 * 1000.0;
+                    let average_renderer_load = renderer_time.average() / allowed_time;
+
+                    // When no events are processed, we cannot calculate the load
+                    // Assume that the events thread has the same maximum allowed time
+                    // as the renderer thread.
+                    let events_tps = self.events_tps.get_frame();
+                    let events_time = self.events.get_frame();
+                    let average_events_load = if events_tps.average() == 0.0 {
+                        0.0
+                    } else {
+                        events_time.average() / allowed_time
+                    };
+
                     let frame = PlayerProfileFrame {
-                        render: self.renderer_time.get_frame(),
-                        render_tps: self.renderer_tps.get_frame(),
-                        events: self.events.get_frame(),
-                        events_tps: self.events_tps.get_frame(),
+                        render: renderer_time,
+                        render_tps,
+                        events: events_time,
+                        events_tps,
+                        average_renderer_load,
+                        average_events_load,
                         sample_rate: self.sample_rate,
                         channels: CHANNELS_COUNT,
                         block_size: BLOCK_SIZE,

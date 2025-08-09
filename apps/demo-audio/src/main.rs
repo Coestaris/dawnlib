@@ -113,41 +113,22 @@ fn timeout_handler(t: Receiver<Tick>, mut stopper: Sender<StopEventLoop>) {
 }
 
 fn main_loop_profile_handler(r: Receiver<MainLoopProfileFrame>) {
-    let allowed_time = 1000.0 / REFRESH_RATE;
-
     info!(
         "Main loop: {:.1}tps ({:.1}%)",
         r.event.tick_tps.average(),
-        r.event.tick_time.average() / allowed_time * 1000.0
+        r.event.average_load * 100.0
     );
 }
 
 fn player_profile_handler(r: Receiver<PlayerProfileFrame>) {
     let frame = r.event;
-
-    // Number of samples that actually processed by one render call
-    // (assuming that no underruns happens).
-    let av_actual_samples = frame.sample_rate as f32 / frame.render_tps.average();
-    // Calculate the allowed time for one render call
-    let allowed_time = av_actual_samples / frame.sample_rate as f32 * 1000.0;
-
-    // When no events are processed, we cannot calculate the load
-    // (since the thread is not running).
-    // Assume that the events thread has the same maximum allowed time
-    // as the renderer thread.
-    let events_load_precent = if frame.events_tps.average() == 0.0 {
-        0.0
-    } else {
-        frame.events.average() / allowed_time * 100.0
-    };
-
     info!(
         "T: {:.0}. Render: {:.1}ms ({:.1}%). Ev {:.1}ms ({:.1}%) ({:.0})",
         frame.render_tps.average(),
         frame.render.average(),
-        frame.render.average() / allowed_time * 100.0,
+        frame.average_renderer_load * 100.0,
         frame.events.average(),
-        events_load_precent,
+        frame.average_events_load * 100.0,
         frame.events_tps.average(),
     );
 }
