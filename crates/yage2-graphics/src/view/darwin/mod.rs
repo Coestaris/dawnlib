@@ -1,5 +1,5 @@
 use crate::input::InputEvent;
-use crate::view::{TickResult, ViewConfig, ViewHandleTrait, ViewTrait};
+use crate::view::{TickResult, ViewConfig, ViewTrait};
 use crossbeam_queue::ArrayQueue;
 use std::sync::Arc;
 
