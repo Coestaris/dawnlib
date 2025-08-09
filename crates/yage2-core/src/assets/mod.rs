@@ -2,7 +2,7 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::any::TypeId;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub mod factory;
@@ -71,7 +71,7 @@ pub struct Asset {
 impl Clone for Asset {
     fn clone(&self) -> Self {
         // Increment the reference count
-        self.rc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.rc.fetch_add(1, Ordering::SeqCst);
         Asset {
             tid: self.tid,
             rc: Arc::clone(&self.rc),
@@ -83,12 +83,13 @@ impl Clone for Asset {
 impl Asset {
     pub fn new(tid: TypeId, rc: Arc<AtomicUsize>, ptr: NonNull<()>) -> Asset {
         // Increment the reference count
-        rc.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        rc.fetch_add(1, Ordering::SeqCst);
 
         Asset { tid, rc, ptr }
     }
 
     pub fn cast<'a, T: 'static>(&self) -> &'a T {
+        #[cfg(debug_assertions)]
         if self.tid != TypeId::of::<T>() {
             panic!(
                 "Asset type mismatch: expected {:?}, found {:?}",
@@ -104,8 +105,7 @@ impl Asset {
 impl Drop for Asset {
     fn drop(&mut self) {
         // Decrement the reference count
-        let rc = self.rc.fetch_sub(1, std::sync::atomic::Ordering::Release);
-
+        let rc = self.rc.fetch_sub(1, Ordering::Release);
         debug!("Asset of {:?} is dropped. rc: {}", self.tid, rc);
     }
 }

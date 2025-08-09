@@ -6,7 +6,6 @@ use evenio::fetch::Single;
 use evenio::world::World;
 use glam::*;
 use log::info;
-use std::sync::Arc;
 use yage2_audio::assets::{MIDIAssetFactory, WAVAssetFactory};
 use yage2_audio::backend::PlayerBackendConfig;
 use yage2_audio::entities::bus::Bus;
