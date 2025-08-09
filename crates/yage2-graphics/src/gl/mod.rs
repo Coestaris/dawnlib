@@ -1,18 +1,23 @@
+mod assets;
 mod bindings;
 
+use crate::gl::assets::TextureAssetFactory;
 use crate::renderable::Renderable;
 use crate::renderer::{
     RendererBackendConfig, RendererBackendError, RendererBackendTrait, RendererTickResult,
 };
 use crate::view::{ViewError, ViewHandle};
 use std::fmt::{Display, Formatter};
+use yage2_core::assets::factory::FactoryBinding;
 
 pub struct GLRenderer {
     view_handle: ViewHandle,
+    texture_factory: Option<TextureAssetFactory>,
+    shader_factory: Option<TextureAssetFactory>,
 }
 pub struct GLRendererConfig {
-    pub fps: usize,
-    pub vsync: bool,
+    pub texture_factory_binding: Option<FactoryBinding>,
+    pub shader_factory_binding: Option<FactoryBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -36,6 +41,10 @@ impl Display for GLRendererError {
 
 impl std::error::Error for GLRendererError {}
 
+// Texture and shader assets cannot be handled from the ECS (like other assets),
+// because they are tightly coupled with the OpenGL context and cannot be
+// loaded asynchronously.
+// So OpenGL renderer handles events for these assets on each draw tick.
 impl RendererBackendTrait for GLRenderer {
     fn new(
         cfg: RendererBackendConfig,
@@ -50,19 +59,47 @@ impl RendererBackendTrait for GLRenderer {
                 .get_proc_addr(symbol)
                 .expect("Failed to load OpenGL function")
         });
-        Ok(GLRenderer { view_handle })
+
+        let texture_factory = if let Some(binding) = cfg.texture_factory_binding {
+            let mut factory = TextureAssetFactory::new();
+            factory.bind(binding);
+            Some(factory)
+        } else {
+            None
+        };
+        let shader_factory = if let Some(binding) = cfg.shader_factory_binding {
+            let mut factory = TextureAssetFactory::new();
+            factory.bind(binding);
+            Some(factory)
+        } else {
+            None
+        };
+
+        Ok(GLRenderer {
+            view_handle,
+            texture_factory,
+            shader_factory,
+        })
     }
 
     fn tick(
         &mut self,
         renderables: &[Renderable],
     ) -> Result<RendererTickResult, RendererBackendError> {
-        self.view_handle.swap_buffers().unwrap();
+        // Process events asset factories
+        if let Some(factory) = &mut self.texture_factory {
+            factory.process_events();
+        }
+        if let Some(factory) = &mut self.shader_factory {
+            factory.process_events();
+        }
 
         unsafe {
             bindings::ClearColor(0.0, 0.2, 0.0, 1.0);
             bindings::Clear(bindings::COLOR_BUFFER_BIT);
         }
+
+        self.view_handle.swap_buffers().unwrap();
 
         Ok(RendererTickResult {
             draw_calls: 0,
