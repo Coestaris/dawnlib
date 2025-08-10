@@ -1,6 +1,6 @@
 mod chain;
 
-use crate::chain::{crete_pipeline, PassEvents};
+use crate::chain::{Pass, PassEvents};
 use common::assets::YARCReader;
 use common::logging::CommonLogger;
 use evenio::component::Component;
@@ -13,8 +13,12 @@ use yage2_core::assets::factory::FactoryBinding;
 use yage2_core::assets::hub::AssetHub;
 use yage2_core::assets::AssetType;
 use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop};
+use yage2_graphics::construct_chain;
 use yage2_graphics::input::{InputEvent, KeyCode};
+use yage2_graphics::passes::chain::ChainCons;
+use yage2_graphics::passes::chain::ChainNil;
 use yage2_graphics::passes::events::{RenderPassEvent, RenderPassTargetId};
+use yage2_graphics::passes::pipeline::RenderPipeline;
 use yage2_graphics::renderable::{Position, RenderableMesh};
 use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererProfileFrame};
 use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
@@ -59,10 +63,12 @@ impl GameController {
             height: 600,
         };
 
-        let (pipeline, id) = crete_pipeline();
+        let pass = Pass::new();
+        let pass_target_id = pass.get_id();
+
         let backend_config = RendererBackendConfig {
             fps: REFRESH_RATE as usize,
-            pipeline,
+            pipeline: RenderPipeline::new(construct_chain!(pass)),
             shader_factory_binding: Some(shader_binding),
             texture_factory_binding: Some(texture_binding),
             vsync: true,
@@ -71,7 +77,7 @@ impl GameController {
         let renderer = Renderer::new(view_config, backend_config, true).unwrap();
         renderer.attach_to_ecs(world);
 
-        id
+        pass_target_id
     }
 
     pub fn setup(world: &mut World) {
