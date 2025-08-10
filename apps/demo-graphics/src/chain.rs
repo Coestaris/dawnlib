@@ -100,13 +100,3 @@ impl RenderPass<PassEvents> for Pass {
         PassExecuteResult::new(1, 1)
     }
 }
-
-pub(crate) fn crete_pipeline() -> (
-    RenderPipeline<ChainCons<PassEvents, Pass, ChainNil<PassEvents>>, PassEvents>,
-    RenderPassTargetId,
-) {
-    let pass = Pass::new();
-    let id = pass.get_id();
-    let chain = construct_chain!(pass);
-    (RenderPipeline::new(chain), id)
-}
