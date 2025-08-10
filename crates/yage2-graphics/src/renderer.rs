@@ -1,4 +1,5 @@
 use crate::input::InputEvent;
+use crate::pass::ChainExecute;
 use crate::renderable::{Material, Position, Renderable, RenderableMesh, Rotation, Scale};
 use crate::view::{TickResult, View, ViewConfig, ViewError, ViewHandle, ViewTrait};
 use crossbeam_queue::ArrayQueue;
@@ -21,12 +22,13 @@ pub(crate) struct RendererTickResult {
     pub drawn_primitives: usize,
 }
 
-pub(crate) trait RendererBackendTrait {
+pub(crate) trait RendererBackendTrait<C> {
     fn new(
-        config: RendererBackendConfig,
+        config: RendererBackendConfig<C>,
         view_handle: ViewHandle,
     ) -> Result<Self, RendererBackendError>
     where
+        C: ChainExecute + Send + Sync + 'static,
         Self: Sized;
 
     fn tick(
@@ -37,8 +39,8 @@ pub(crate) trait RendererBackendTrait {
 
 #[cfg(feature = "gl")]
 mod backend_impl {
-    pub type RendererBackend = crate::gl::GLRenderer;
-    pub type RendererBackendConfig = crate::gl::GLRendererConfig;
+    pub type RendererBackend<C> = crate::gl::GLRenderer<C>;
+    pub type RendererBackendConfig<C> = crate::gl::GLRendererConfig<C>;
     pub type RendererBackendError = crate::gl::GLRendererError;
 }
 
@@ -219,11 +221,14 @@ impl Drop for Renderer {
 }
 
 impl Renderer {
-    pub fn new(
+    pub fn new<C>(
         view_config: ViewConfig,
-        backend_config: RendererBackendConfig,
+        backend_config: RendererBackendConfig<C>,
         use_profiling: bool,
-    ) -> Result<Self, RendererError> {
+    ) -> Result<Self, RendererError>
+    where
+        C: ChainExecute + Send + Sync + 'static,
+    {
         if use_profiling {
             Self::new_inner(view_config, backend_config, RendererProfiler::new())
         } else {
@@ -231,13 +236,14 @@ impl Renderer {
         }
     }
 
-    fn new_inner<P>(
+    fn new_inner<P, C>(
         view_config: ViewConfig,
-        backend_config: RendererBackendConfig,
+        backend_config: RendererBackendConfig<C>,
         profiler: P,
     ) -> Result<Self, RendererError>
     where
         P: RendererProfilerTrait + Send + Sync + 'static,
+        C: ChainExecute + Send + Sync + 'static,
     {
         // Setup profiler
         let stop_signal = Arc::new(AtomicBool::new(false));
@@ -289,9 +295,9 @@ impl Renderer {
         })
     }
 
-    fn renderer<P>(
+    fn renderer<P, C>(
         view_config: ViewConfig,
-        backend_config: RendererBackendConfig,
+        backend_config: RendererBackendConfig<C>,
         inputs_sender: Arc<ArrayQueue<InputEvent>>,
         mut renderables_buffer: Output<Vec<Renderable>>,
         profiler: Arc<P>,
@@ -299,6 +305,7 @@ impl Renderer {
     ) -> Result<(), RendererError>
     where
         P: RendererProfilerTrait + Send + Sync + 'static,
+        C: ChainExecute + Send + Sync + 'static,
     {
         let mut view =
             View::open(view_config, inputs_sender).map_err(RendererError::ViewCreateError)?;

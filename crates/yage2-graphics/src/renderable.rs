@@ -45,8 +45,8 @@ impl Default for Material {
 }
 
 #[derive(Clone)]
-pub(crate) struct Renderable {
-    pub(crate) model: Mat4,
+pub struct Renderable {
+    pub model: Mat4,
     pub(crate) mesh_id: u32,
     pub(crate) material: Material,
 }

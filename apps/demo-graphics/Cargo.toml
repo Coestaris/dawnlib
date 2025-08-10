@@ -3,6 +3,10 @@ name = "demo-graphics"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["gl"]
+gl = ["yage2-graphics/gl"]
+
 [dependencies]
 common = { path = "../common" }
 yage2-graphics = { path = "../../crates/yage2-graphics" }
