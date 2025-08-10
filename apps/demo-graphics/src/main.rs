@@ -15,7 +15,7 @@ use yage2_graphics::renderable::{Position, RenderableMesh};
 use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererProfileFrame};
 use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
 
-const REFRESH_RATE: f32 = 60.0;
+const REFRESH_RATE: f32 = 144.0;
 
 #[derive(Component)]
 struct GameController {}
@@ -119,18 +119,11 @@ fn main() {
     world.add_handler(|ie: Receiver<InputEvent>, mut f: Fetcher<&mut Position>| {
         for pos in f.iter_mut() {
             match ie.event {
-                InputEvent::KeyPress(KeyCode::Left) => {
-                    pos.0.x -= 0.1;
+                InputEvent::MouseMove{x, y} => {
+                    pos.0.x = x / 400.0 - 0.5; // Adjusting for screen size
+                    pos.0.y = -y / 300.0 + 0.5; // Adjusting for screen size
                 }
-                InputEvent::KeyPress(KeyCode::Right) => {
-                    pos.0.x += 0.1;
-                }
-                InputEvent::KeyPress(KeyCode::Up) => {
-                    pos.0.y += 0.1;
-                }
-                InputEvent::KeyPress(KeyCode::Down) => {
-                    pos.0.y -= 0.1;
-                }
+
                 _ => {}
             }
         }

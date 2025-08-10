@@ -387,7 +387,7 @@ impl Renderer {
         ) {
             // Check if there's any profile frame to process.
             // If so, push them to the ECS
-            if let Some(frame) = renderer.0.profile_frames.pop() {
+            while let Some(frame) = renderer.0.profile_frames.pop() {
                 sender.send(frame);
             }
         }
