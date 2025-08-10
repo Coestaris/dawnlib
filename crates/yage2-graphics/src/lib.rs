@@ -1,6 +1,7 @@
 #[cfg(feature = "gl")]
-pub(crate) mod gl;
+pub mod gl;
 pub mod input;
+pub mod pass;
 pub mod renderable;
 pub mod renderer;
 pub mod view;

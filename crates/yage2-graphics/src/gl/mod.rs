@@ -1,29 +1,38 @@
 mod assets;
-mod bindings;
+pub mod bindings;
 mod debug;
 mod probe;
 
 use crate::gl::assets::{ShaderAssetFactory, TextureAssetFactory};
 use crate::gl::debug::{Debugger, MessageType};
+use crate::pass::{ChainExecute, ChainExecuteContext};
 use crate::renderable::Renderable;
 use crate::renderer::{
     RendererBackendConfig, RendererBackendError, RendererBackendTrait, RendererTickResult,
 };
 use crate::view::{ViewError, ViewHandle};
 use glam::{Vec2, Vec3, Vec4};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use std::fmt::{Display, Formatter};
 use yage2_core::assets::factory::FactoryBinding;
 
-pub struct GLRenderer {
+pub struct GLRenderer<C> {
     view_handle: ViewHandle,
     debugger: Debugger,
+
+    render_chain: C,
+
+    // Factories for texture and shader assets
     texture_factory: Option<TextureAssetFactory>,
     shader_factory: Option<ShaderAssetFactory>,
 }
-pub struct GLRendererConfig {
+pub struct GLRendererConfig<C>
+where
+    C: ChainExecute,
+{
     pub fps: usize,
     pub vsync: bool,
+    pub render_chain: C,
     pub texture_factory_binding: Option<FactoryBinding>,
     pub shader_factory_binding: Option<FactoryBinding>,
 }
@@ -51,26 +60,16 @@ impl Display for GLRendererError {
 
 impl std::error::Error for GLRendererError {}
 
-unsafe fn draw_quad(a: Vec2, b: Vec2, c: Vec2, d: Vec2) {
-    bindings::Begin(bindings::QUADS);
-    bindings::Vertex2f(a.x, a.y);
-    bindings::Color4f(1.0, 0.0, 0.0, 1.0); // Red color for vertex a
-    bindings::Vertex2f(b.x, b.y);
-    bindings::Color4f(0.0, 1.0, 0.0, 1.0); // Green color for vertex b
-    bindings::Vertex2f(c.x, c.y);
-    bindings::Color4f(0.0, 0.0, 1.0, 1.0); // Blue color for vertex c
-    bindings::Vertex2f(d.x, d.y);
-    bindings::Color4f(1.0, 1.0, 0.0, 1.0); // Yellow color for vertex d
-    bindings::End();
-}
-
 // Texture and shader assets cannot be handled from the ECS (like other assets),
 // because they are tightly coupled with the OpenGL context and cannot be
 // loaded asynchronously.
 // So OpenGL renderer handles events for these assets on each draw tick.
-impl RendererBackendTrait for GLRenderer {
+impl<C> RendererBackendTrait<C> for GLRenderer<C>
+where
+    C: ChainExecute + 'static,
+{
     fn new(
-        cfg: RendererBackendConfig,
+        cfg: RendererBackendConfig<C>,
         mut view_handle: ViewHandle,
     ) -> Result<Self, RendererBackendError>
     where
@@ -103,6 +102,24 @@ impl RendererBackendTrait for GLRenderer {
             info!("OpenGL vendor: {}", vendor);
         } else {
             warn!("Failed to get OpenGL vendor. This may cause issues with rendering.");
+        }
+        let shading_language_version = unsafe { probe::get_shading_language_version() };
+        if let Some(version) = shading_language_version {
+            info!("OpenGL shading language version: {}", version);
+        } else {
+            warn!("Failed to get OpenGL shading language version. This may cause issues with rendering.");
+        }
+        let binary_formats = unsafe { probe::get_binary_formats() };
+        if !binary_formats.is_empty() {
+            info!("OpenGL binary formats: {:?}", binary_formats);
+        } else {
+            warn!("Failed to get OpenGL binary formats. This may cause issues with rendering.");
+        }
+        let extensions = unsafe { probe::get_extensions() };
+        if !extensions.is_empty() {
+            debug!("OpenGL extensions: {:?}", extensions);
+        } else {
+            warn!("Failed to get OpenGL extensions. This may cause issues with rendering.");
         }
 
         // Setup factories for texture and shader assets
@@ -139,6 +156,7 @@ impl RendererBackendTrait for GLRenderer {
                     }
                 })
             },
+            render_chain: cfg.render_chain,
         })
     }
 
@@ -153,32 +171,16 @@ impl RendererBackendTrait for GLRenderer {
         if let Some(factory) = &mut self.shader_factory {
             factory.process_events();
         }
+
+        // Clear the screen with a green color
         unsafe {
             bindings::ClearColor(0.0, 0.2, 0.0, 1.0);
             bindings::Clear(bindings::COLOR_BUFFER_BIT);
-
-            for renderable in renderables {
-                let mut vertices = [
-                    Vec3::new(-0.5, -0.5, 0.0),
-                    Vec3::new(0.5, -0.5, 0.0),
-                    Vec3::new(0.5, 0.5, 0.0),
-                    Vec3::new(-0.5, 0.5, 0.0),
-                ];
-                // Multiply vertices by the model matrix
-                let (s, r, t) = renderable.model.to_scale_rotation_translation();
-                for vertex in &mut vertices {
-                    *vertex = *vertex + t;
-                }
-
-                // Draw the quad using the vertices
-                draw_quad(
-                    Vec2::new(vertices[0].x, vertices[0].y),
-                    Vec2::new(vertices[1].x, vertices[1].y),
-                    Vec2::new(vertices[2].x, vertices[2].y),
-                    Vec2::new(vertices[3].x, vertices[3].y),
-                );
-            }
         }
+
+        // Execute the render chain
+        let context = ChainExecuteContext { renderables };
+        self.render_chain.execute(&context);
 
         self.view_handle
             .swap_buffers()

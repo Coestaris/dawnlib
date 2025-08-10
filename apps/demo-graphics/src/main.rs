@@ -1,3 +1,6 @@
+mod chain;
+
+use crate::chain::construct_chain;
 use common::assets::YARCReader;
 use common::logging::CommonLogger;
 use evenio::component::Component;
@@ -9,7 +12,7 @@ use log::info;
 use yage2_core::assets::factory::FactoryBinding;
 use yage2_core::assets::hub::AssetHub;
 use yage2_core::assets::AssetType;
-use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop, Tick};
+use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop};
 use yage2_graphics::input::{InputEvent, KeyCode};
 use yage2_graphics::renderable::{Position, RenderableMesh};
 use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererProfileFrame};
@@ -52,8 +55,10 @@ impl GameController {
             width: 800,
             height: 600,
         };
+
         let backend_config = RendererBackendConfig {
             fps: REFRESH_RATE as usize,
+            render_chain: construct_chain(),
             shader_factory_binding: Some(shader_binding),
             texture_factory_binding: Some(texture_binding),
             vsync: true,
@@ -119,7 +124,7 @@ fn main() {
     world.add_handler(|ie: Receiver<InputEvent>, mut f: Fetcher<&mut Position>| {
         for pos in f.iter_mut() {
             match ie.event {
-                InputEvent::MouseMove{x, y} => {
+                InputEvent::MouseMove { x, y } => {
                     pos.0.x = x / 400.0 - 0.5; // Adjusting for screen size
                     pos.0.y = -y / 300.0 + 0.5; // Adjusting for screen size
                 }
