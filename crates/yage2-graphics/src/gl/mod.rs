@@ -5,34 +5,40 @@ mod probe;
 
 use crate::gl::assets::{ShaderAssetFactory, TextureAssetFactory};
 use crate::gl::debug::{Debugger, MessageType};
-use crate::pass::{ChainExecute, ChainExecuteContext};
+use crate::passes::chain::ChainExecute;
+use crate::passes::events::RenderPassEvent;
+use crate::passes::pipeline::RenderPipeline;
+use crate::passes::result::PassExecuteResult;
+use crate::passes::PassExecuteContext;
 use crate::renderable::Renderable;
-use crate::renderer::{
-    RendererBackendConfig, RendererBackendError, RendererBackendTrait, RendererTickResult,
-};
+use crate::renderer::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
 use crate::view::{ViewError, ViewHandle};
-use glam::{Vec2, Vec3, Vec4};
 use log::{debug, error, info, warn};
 use std::fmt::{Display, Formatter};
 use yage2_core::assets::factory::FactoryBinding;
 
-pub struct GLRenderer<C> {
+pub struct GLRenderer<C, E>
+where
+    E: Copy + 'static,
+    C: ChainExecute<E> + Send + Sync + 'static,
+{
     view_handle: ViewHandle,
     debugger: Debugger,
 
-    render_chain: C,
+    pipeline: RenderPipeline<C, E>,
 
     // Factories for texture and shader assets
     texture_factory: Option<TextureAssetFactory>,
     shader_factory: Option<ShaderAssetFactory>,
 }
-pub struct GLRendererConfig<C>
+pub struct GLRendererConfig<C, E>
 where
-    C: ChainExecute,
+    E: Copy + 'static,
+    C: ChainExecute<E> + Send + Sync + 'static,
 {
     pub fps: usize,
     pub vsync: bool,
-    pub render_chain: C,
+    pub pipeline: RenderPipeline<C, E>,
     pub texture_factory_binding: Option<FactoryBinding>,
     pub shader_factory_binding: Option<FactoryBinding>,
 }
@@ -64,12 +70,13 @@ impl std::error::Error for GLRendererError {}
 // because they are tightly coupled with the OpenGL context and cannot be
 // loaded asynchronously.
 // So OpenGL renderer handles events for these assets on each draw tick.
-impl<C> RendererBackendTrait<C> for GLRenderer<C>
+impl<C, E> RendererBackendTrait<C, E> for GLRenderer<C, E>
 where
-    C: ChainExecute + 'static,
+    E: Copy + 'static,
+    C: ChainExecute<E> + Send + Sync + 'static,
 {
     fn new(
-        cfg: RendererBackendConfig<C>,
+        cfg: RendererBackendConfig<C, E>,
         mut view_handle: ViewHandle,
     ) -> Result<Self, RendererBackendError>
     where
@@ -156,14 +163,20 @@ where
                     }
                 })
             },
-            render_chain: cfg.render_chain,
+            pipeline: cfg.pipeline,
         })
     }
 
-    fn tick(
+    fn dispatch_event(&mut self, event: &RenderPassEvent<E>) -> Result<(), RendererBackendError> {
+        // Dispatch the event to the render pipeline
+        self.pipeline.dispatch(event);
+        Ok(())
+    }
+
+    fn render(
         &mut self,
         renderables: &[Renderable],
-    ) -> Result<RendererTickResult, RendererBackendError> {
+    ) -> Result<PassExecuteResult, RendererBackendError> {
         // Process events asset factories
         if let Some(factory) = &mut self.texture_factory {
             factory.process_events();
@@ -179,16 +192,13 @@ where
         }
 
         // Execute the render chain
-        let context = ChainExecuteContext { renderables };
-        self.render_chain.execute(&context);
+        let context = PassExecuteContext { renderables };
+        let result = self.pipeline.execute(&context);
 
         self.view_handle
             .swap_buffers()
             .map_err(GLRendererError::ViewError)?;
 
-        Ok(RendererTickResult {
-            draw_calls: renderables.len() * 4, // 4 vertices per quad
-            drawn_primitives: renderables.len(),
-        })
+        Ok(result)
     }
 }
