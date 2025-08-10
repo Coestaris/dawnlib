@@ -1,20 +1,23 @@
 mod assets;
 mod bindings;
+mod debug;
+mod probe;
 
 use crate::gl::assets::{ShaderAssetFactory, TextureAssetFactory};
+use crate::gl::debug::{Debugger, MessageType};
 use crate::renderable::Renderable;
 use crate::renderer::{
     RendererBackendConfig, RendererBackendError, RendererBackendTrait, RendererTickResult,
 };
 use crate::view::{ViewError, ViewHandle};
 use glam::{Vec2, Vec3, Vec4};
+use log::{error, info, warn};
 use std::fmt::{Display, Formatter};
-use std::ops::Mul;
-use log::info;
 use yage2_core::assets::factory::FactoryBinding;
 
 pub struct GLRenderer {
     view_handle: ViewHandle,
+    debugger: Debugger,
     texture_factory: Option<TextureAssetFactory>,
     shader_factory: Option<ShaderAssetFactory>,
 }
@@ -73,13 +76,37 @@ impl RendererBackendTrait for GLRenderer {
     where
         Self: Sized,
     {
+        // Create the OpenGL context
         view_handle.create_context(cfg.fps, cfg.vsync).unwrap();
+        // Load OpenGL functions using the OS-specific loaders
         bindings::load_with(|symbol| {
             view_handle
                 .get_proc_addr(symbol)
                 .expect("Failed to load OpenGL function")
         });
 
+        // Stat the OpenGL context
+        let version = unsafe { probe::get_version() };
+        if let Some(version) = version {
+            info!("OpenGL version: {}", version);
+        } else {
+            warn!("Failed to get OpenGL version. This may cause issues with rendering.");
+        }
+        let renderer = unsafe { probe::get_renderer() };
+        if let Some(renderer) = renderer {
+            info!("OpenGL renderer: {}", renderer);
+        } else {
+            warn!("Failed to get OpenGL renderer. This may cause issues with rendering.");
+        }
+        let vendor = unsafe { probe::get_vendor() };
+        if let Some(vendor) = vendor {
+            info!("OpenGL vendor: {}", vendor);
+        } else {
+            warn!("Failed to get OpenGL vendor. This may cause issues with rendering.");
+        }
+
+        // Setup factories for texture and shader assets
+        // These factories are used to load and manage texture and shader assets.
         let texture_factory = if let Some(binding) = cfg.texture_factory_binding {
             let mut factory = TextureAssetFactory::new();
             factory.bind(binding);
@@ -99,6 +126,19 @@ impl RendererBackendTrait for GLRenderer {
             view_handle,
             texture_factory,
             shader_factory,
+            debugger: unsafe {
+                Debugger::new(|source, rtype, severity, message| match rtype {
+                    MessageType::Error => {
+                        error!("OpenGL: {}: {}: {}", source, severity, message);
+                    }
+                    MessageType::DeprecatedBehavior | MessageType::UndefinedBehavior => {
+                        warn!("OpenGL: {}: {}: {}", source, severity, message);
+                    }
+                    _ => {
+                        info!("OpenGL: {}: {}: {}", source, severity, message);
+                    }
+                })
+            },
         })
     }
 
@@ -125,7 +165,7 @@ impl RendererBackendTrait for GLRenderer {
                     Vec3::new(-0.5, 0.5, 0.0),
                 ];
                 // Multiply vertices by the model matrix
-                let (s,r,t) = renderable.model.to_scale_rotation_translation();
+                let (s, r, t) = renderable.model.to_scale_rotation_translation();
                 for vertex in &mut vertices {
                     *vertex = *vertex + t;
                 }
