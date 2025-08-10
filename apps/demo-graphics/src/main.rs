@@ -1,11 +1,11 @@
 mod chain;
 
-use crate::chain::construct_chain;
+use crate::chain::{crete_pipeline, PassEvents};
 use common::assets::YARCReader;
 use common::logging::CommonLogger;
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
-use evenio::fetch::Fetcher;
+use evenio::fetch::{Fetcher, Single};
 use evenio::world::World;
 use glam::*;
 use log::info;
@@ -14,6 +14,7 @@ use yage2_core::assets::hub::AssetHub;
 use yage2_core::assets::AssetType;
 use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop};
 use yage2_graphics::input::{InputEvent, KeyCode};
+use yage2_graphics::passes::events::{RenderPassEvent, RenderPassTargetId};
 use yage2_graphics::renderable::{Position, RenderableMesh};
 use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererProfileFrame};
 use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
@@ -21,7 +22,9 @@ use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
 const REFRESH_RATE: f32 = 144.0;
 
 #[derive(Component)]
-struct GameController {}
+struct GameController {
+    pass_target_id: RenderPassTargetId,
+}
 
 impl GameController {
     fn attach_to_ecs(self, world: &mut World) {
@@ -48,7 +51,7 @@ impl GameController {
         world: &mut World,
         shader_binding: FactoryBinding,
         texture_binding: FactoryBinding,
-    ) {
+    ) -> RenderPassTargetId {
         let view_config = ViewConfig {
             platform_specific: PlatformSpecificViewConfig {},
             title: "Hello world".to_string(),
@@ -56,9 +59,10 @@ impl GameController {
             height: 600,
         };
 
+        let (pipeline, id) = crete_pipeline();
         let backend_config = RendererBackendConfig {
             fps: REFRESH_RATE as usize,
-            render_chain: construct_chain(),
+            pipeline,
             shader_factory_binding: Some(shader_binding),
             texture_factory_binding: Some(texture_binding),
             vsync: true,
@@ -66,12 +70,14 @@ impl GameController {
 
         let renderer = Renderer::new(view_config, backend_config, true).unwrap();
         renderer.attach_to_ecs(world);
+
+        id
     }
 
     pub fn setup(world: &mut World) {
         let (shader_binding, texture_binding) = Self::setup_asset_hub(world);
-        Self::setup_graphics(world, shader_binding, texture_binding);
-        GameController {}.attach_to_ecs(world);
+        let id = Self::setup_graphics(world, shader_binding, texture_binding);
+        GameController { pass_target_id: id }.attach_to_ecs(world);
     }
 }
 
@@ -121,18 +127,35 @@ fn main() {
     world.add_handler(renderer_profile_handler);
     world.add_handler(input_events_handler);
 
-    world.add_handler(|ie: Receiver<InputEvent>, mut f: Fetcher<&mut Position>| {
-        for pos in f.iter_mut() {
-            match ie.event {
-                InputEvent::MouseMove { x, y } => {
-                    pos.0.x = x / 400.0 - 0.5; // Adjusting for screen size
-                    pos.0.y = -y / 300.0 + 0.5; // Adjusting for screen size
-                }
+    world.add_handler(
+        |ie: Receiver<InputEvent>,
+         mut f: Fetcher<&mut Position>,
+         gc: Single<&mut GameController>,
+         mut s: Sender<RenderPassEvent<PassEvents>>| {
+            for pos in f.iter_mut() {
+                match ie.event {
+                    InputEvent::MouseMove { x, y } => {
+                        pos.0.x = x / 400.0 - 0.5; // Adjusting for screen size
+                        pos.0.y = -y / 300.0 + 0.5; // Adjusting for screen size
+                    }
 
-                _ => {}
+                    InputEvent::KeyRelease(KeyCode::Space) => {
+                        info!("Space key pressed, changing color");
+                        let new_color = Vec3::new(
+                            rand::random::<f32>(),
+                            rand::random::<f32>(),
+                            rand::random::<f32>(),
+                        );
+                        s.send(RenderPassEvent::new(
+                            gc.pass_target_id,
+                            PassEvents::ChangeColor(new_color),
+                        ));
+                    }
+                    _ => {}
+                }
             }
-        }
-    });
+        },
+    );
 
     run_loop(&mut world, REFRESH_RATE, true);
 }

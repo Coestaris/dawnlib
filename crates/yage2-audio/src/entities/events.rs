@@ -56,7 +56,7 @@ pub struct AudioEventTargetId(usize);
 
 impl std::fmt::Display for AudioEventTargetId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "EventTargetId({})", self.0)
+        write!(f, "AudioEventTargetId({})", self.0)
     }
 }
 

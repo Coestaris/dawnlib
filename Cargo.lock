@@ -354,6 +354,7 @@ dependencies = [
  "evenio",
  "glam",
  "log",
+ "rand",
  "yage2-core",
  "yage2-graphics",
  "yage2-yarc",
