@@ -1,4 +1,9 @@
 use crate::input::InputEvent;
+use crate::passes::chain::RenderChain;
+use crate::passes::events::RenderPassEvent;
+use crate::passes::pipeline::RenderPipeline;
+use crate::passes::result::PassExecuteResult;
+use crate::passes::{ChainExecuteCtx, MAX_RENDER_PASSES};
 use crate::renderable::{Material, Position, Renderable, RenderableMesh, Rotation, Scale};
 use crate::view::{TickResult, View, ViewConfig, ViewError, ViewHandle, ViewTrait};
 use crossbeam_queue::ArrayQueue;
@@ -8,44 +13,38 @@ use evenio::fetch::{Fetcher, Single};
 use evenio::query::Query;
 use evenio::world::World;
 use glam::Vec3;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
+use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{Builder, JoinHandle};
+use std::time::Duration;
 use triple_buffer::{triple_buffer, Input, Output};
 use yage2_core::ecs::{StopEventLoop, Tick};
 use yage2_core::profile::{PeriodProfiler, ProfileFrame, TickProfiler};
 
-pub(crate) trait RendererBackendTrait<C, E>
+pub(crate) trait RendererBackendTrait<E>
 where
     E: Copy + 'static,
-    C: ChainExecute<E> + Send + Sync + 'static,
     Self: Sized,
 {
     fn new(
-        config: RendererBackendConfig<C, E>,
+        config: RendererBackendConfig,
         view_handle: ViewHandle,
     ) -> Result<Self, RendererBackendError>;
 
-    fn dispatch_event(&mut self, event: &RenderPassEvent<E>) -> Result<(), RendererBackendError>;
-
-    fn render(
-        &mut self,
-        renderables: &[Renderable],
-    ) -> Result<PassExecuteResult, RendererBackendError>;
+    fn before_frame(&mut self) -> Result<(), RendererBackendError>;
+    fn after_frame(&mut self) -> Result<(), RendererBackendError>;
 }
 
 #[cfg(feature = "gl")]
 mod backend_impl {
-    pub type RendererBackend<C, E> = crate::gl::GLRenderer<C, E>;
-    pub type RendererBackendConfig<C, E> = crate::gl::GLRendererConfig<C, E>;
+    pub type RendererBackend<E> = crate::gl::GLRenderer<E>;
+    pub type RendererBackendConfig = crate::gl::GLRendererConfig;
     pub type RendererBackendError = crate::gl::GLRendererError;
 }
 
-use crate::passes::chain::ChainExecute;
-use crate::passes::events::RenderPassEvent;
-use crate::passes::result::PassExecuteResult;
 pub use backend_impl::*;
 
 const STATISTICS_THREAD_NAME: &str = "ren_stats";
@@ -73,132 +72,158 @@ where
 
 #[derive(GlobalEvent)]
 pub struct RendererProfileFrame {
+    /// Actual number of frames drawn per second.
     pub fps: ProfileFrame,
+
+    /// The time spend on the processing of the view tick
+    /// (OS-dependent Window handling).
     pub view_tick: ProfileFrame,
+
+    /// The time spend on processing the events from the ECS
+    /// by the renderer pipeline.
     pub events: ProfileFrame,
-    pub backend_tick: ProfileFrame,
+
+    /// The time spend no the actual rendering of the frame
+    /// (including the time spend on the backend).
+    pub render: ProfileFrame,
+
+    /// The approximate number of primitives drawn
+    /// (triangles, lines, points, etc.) in the frame.
     pub drawn_primitives: ProfileFrame,
+
+    /// The number of draw calls made in the frame.
+    /// This is the number of times the GPU was instructed
     pub draw_calls: ProfileFrame,
+
+    /// The amount of time spend on each render pass.
+    /// The key is the name of the pass, and the value is the time spent on it.
+    /// This is used for profiling the render passes.
+    pub pass_profile: HashMap<String, ProfileFrame>,
 }
 
 trait RendererProfilerTrait {
-    fn view_tick_start(&self) {}
-    fn view_tick_end(&self) {}
-    fn evens_start(&self) {}
-    fn evens_end(&self) {}
-    fn backend_tick_start(&self) {}
-    fn backend_tick_end(&self) {}
-    fn draw_result(&self, _execute_result: PassExecuteResult) {}
-    fn spawn_thread(
-        self: Arc<Self>,
-        _stop_signal: Arc<AtomicBool>,
-        _sender: Arc<ArrayQueue<RendererProfileFrame>>,
-    ) -> Result<(), RendererError> {
-        Ok(())
+    fn set_queue(&mut self, queue: Arc<ArrayQueue<RendererProfileFrame>>) {}
+    fn set_pass_names(&mut self, names: &[&str]) {}
+    fn view_tick_start(&mut self) {}
+    fn view_tick_end(&mut self) {}
+    fn evens_start(&mut self) {}
+    fn evens_end(&mut self) {}
+    fn render_start(&mut self) {}
+    fn render_end(
+        &mut self,
+        execute_result: PassExecuteResult,
+        prof: &[Duration; MAX_RENDER_PASSES],
+    ) {
     }
 }
 
 struct RendererProfiler {
     fps: TickProfiler,
     view_tick: PeriodProfiler,
-    evens: PeriodProfiler,
-    backend_tick: PeriodProfiler,
+    events: PeriodProfiler,
+    render: PeriodProfiler,
     draw_calls: TickProfiler,
     drawn_primitives: TickProfiler,
-    handle: Option<JoinHandle<()>>,
+    queue: Option<Arc<ArrayQueue<RendererProfileFrame>>>,
+    pass_names: Vec<String>,
+    last_send: std::time::Instant,
 }
 
 impl RendererProfilerTrait for RendererProfiler {
-    fn view_tick_start(&self) {
+    fn set_queue(&mut self, queue: Arc<ArrayQueue<RendererProfileFrame>>) {
+        // TODO: Implement thread-unsafe profiling
+        self.queue = Some(queue);
+    }
+
+    fn set_pass_names(&mut self, names: &[&str]) {
+        self.pass_names.clear();
+        for name in names {
+            self.pass_names.push(name.to_string());
+        }
+        debug!("Renderer profiler pass names set: {:?}", self.pass_names);
+    }
+
+    fn view_tick_start(&mut self) {
         self.fps.tick(1);
         self.view_tick.start();
     }
 
-    fn view_tick_end(&self) {
+    fn view_tick_end(&mut self) {
         self.view_tick.end();
     }
 
-    fn evens_start(&self) {
-        self.evens.start();
+    fn evens_start(&mut self) {
+        self.events.start();
     }
 
-    fn evens_end(&self) {
-        self.evens.end();
+    fn evens_end(&mut self) {
+        self.events.end();
     }
 
-    fn backend_tick_start(&self) {
-        self.backend_tick.start();
+    fn render_start(&mut self) {
+        self.render.start();
     }
 
-    fn backend_tick_end(&self) {
-        self.backend_tick.end();
-    }
+    fn render_end(
+        &mut self,
+        execute_result: PassExecuteResult,
+        prof: &[Duration; MAX_RENDER_PASSES],
+    ) {
+        self.render.end();
 
-    fn draw_result(&self, execute_result: PassExecuteResult) {
         self.drawn_primitives
-            .tick(execute_result.primitives() as u32);
-        self.draw_calls.tick(execute_result.draw_calls() as u32);
-    }
+            .tick(execute_result.primitives().unwrap() as u32);
+        self.draw_calls
+            .tick(execute_result.draw_calls().unwrap() as u32);
 
-    fn spawn_thread(
-        self: Arc<Self>,
-        stop_signal: Arc<AtomicBool>,
-        sender: Arc<ArrayQueue<RendererProfileFrame>>,
-    ) -> Result<(), RendererError> {
-        Builder::new()
-            .name(STATISTICS_THREAD_NAME.to_string())
-            .spawn(move || {
-                loop {
-                    // Check if the stop signal is set
-                    if stop_signal.load(Ordering::Relaxed) {
-                        debug!("Received stop signal");
-                        break;
-                    }
+        // Call these each second
+        let now = std::time::Instant::now();
+        if now.duration_since(self.last_send) >= Duration::from_secs(1) {
+            self.last_send = now;
 
-                    self.fps.update();
-                    self.drawn_primitives.update();
+            self.fps.update();
+            self.drawn_primitives.update();
 
-                    let frame = RendererProfileFrame {
-                        fps: self.fps.get_frame(),
-                        view_tick: self.view_tick.get_frame(),
-                        events: self.evens.get_frame(),
-                        backend_tick: self.backend_tick.get_frame(),
-                        drawn_primitives: self.drawn_primitives.get_frame(),
-                        draw_calls: self.draw_calls.get_frame(),
-                    };
-
-                    let _ = sender.push(frame);
-
-                    std::thread::sleep(std::time::Duration::from_secs(1));
+            let mut pass_profile = HashMap::with_capacity(self.pass_names.len());
+            for (i, name) in self.pass_names.iter().enumerate() {
+                if i < prof.len() {
+                    let ms = prof[i].as_millis() as f32;
+                    // TODO: Implement some kind of smoothing
+                    pass_profile.insert(name.clone(), ProfileFrame::new(ms, ms, ms));
                 }
+            }
+            let frame = RendererProfileFrame {
+                fps: self.fps.get_frame(),
+                view_tick: self.view_tick.get_frame(),
+                events: self.events.get_frame(),
+                render: self.render.get_frame(),
+                drawn_primitives: self.drawn_primitives.get_frame(),
+                draw_calls: self.draw_calls.get_frame(),
+                pass_profile,
+            };
 
-                info!("Renderer profiler thread finished");
-            })
-            .map_err(|_| RendererError::RendererThreadSetupFailed)?;
-        Ok(())
+            if let Some(queue) = &self.queue {
+                if queue.push(frame).is_err() {
+                    warn!("Renderer profiler queue is full, dropping frame");
+                }
+            } else {
+                warn!("Renderer profiler queue is not set, dropping frame");
+            }
+        }
     }
 }
-
 impl RendererProfiler {
     pub fn new() -> Self {
         RendererProfiler {
             fps: TickProfiler::new(0.5),
             view_tick: PeriodProfiler::new(0.5),
-            evens: PeriodProfiler::new(0.5),
-            backend_tick: PeriodProfiler::new(0.5),
+            events: PeriodProfiler::new(0.5),
+            render: PeriodProfiler::new(0.5),
             drawn_primitives: TickProfiler::new(1.0),
+            queue: None,
             draw_calls: TickProfiler::new(1.0),
-            handle: None,
-        }
-    }
-}
-
-impl Drop for RendererProfiler {
-    fn drop(&mut self) {
-        if let Some(handle) = self.handle.take() {
-            if let Err(e) = handle.join() {
-                warn!("Failed to join renderer profiler thread: {:?}", e);
-            }
+            last_send: std::time::Instant::now(),
+            pass_names: vec![],
         }
     }
 }
@@ -213,7 +238,8 @@ pub enum RendererError {
     RendererThreadSetupFailed,
     BackendCreateError(RendererBackendError),
     ViewTickError(ViewError),
-    BackendTickError(RendererBackendError),
+    BackendRenderError(RendererBackendError),
+    PipelineExecuteError(),
     ProfilerSetupFailed,
 }
 
@@ -226,8 +252,9 @@ impl std::fmt::Display for RendererError {
             }
             RendererError::BackendCreateError(e) => write!(f, "Failed to create backend: {}", e),
             RendererError::ViewTickError(e) => write!(f, "View tick error: {}", e),
-            RendererError::BackendTickError(e) => write!(f, "Backend tick error: {}", e),
+            RendererError::BackendRenderError(e) => write!(f, "Backend tick error: {}", e),
             RendererError::ProfilerSetupFailed => write!(f, "Failed to setup profiler"),
+            RendererError::PipelineExecuteError() => write!(f, "Failed to execute render pipeline"),
         }
     }
 }
@@ -252,38 +279,46 @@ where
 {
     pub fn new<C>(
         view_config: ViewConfig,
-        backend_config: RendererBackendConfig<C, E>,
+        backend_config: RendererBackendConfig,
+        constructor: impl FnOnce() -> RenderPipeline<C, E> + Send + Sync + 'static,
         use_profiling: bool,
     ) -> Result<Self, RendererError>
     where
-        C: ChainExecute<E> + Send + Sync + 'static,
+        C: RenderChain<E> + Send + Sync + 'static,
     {
         if use_profiling {
-            Self::new_inner(view_config, backend_config, RendererProfiler::new())
+            Self::new_inner(
+                view_config,
+                backend_config,
+                constructor,
+                RendererProfiler::new(),
+            )
         } else {
-            Self::new_inner(view_config, backend_config, DummyRendererProfiler {})
+            Self::new_inner(
+                view_config,
+                backend_config,
+                constructor,
+                DummyRendererProfiler {},
+            )
         }
     }
 
     fn new_inner<P, C>(
         view_config: ViewConfig,
-        backend_config: RendererBackendConfig<C, E>,
-        profiler: P,
+        backend_config: RendererBackendConfig,
+        constructor: impl FnOnce() -> RenderPipeline<C, E> + Send + Sync + 'static,
+        mut profiler: P,
     ) -> Result<Self, RendererError>
     where
         P: RendererProfilerTrait + Send + Sync + 'static,
-        C: ChainExecute<E> + Send + Sync + 'static,
+        C: RenderChain<E> + Send + Sync + 'static,
     {
         // Setup profiler
         let stop_signal = Arc::new(AtomicBool::new(false));
-        let profiler = Arc::new(profiler);
         let profile_frames = Arc::new(ArrayQueue::<RendererProfileFrame>::new(
             PROFILE_QUEUE_CAPACITY,
         ));
-        profiler
-            .clone()
-            .spawn_thread(stop_signal.clone(), profile_frames.clone())
-            .map_err(|_| RendererError::ProfilerSetupFailed)?;
+        profiler.set_queue(profile_frames.clone());
 
         // Setup renderer
         let inputs_queue = Arc::new(ArrayQueue::<InputEvent>::new(INPUTS_QUEUE_CAPACITY));
@@ -303,6 +338,7 @@ where
                 let err = Self::renderer(
                     view_config,
                     backend_config,
+                    constructor,
                     inputs_queue_clone,
                     renderer_queue_clone,
                     renderables_buffer_output,
@@ -332,23 +368,27 @@ where
 
     fn renderer<P, C>(
         view_config: ViewConfig,
-        backend_config: RendererBackendConfig<C, E>,
+        backend_config: RendererBackendConfig,
+        constructor: impl FnOnce() -> RenderPipeline<C, E> + Send + Sync + 'static,
         inputs_sender: Arc<ArrayQueue<InputEvent>>,
         renderer_queue: Arc<ArrayQueue<RenderPassEvent<E>>>,
         mut renderables_buffer: Output<Vec<Renderable>>,
-        profiler: Arc<P>,
+        mut profiler: P,
         stop_signal: Arc<AtomicBool>,
     ) -> Result<(), RendererError>
     where
         P: RendererProfilerTrait + Send + Sync + 'static,
         E: 'static + Copy,
-        C: ChainExecute<E> + Send + Sync + 'static,
+        C: RenderChain<E> + Send + Sync + 'static,
     {
         let mut view =
             View::open(view_config, inputs_sender).map_err(RendererError::ViewCreateError)?;
-
-        let mut backend = RendererBackend::new(backend_config, view.get_handle())
+        let mut backend = RendererBackend::<E>::new(backend_config, view.get_handle())
             .map_err(RendererError::BackendCreateError)?;
+        let mut pipeline = constructor();
+
+        let pass_names = pipeline.get_names();
+        profiler.set_pass_names(&pass_names);
 
         info!("Renderer thread started");
         let mut result = Ok(());
@@ -376,31 +416,36 @@ where
             // Process render pass events from the ECS
             profiler.evens_start();
             while let Some(event) = renderer_queue.pop() {
-                // Dispatch the event to the backend
-                if let Err(e) = backend.dispatch_event(&event) {
-                    warn!("Failed to dispatch render pass event: {:?}", e);
-                    result = Err(RendererError::BackendTickError(e));
-                    break;
-                }
+                // Dispatch the event to the render pipeline
+                pipeline.dispatch(&event);
             }
             profiler.evens_end();
 
             // Render the frame
-            profiler.backend_tick_start();
-            let renderables = renderables_buffer.read();
-            match backend.render(renderables.as_slice()) {
-                Ok(result) => {
-                    // Rendering was successful, update the profiler
-                    profiler.draw_result(result);
-                }
-                Err(e) => {
-                    // An error occurred during rendering
-                    warn!("Backend tick error: {:?}", e);
-                    result = Err(RendererError::BackendTickError(e));
-                    break;
-                }
+            profiler.render_start();
+            if let Err(e) = backend.before_frame() {
+                error!("Failed to prepare backend for rendering: {:?}", e);
+                result = Err(RendererError::BackendRenderError(e));
+                break;
             }
-            profiler.backend_tick_end();
+            let renderables = renderables_buffer.read();
+            let mut ctx = ChainExecuteCtx::new(renderables.as_slice());
+            let pass_result = pipeline.execute(&mut ctx);
+            if !pass_result.is_ok() {
+                error!("Failed to execute render pipeline: {:?}", pass_result);
+                result = Err(RendererError::PipelineExecuteError());
+                break;
+            }
+            profiler.render_end(pass_result, &ctx.profile);
+
+            // Do not include after frame in the profiler, because it usually synchronizes
+            // the rendered frame with the OS by swapping buffer, that usually is synchronized
+            // with the refresh rate of the display. So this will not be informative.
+            if let Err(e) = backend.after_frame() {
+                error!("Failed to finish backend rendering: {:?}", e);
+                result = Err(RendererError::BackendRenderError(e));
+                break;
+            }
         }
 
         stop_signal.store(true, Ordering::SeqCst);

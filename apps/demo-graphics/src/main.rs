@@ -1,6 +1,6 @@
 mod chain;
 
-use crate::chain::{Pass, PassEvents};
+use crate::chain::{AABBPass, CustomPassEvent, GeometryPass};
 use common::assets::YARCReader;
 use common::logging::CommonLogger;
 use evenio::component::Component;
@@ -9,6 +9,7 @@ use evenio::fetch::{Fetcher, Single};
 use evenio::world::World;
 use glam::*;
 use log::info;
+use std::sync::Arc;
 use yage2_core::assets::factory::FactoryBinding;
 use yage2_core::assets::hub::AssetHub;
 use yage2_core::assets::AssetType;
@@ -23,11 +24,17 @@ use yage2_graphics::renderable::{Position, RenderableMesh};
 use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererProfileFrame};
 use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
 
+// On my linux machine, the refresh rate is 60 Hz.
+// I'll deal with it later
+#[cfg(target_os = "linux")]
+const REFRESH_RATE: f32 = 60.0;
+#[cfg(not(target_os = "linux"))]
 const REFRESH_RATE: f32 = 144.0;
 
 #[derive(Component)]
 struct GameController {
-    pass_target_id: RenderPassTargetId,
+    geometry_pass_id: RenderPassTargetId,
+    aabb_pass_id: RenderPassTargetId,
 }
 
 impl GameController {
@@ -55,7 +62,7 @@ impl GameController {
         world: &mut World,
         shader_binding: FactoryBinding,
         texture_binding: FactoryBinding,
-    ) -> RenderPassTargetId {
+    ) -> (RenderPassTargetId, RenderPassTargetId) {
         let view_config = ViewConfig {
             platform_specific: PlatformSpecificViewConfig {},
             title: "Hello world".to_string(),
@@ -63,27 +70,41 @@ impl GameController {
             height: 600,
         };
 
-        let pass = Pass::new();
-        let pass_target_id = pass.get_id();
-
         let backend_config = RendererBackendConfig {
             fps: REFRESH_RATE as usize,
-            pipeline: RenderPipeline::new(construct_chain!(pass)),
             shader_factory_binding: Some(shader_binding),
             texture_factory_binding: Some(texture_binding),
             vsync: true,
         };
 
-        let renderer = Renderer::new(view_config, backend_config, true).unwrap();
+        let geometry_pass_id = RenderPassTargetId::new();
+        let aabb_pass_id = RenderPassTargetId::new();
+
+        let renderer = Renderer::new(
+            view_config,
+            backend_config,
+            move || {
+                let geometry_pass = GeometryPass::new(geometry_pass_id);
+                let aabb_pass = AABBPass::new(aabb_pass_id);
+                RenderPipeline::new(construct_chain!(geometry_pass, aabb_pass))
+            },
+            true,
+        )
+        .unwrap();
         renderer.attach_to_ecs(world);
 
-        pass_target_id
+        (geometry_pass_id, aabb_pass_id)
     }
 
     pub fn setup(world: &mut World) {
         let (shader_binding, texture_binding) = Self::setup_asset_hub(world);
-        let id = Self::setup_graphics(world, shader_binding, texture_binding);
-        GameController { pass_target_id: id }.attach_to_ecs(world);
+        let (geometry_pass, aabb_pass) =
+            Self::setup_graphics(world, shader_binding, texture_binding);
+        GameController {
+            geometry_pass_id: geometry_pass,
+            aabb_pass_id: aabb_pass,
+        }
+        .attach_to_ecs(world);
     }
 }
 
@@ -99,8 +120,8 @@ fn renderer_profile_handler(r: Receiver<RendererProfileFrame>) {
     info!(
         "Renderer: {:.1} FPS. {:.1}/{:.1}",
         r.event.fps.average(),
-        r.event.backend_tick.average(),
-        r.event.view_tick.average()
+        r.event.render.average(),
+        r.event.view_tick.average(),
     );
 }
 
@@ -137,7 +158,7 @@ fn main() {
         |ie: Receiver<InputEvent>,
          mut f: Fetcher<&mut Position>,
          gc: Single<&mut GameController>,
-         mut s: Sender<RenderPassEvent<PassEvents>>| {
+         mut s: Sender<RenderPassEvent<CustomPassEvent>>| {
             for pos in f.iter_mut() {
                 match ie.event {
                     InputEvent::MouseMove { x, y } => {
@@ -153,8 +174,8 @@ fn main() {
                             rand::random::<f32>(),
                         );
                         s.send(RenderPassEvent::new(
-                            gc.pass_target_id,
-                            PassEvents::ChangeColor(new_color),
+                            gc.geometry_pass_id,
+                            CustomPassEvent::ChangeColor(new_color),
                         ));
                     }
                     _ => {}

@@ -28,8 +28,7 @@ mod input;
 #[derive(Clone, Debug)]
 pub struct PlatformSpecificViewConfig {}
 
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(Clone, Debug)]
 pub enum ViewError {
     OpenDisplayError,
     CreateWindowError,
