@@ -1,7 +1,7 @@
-use crate::passes::chain::ChainExecute;
+use crate::passes::chain::RenderChain;
 use crate::passes::events::{PassEventTarget, RenderPassEvent};
 use crate::passes::result::PassExecuteResult;
-use crate::passes::PassExecuteContext;
+use crate::passes::{ChainExecuteCtx, MAX_RENDER_PASSES};
 
 const ROUTER_CAPACITY: usize = 64;
 
@@ -12,7 +12,7 @@ const ROUTER_CAPACITY: usize = 64;
 pub struct RenderPipeline<C, E>
 where
     E: Copy + 'static,
-    C: ChainExecute<E> + Send + Sync + 'static,
+    C: RenderChain<E> + Send + Sync + 'static,
 {
     chain: C,
     event_router: [PassEventTarget<E>; ROUTER_CAPACITY],
@@ -21,12 +21,28 @@ where
 impl<C, E> RenderPipeline<C, E>
 where
     E: Copy + 'static,
-    C: ChainExecute<E> + Send + Sync + 'static,
+    C: RenderChain<E> + Send + Sync + 'static,
 {
     pub fn new(chain: C) -> Self {
-        let tragets = chain.get_targets();
+        let l = chain.length();
+        if l > MAX_RENDER_PASSES {
+            panic!(
+                "Render chain length exceeds maximum allowed passes: {} > {}",
+                l, MAX_RENDER_PASSES
+            );
+        }
+
+        let targets = chain.get_targets();
+        if targets.len() > ROUTER_CAPACITY {
+            panic!(
+                "Render pass targets exceed router capacity: {} > {}",
+                targets.len(),
+                ROUTER_CAPACITY
+            );
+        }
+
         let mut event_router = [PassEventTarget::default(); ROUTER_CAPACITY];
-        for target in tragets {
+        for target in targets {
             event_router[target.get_id().as_usize()] = target;
         }
 
@@ -53,8 +69,13 @@ where
         self.event_router[index].dispatch(e.get_event());
     }
 
-    pub(crate) fn execute(&mut self, ctx: &PassExecuteContext) -> PassExecuteResult {
+    pub(crate) fn get_names(&self) -> Vec<&str> {
+        // Collect the names of all render passes in the chain.
+        self.chain.get_names()
+    }
+
+    pub(crate) fn execute(&mut self, ctx: &mut ChainExecuteCtx) -> PassExecuteResult {
         // Execute the chain of render passes.
-        self.chain.execute(ctx)
+        self.chain.execute(0, ctx)
     }
 }

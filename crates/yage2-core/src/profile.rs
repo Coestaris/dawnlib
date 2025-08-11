@@ -3,10 +3,21 @@ use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ProfileFrame {
     min: f32,
     average: f32,
     max: f32,
+}
+
+impl std::fmt::Display for ProfileFrame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "ProfileFrame {{{:.2}/{:.2}/{:.2} ms}}",
+            self.min, self.average, self.max
+        )
+    }
 }
 
 impl ProfileFrame {

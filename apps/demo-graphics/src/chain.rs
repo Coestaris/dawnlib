@@ -1,3 +1,4 @@
+use std::thread::sleep;
 use glam::{Vec2, Vec3};
 use log::info;
 use yage2_graphics::construct_chain;
@@ -5,50 +6,42 @@ use yage2_graphics::gl::bindings;
 use yage2_graphics::passes::chain::{ChainCons, ChainNil};
 use yage2_graphics::passes::events::{PassEventTarget, RenderPassTargetId};
 use yage2_graphics::passes::pipeline::RenderPipeline;
-use yage2_graphics::passes::RenderPass;
 use yage2_graphics::passes::result::PassExecuteResult;
+use yage2_graphics::passes::RenderPass;
 use yage2_graphics::renderable::Renderable;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum PassEvents {
+pub(crate) enum CustomPassEvent {
     ChangeColor(Vec3),
 }
 
-pub(crate) struct Pass {
+pub(crate) struct GeometryPass {
     id: RenderPassTargetId,
     color: Vec3,
 }
 
-fn dispatch_pass(ptr: *mut u8, event: &PassEvents) {
-    let pass = unsafe { &mut *(ptr as *mut Pass) };
-    pass.dispatch(event);
-}
-
-impl Pass {
-    pub fn new() -> Self {
-        Pass {
-            id: RenderPassTargetId::new(),
-            color: Default::default(),
+impl GeometryPass {
+    pub fn new(id: RenderPassTargetId) -> Self {
+        GeometryPass {
+            id,
+            color: Vec3::new(1.0, 1.0, 1.0),
         }
     }
-
-    pub fn get_id(&self) -> RenderPassTargetId {
-        self.id
-    }
-
-    fn create_event_target(&self) -> PassEventTarget<PassEvents> {
-        PassEventTarget::new(dispatch_pass, self.id, self)
-    }
 }
 
-impl RenderPass<PassEvents> for Pass {
-    fn get_target(&self) -> Vec<PassEventTarget<PassEvents>> {
-        vec![self.create_event_target()]
+impl RenderPass<CustomPassEvent> for GeometryPass {
+    fn get_target(&self) -> Vec<PassEventTarget<CustomPassEvent>> {
+        fn dispatch_geometry_pass(ptr: *mut u8, event: &CustomPassEvent) {
+            let pass = unsafe { &mut *(ptr as *mut GeometryPass) };
+            pass.dispatch(event);
+        }
+
+        vec![PassEventTarget::new(dispatch_geometry_pass, self.id, self)]
     }
 
-    fn dispatch(&mut self, event: &PassEvents) {
+    fn dispatch(&mut self, event: &CustomPassEvent) {
         match event {
-            PassEvents::ChangeColor(color) => {
+            CustomPassEvent::ChangeColor(color) => {
                 info!("Changing color to: {:?}", color);
                 self.color = *color;
             }
@@ -56,7 +49,7 @@ impl RenderPass<PassEvents> for Pass {
     }
 
     fn name(&self) -> &str {
-        "BasicPass"
+        "GeometryPass"
     }
 
     #[inline(always)]
@@ -97,6 +90,51 @@ impl RenderPass<PassEvents> for Pass {
             );
         }
 
-        PassExecuteResult::new(1, 1)
+        // Imitate some heavy computation
+        sleep(std::time::Duration::from_millis(3));
+
+        PassExecuteResult::ok(1, 1)
+    }
+}
+
+pub(crate) struct AABBPass {
+    id: RenderPassTargetId,
+    color: Vec3,
+}
+impl AABBPass {
+    pub fn new(id: RenderPassTargetId) -> Self {
+        AABBPass {
+            id,
+            color: Default::default(),
+        }
+    }
+}
+
+impl RenderPass<CustomPassEvent> for AABBPass {
+    fn get_target(&self) -> Vec<PassEventTarget<CustomPassEvent>> {
+        fn dispatch_aabb_pass(ptr: *mut u8, event: &CustomPassEvent) {
+            let pass = unsafe { &mut *(ptr as *mut AABBPass) };
+            pass.dispatch(event);
+        }
+
+        vec![PassEventTarget::new(dispatch_aabb_pass, self.id, self)]
+    }
+
+    fn dispatch(&mut self, event: &CustomPassEvent) {
+        match event {
+            CustomPassEvent::ChangeColor(color) => {
+                info!("Changing color to: {:?}", color);
+                self.color = *color;
+            }
+        }
+    }
+
+    fn name(&self) -> &str {
+        "AABBPass"
+    }
+
+    #[inline(always)]
+    fn on_renderable(&mut self, renderable: &Renderable) -> PassExecuteResult {
+        PassExecuteResult::ok(0, 0)
     }
 }

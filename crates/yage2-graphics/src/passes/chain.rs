@@ -1,6 +1,6 @@
 use crate::passes::events::PassEventTarget;
 use crate::passes::result::PassExecuteResult;
-use crate::passes::{PassExecuteContext, RenderPass};
+use crate::passes::{ChainExecuteCtx, RenderPass};
 use std::marker::PhantomData;
 
 // Compile-time Heterogeneous List (HList) for Render Passes
@@ -45,46 +45,55 @@ where
     }
 }
 
-pub trait ChainExecute<E> {
-    fn execute(&mut self, ctx: &PassExecuteContext) -> PassExecuteResult;
-    fn get_targets(&self) -> Vec<PassEventTarget<E>>;
-}
-
-// Nil is the dead-end. Doing nothing.
-impl<E> ChainExecute<E> for ChainNil<E>
-where
-    E: Copy + 'static,
-{
+pub trait RenderChain<E> {
     #[inline(always)]
-    fn execute(&mut self, _: &PassExecuteContext) -> PassExecuteResult {
-        // No operation, as this is the end of the chain.
+    fn execute(&mut self, _: usize, _: &mut ChainExecuteCtx) -> PassExecuteResult {
         PassExecuteResult::default()
     }
+
+    #[inline(always)]
+    fn length(&self) -> usize {
+        0
+    }
+
     #[inline(always)]
     fn get_targets(&self) -> Vec<PassEventTarget<E>> {
-        // No targets, as this is the end of the chain.
+        vec![]
+    }
+
+    #[inline(always)]
+    fn get_names(&self) -> Vec<&str> {
         vec![]
     }
 }
 
+// Nil is the dead-end. Doing nothing.
+impl<E> RenderChain<E> for ChainNil<E> where E: Copy + 'static {}
+
 // Cons is the recursive case.
 // It runs the head pass and then recurses on the tail.
-impl<E, H, T> ChainExecute<E> for ChainCons<E, H, T>
+impl<E, H, T> RenderChain<E> for ChainCons<E, H, T>
 where
     E: Copy + 'static,
     H: RenderPass<E> + Send + Sync + 'static,
-    T: ChainExecute<E>,
+    T: RenderChain<E>,
 {
     #[inline(always)]
-    fn execute(&mut self, ctx: &PassExecuteContext) -> PassExecuteResult {
+    fn execute(&mut self, idx: usize, ctx: &mut ChainExecuteCtx) -> PassExecuteResult {
         // Execute the head pass.
         // This will handle all required operations for the head pass
-        let mut result = ctx.execute::<E, H>(&mut self.head);
+        let mut result = ctx.execute::<E, H>(idx, &mut self.head);
 
         // Continue with the next pass in the chain.
         // Accumulate the results from the tail.
-        result += self.tail.execute(ctx);
+        result += self.tail.execute(idx + 1, ctx);
         result
+    }
+
+    #[inline(always)]
+    fn length(&self) -> usize {
+        // Count the head pass and add the count of the tail.
+        1 + self.tail.length()
     }
 
     #[inline(always)]
@@ -93,6 +102,14 @@ where
         let mut targets = self.head.get_target();
         targets.extend(self.tail.get_targets());
         targets
+    }
+
+    #[inline(always)]
+    fn get_names(&self) -> Vec<&str> {
+        // Collect names from the head and tail passes.
+        let mut names = vec![self.head.name()];
+        names.extend(self.tail.get_names());
+        names
     }
 }
 

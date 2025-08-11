@@ -5,40 +5,28 @@ mod probe;
 
 use crate::gl::assets::{ShaderAssetFactory, TextureAssetFactory};
 use crate::gl::debug::{Debugger, MessageType};
-use crate::passes::chain::ChainExecute;
-use crate::passes::events::RenderPassEvent;
-use crate::passes::pipeline::RenderPipeline;
-use crate::passes::result::PassExecuteResult;
-use crate::passes::PassExecuteContext;
-use crate::renderable::Renderable;
 use crate::renderer::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
 use crate::view::{ViewError, ViewHandle};
 use log::{debug, error, info, warn};
 use std::fmt::{Display, Formatter};
 use yage2_core::assets::factory::FactoryBinding;
 
-pub struct GLRenderer<C, E>
+pub struct GLRenderer<E>
 where
     E: Copy + 'static,
-    C: ChainExecute<E> + Send + Sync + 'static,
 {
+    _marker: std::marker::PhantomData<E>,
+
     view_handle: ViewHandle,
     debugger: Debugger,
-
-    pipeline: RenderPipeline<C, E>,
 
     // Factories for texture and shader assets
     texture_factory: Option<TextureAssetFactory>,
     shader_factory: Option<ShaderAssetFactory>,
 }
-pub struct GLRendererConfig<C, E>
-where
-    E: Copy + 'static,
-    C: ChainExecute<E> + Send + Sync + 'static,
-{
+pub struct GLRendererConfig {
     pub fps: usize,
     pub vsync: bool,
-    pub pipeline: RenderPipeline<C, E>,
     pub texture_factory_binding: Option<FactoryBinding>,
     pub shader_factory_binding: Option<FactoryBinding>,
 }
@@ -70,13 +58,12 @@ impl std::error::Error for GLRendererError {}
 // because they are tightly coupled with the OpenGL context and cannot be
 // loaded asynchronously.
 // So OpenGL renderer handles events for these assets on each draw tick.
-impl<C, E> RendererBackendTrait<C, E> for GLRenderer<C, E>
+impl<E> RendererBackendTrait<E> for GLRenderer<E>
 where
     E: Copy + 'static,
-    C: ChainExecute<E> + Send + Sync + 'static,
 {
     fn new(
-        cfg: RendererBackendConfig<C, E>,
+        cfg: RendererBackendConfig,
         mut view_handle: ViewHandle,
     ) -> Result<Self, RendererBackendError>
     where
@@ -146,7 +133,8 @@ where
             None
         };
 
-        Ok(GLRenderer {
+        Ok(GLRenderer::<E> {
+            _marker: Default::default(),
             view_handle,
             texture_factory,
             shader_factory,
@@ -163,20 +151,10 @@ where
                     }
                 })
             },
-            pipeline: cfg.pipeline,
         })
     }
 
-    fn dispatch_event(&mut self, event: &RenderPassEvent<E>) -> Result<(), RendererBackendError> {
-        // Dispatch the event to the render pipeline
-        self.pipeline.dispatch(event);
-        Ok(())
-    }
-
-    fn render(
-        &mut self,
-        renderables: &[Renderable],
-    ) -> Result<PassExecuteResult, RendererBackendError> {
+    fn before_frame(&mut self) -> Result<(), RendererBackendError> {
         // Process events asset factories
         if let Some(factory) = &mut self.texture_factory {
             factory.process_events();
@@ -191,14 +169,14 @@ where
             bindings::Clear(bindings::COLOR_BUFFER_BIT);
         }
 
-        // Execute the render chain
-        let context = PassExecuteContext { renderables };
-        let result = self.pipeline.execute(&context);
+        Ok(())
+    }
 
+    fn after_frame(&mut self) -> Result<(), RendererBackendError> {
         self.view_handle
             .swap_buffers()
             .map_err(GLRendererError::ViewError)?;
 
-        Ok(result)
+        Ok(())
     }
 }

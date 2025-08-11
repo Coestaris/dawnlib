@@ -1,11 +1,14 @@
 use crate::passes::events::PassEventTarget;
 use crate::passes::result::PassExecuteResult;
 use crate::renderable::Renderable;
+use std::time::Duration;
 
 pub mod chain;
 pub mod events;
 pub mod pipeline;
 pub mod result;
+
+pub(crate) const MAX_RENDER_PASSES: usize = 32;
 
 pub trait RenderPass<E>
 where
@@ -42,30 +45,39 @@ where
     }
 }
 
-pub(crate) struct PassExecuteContext<'a> {
+pub(crate) struct ChainExecuteCtx<'a> {
     pub(crate) renderables: &'a [Renderable],
+
+    // Amount of time consumed by each renderable in the pass.
+    // TODO: What if more than passes are executed?
+    pub(crate) profile: [Duration; MAX_RENDER_PASSES],
 }
 
-impl<'a> PassExecuteContext<'a> {
+impl<'a> ChainExecuteCtx<'a> {
     pub fn new(renderables: &'a [Renderable]) -> Self {
-        PassExecuteContext { renderables }
+        ChainExecuteCtx {
+            renderables,
+            profile: [Duration::ZERO; MAX_RENDER_PASSES],
+        }
     }
 
     /// Executes the render pass on using the current context.
-    pub fn execute<E, P>(&self, pass: &mut P) -> PassExecuteResult
+    pub fn execute<E, P>(&mut self, idx: usize, pass: &mut P) -> PassExecuteResult
     where
         E: Copy + 'static,
         P: RenderPass<E>,
     {
-        // TODO: Profiling?
+        let start = std::time::Instant::now();
         pass.begin();
+        let mut result = PassExecuteResult::default();
         for renderable in self.renderables {
             // TODO: Iterate over meshes if needed
-            pass.on_renderable(renderable);
-            pass.on_mesh(renderable.mesh_id);
+            result += pass.on_renderable(renderable);
+            result += pass.on_mesh(renderable.mesh_id);
         }
         pass.end();
-
-        PassExecuteResult::new(2, self.renderables.len())
+        let elapsed = start.elapsed();
+        self.profile[idx] = elapsed;
+        result
     }
 }
