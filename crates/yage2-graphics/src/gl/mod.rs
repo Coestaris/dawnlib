@@ -5,7 +5,7 @@ mod probe;
 
 use crate::gl::assets::{ShaderAssetFactory, TextureAssetFactory};
 use crate::gl::debug::{Debugger, MessageType};
-use crate::renderer::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
+use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
 use crate::view::{ViewError, ViewHandle};
 use log::{debug, error, info, warn};
 use std::fmt::{Display, Formatter};
@@ -24,6 +24,7 @@ where
     texture_factory: Option<TextureAssetFactory>,
     shader_factory: Option<ShaderAssetFactory>,
 }
+
 pub struct GLRendererConfig {
     pub fps: usize,
     pub vsync: bool,

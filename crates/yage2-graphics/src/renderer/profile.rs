@@ -1,3 +1,12 @@
+use crate::passes::result::PassExecuteResult;
+use crate::passes::MAX_RENDER_PASSES;
+use crossbeam_queue::ArrayQueue;
+use evenio::event::GlobalEvent;
+use log::{debug, warn};
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+use yage2_core::profile::{PeriodProfiler, ProfileFrame, TickProfiler};
 
 #[derive(GlobalEvent)]
 pub struct RendererProfileFrame {
@@ -30,7 +39,7 @@ pub struct RendererProfileFrame {
     pub pass_profile: HashMap<String, ProfileFrame>,
 }
 
-trait RendererProfilerTrait {
+pub(crate) trait RendererProfilerTrait {
     fn set_queue(&mut self, queue: Arc<ArrayQueue<RendererProfileFrame>>) {}
     fn set_pass_names(&mut self, names: &[&str]) {}
     fn view_tick_start(&mut self) {}
@@ -46,7 +55,7 @@ trait RendererProfilerTrait {
     }
 }
 
-struct RendererProfiler {
+pub(crate) struct RendererProfiler {
     fps: TickProfiler,
     view_tick: PeriodProfiler,
     events: PeriodProfiler,
@@ -158,6 +167,6 @@ impl RendererProfiler {
     }
 }
 
-struct DummyRendererProfiler {}
+pub(crate) struct DummyRendererProfiler {}
 
 impl RendererProfilerTrait for DummyRendererProfiler {}
