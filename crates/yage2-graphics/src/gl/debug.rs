@@ -1,7 +1,7 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::{GLboolean, GLchar, GLenum, GLsizei, GLuint};
 use log::info;
-use std::ffi::{c_void};
+use std::ffi::c_void;
 
 #[derive(Debug, Clone)]
 pub(crate) enum MessageSource {

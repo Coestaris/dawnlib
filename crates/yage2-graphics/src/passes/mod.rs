@@ -14,42 +14,56 @@ pub trait RenderPass<E>
 where
     E: Copy + 'static,
 {
+    /// Declare the targets for this render pass.
+    /// This is used to address events that are relevant to this pass.
     #[inline(always)]
     fn get_target(&self) -> Vec<PassEventTarget<E>> {
         // Default implementation returns an empty vector.
         vec![]
     }
 
+    /// Dispatch an asynchronous event to the render pass.
+    /// This method is called when an event is received that is relevant
+    /// to declared targets.
+    #[inline(always)]
     fn dispatch(&mut self, _event: &E) {
-        // Default implementation does nothing.
+        // The default implementation does nothing.
     }
 
+    /// Get the name of the render pass.
     fn name(&self) -> &str;
 
+    /// Begin the render pass execution.
+    /// This method is called before processing any renderables or meshes.
     #[inline(always)]
-    fn begin(&mut self) {}
-
-    #[inline(always)]
-    fn end(&mut self) {}
-
-    #[inline(always)]
-    fn on_renderable(&mut self, _renderable: &Renderable) -> PassExecuteResult {
-        // Default implementation does nothing and returns a default result.
+    fn begin(&mut self) -> PassExecuteResult {
         PassExecuteResult::default()
     }
 
+    /// End the render pass execution.
+    /// This method is called after processing all renderables and meshes.
+    #[inline(always)]
+    fn end(&mut self) -> PassExecuteResult {
+        PassExecuteResult::default()
+    }
+
+    /// Process a renderable object.
+    #[inline(always)]
+    fn on_renderable(&mut self, _renderable: &Renderable) -> PassExecuteResult {
+        PassExecuteResult::default()
+    }
+
+    /// This method is called for each mesh in the renderable.
     #[inline(always)]
     fn on_mesh(&mut self, _mesh: u32) -> PassExecuteResult {
-        // Default implementation does nothing and returns a default result.
         PassExecuteResult::default()
     }
 }
 
 pub(crate) struct ChainExecuteCtx<'a> {
+    // The renderables to be processed by the render pass.
     pub(crate) renderables: &'a [Renderable],
-
-    // Amount of time consumed by each renderable in the pass.
-    // TODO: What if more than passes are executed?
+    // Amount of time consumed by render pass in the chain.
     pub(crate) profile: [Duration; MAX_RENDER_PASSES],
 }
 
@@ -68,16 +82,21 @@ impl<'a> ChainExecuteCtx<'a> {
         P: RenderPass<E>,
     {
         let start = std::time::Instant::now();
-        pass.begin();
+
         let mut result = PassExecuteResult::default();
+        result += pass.begin();
         for renderable in self.renderables {
-            // TODO: Iterate over meshes if needed
             result += pass.on_renderable(renderable);
+
+            // TODO: Iterate over meshes when renderable has multiple meshes.
+            //       For now, we assume each renderable has only one mesh.
             result += pass.on_mesh(renderable.mesh_id);
         }
-        pass.end();
+        result += pass.end();
+
         let elapsed = start.elapsed();
         self.profile[idx] = elapsed;
+
         result
     }
 }

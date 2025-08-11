@@ -1,5 +1,7 @@
 use evenio::event::GlobalEvent;
 
+/// Targeted event of the render pass.
+/// Used to asynchronously send events to the render pass.
 #[derive(GlobalEvent, Debug, Clone)]
 pub struct RenderPassEvent<E>
 where
@@ -15,16 +17,20 @@ impl<E> RenderPassEvent<E> {
     }
 
     #[inline(always)]
-    pub fn get_target_id(&self) -> RenderPassTargetId {
+    pub(crate) fn get_target_id(&self) -> RenderPassTargetId {
         self.target_id
     }
 
     #[inline(always)]
-    pub fn get_event(&self) -> &E {
+    pub(crate) fn get_event(&self) -> &E {
         &self.event
     }
 }
 
+/// Unique identifier for a render pass target.
+/// This ID is used to identify the target of events dispatched to render passes.
+/// It is generated automatically and is unique across all render pass targets.
+/// The ID starts from 1, as 0 is reserved for the default target.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct RenderPassTargetId(usize);
 
@@ -35,6 +41,7 @@ impl std::fmt::Display for RenderPassTargetId {
 }
 
 impl RenderPassTargetId {
+    /// Creates a new unique `RenderPassTargetId`.
     pub fn new() -> Self {
         static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -47,11 +54,13 @@ impl RenderPassTargetId {
     }
 }
 
-pub(crate) type EventDispatcher<E> = fn(*mut u8, &E);
+type EventDispatcher<E> = fn(*mut u8, &E);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PassEventTarget<E>
-{
+/// Describes a render pass event target.
+/// This struct is used by the dispatcher to address
+/// events to specific render pass targets.
+#[derive(Copy, Clone, Debug, Hash)]
+pub struct PassEventTarget<E> {
     dispatcher: EventDispatcher<E>,
     id: RenderPassTargetId,
     ptr: *mut u8,
