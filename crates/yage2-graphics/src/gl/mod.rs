@@ -5,16 +5,14 @@ mod probe;
 
 use crate::gl::assets::{ShaderAssetFactory, TextureAssetFactory};
 use crate::gl::debug::{Debugger, MessageType};
+use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
 use crate::view::{ViewError, ViewHandle};
 use log::{debug, error, info, warn};
 use std::fmt::{Display, Formatter};
 use yage2_core::assets::factory::FactoryBinding;
 
-pub struct GLRenderer<E>
-where
-    E: Copy + 'static,
-{
+pub struct GLRenderer<E: PassEventTrait> {
     _marker: std::marker::PhantomData<E>,
 
     view_handle: ViewHandle,
@@ -59,10 +57,7 @@ impl std::error::Error for GLRendererError {}
 // because they are tightly coupled with the OpenGL context and cannot be
 // loaded asynchronously.
 // So OpenGL renderer handles events for these assets on each draw tick.
-impl<E> RendererBackendTrait<E> for GLRenderer<E>
-where
-    E: Copy + 'static,
-{
+impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     fn new(
         cfg: RendererBackendConfig,
         mut view_handle: ViewHandle,

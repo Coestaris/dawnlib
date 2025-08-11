@@ -1,4 +1,4 @@
-use crate::passes::events::PassEventTarget;
+use crate::passes::events::{PassEventTarget, PassEventTrait};
 use crate::passes::result::PassExecuteResult;
 use crate::renderable::Renderable;
 use std::time::Duration;
@@ -10,10 +10,7 @@ pub mod result;
 
 pub(crate) const MAX_RENDER_PASSES: usize = 32;
 
-pub trait RenderPass<E>
-where
-    E: Copy + 'static,
-{
+pub trait RenderPass<E: PassEventTrait>: Send + Sync + 'static {
     /// Declare the targets for this render pass.
     /// This is used to address events that are relevant to this pass.
     #[inline(always)]
@@ -78,7 +75,7 @@ impl<'a> ChainExecuteCtx<'a> {
     /// Executes the render pass on using the current context.
     pub fn execute<E, P>(&mut self, idx: usize, pass: &mut P) -> PassExecuteResult
     where
-        E: Copy + 'static,
+        E: PassEventTrait,
         P: RenderPass<E>,
     {
         let start = std::time::Instant::now();

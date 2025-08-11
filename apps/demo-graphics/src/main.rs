@@ -9,7 +9,6 @@ use evenio::fetch::{Fetcher, Single};
 use evenio::world::World;
 use glam::*;
 use log::info;
-use std::sync::Arc;
 use yage2_core::assets::factory::FactoryBinding;
 use yage2_core::assets::hub::AssetHub;
 use yage2_core::assets::AssetType;
@@ -86,7 +85,10 @@ impl GameController {
             move || {
                 let geometry_pass = GeometryPass::new(geometry_pass_id);
                 let aabb_pass = AABBPass::new(aabb_pass_id);
-                RenderPipeline::new(construct_chain!(geometry_pass, aabb_pass))
+                Ok(RenderPipeline::new(construct_chain!(
+                    geometry_pass,
+                    aabb_pass
+                )))
             },
             true,
         )

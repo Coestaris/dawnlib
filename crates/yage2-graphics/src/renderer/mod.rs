@@ -1,50 +1,38 @@
-use crate::input::InputEvent;
-use crate::passes::chain::RenderChain;
-use crate::passes::events::RenderPassEvent;
-use crate::passes::pipeline::RenderPipeline;
-use crate::passes::result::PassExecuteResult;
-use crate::passes::{ChainExecuteCtx, MAX_RENDER_PASSES};
-use crate::renderable::{Material, Position, Renderable, RenderableMesh, Rotation, Scale};
-use crate::renderer::backend::{RendererBackend, RendererBackendError, RendererBackendTrait};
-use crate::renderer::ecs::attach_to_ecs;
-use crate::renderer::profile::{DummyRendererProfiler, RendererProfiler, RendererProfilerTrait};
-use crate::view::{TickResult, View, ViewConfig, ViewError, ViewHandle, ViewTrait};
-use crossbeam_queue::ArrayQueue;
-use evenio::component::Component;
-use evenio::event::{GlobalEvent, Receiver, Sender};
-use evenio::fetch::{Fetcher, Single};
-use evenio::query::Query;
-use evenio::world::World;
-use glam::Vec3;
-use log::{debug, error, info, warn};
-use std::collections::HashMap;
-use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::thread::{Builder, JoinHandle};
-use std::time::Duration;
-use triple_buffer::{triple_buffer, Input, Output};
-use yage2_core::ecs::{StopEventLoop, Tick};
-use yage2_core::profile::{PeriodProfiler, ProfileFrame, TickProfiler};
-
 pub(crate) mod backend;
 mod ecs;
 mod profile;
+
+use crate::input::InputEvent;
+use crate::passes::chain::RenderChain;
+use crate::passes::events::{PassEventTrait, RenderPassEvent};
+use crate::passes::pipeline::RenderPipeline;
+use crate::passes::result::PassExecuteResult;
+use crate::passes::ChainExecuteCtx;
+use crate::renderable::Renderable;
+use crate::renderer::backend::{RendererBackend, RendererBackendError, RendererBackendTrait};
+use crate::renderer::ecs::attach_to_ecs;
+use crate::renderer::profile::{DummyRendererProfiler, RendererProfiler, RendererProfilerTrait};
+use crate::view::{TickResult, View, ViewConfig, ViewError, ViewTrait};
+use crossbeam_queue::ArrayQueue;
+use evenio::component::Component;
+use evenio::world::World;
+use log::{info, warn};
+use std::panic::UnwindSafe;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread::{Builder, JoinHandle};
+use triple_buffer::{triple_buffer, Input, Output};
 
 // Re-export the necessary types for user
 pub use backend::RendererBackendConfig;
 pub use profile::RendererProfileFrame;
 
-const STATISTICS_THREAD_NAME: &str = "ren_stats";
 const INPUTS_QUEUE_CAPACITY: usize = 1024;
 const RENDERER_QUEUE_CAPACITY: usize = 1024;
 const PROFILE_QUEUE_CAPACITY: usize = 32;
 
 #[derive(Component)]
-pub struct Renderer<E>
-where
-    E: 'static + Copy,
-{
+pub struct Renderer<E: PassEventTrait> {
     stop_signal: Arc<AtomicBool>,
     // Used for transferring renderables to the renderer thread
     // This is a triple buffer, so it can be used to read and write renderables
@@ -63,6 +51,7 @@ pub enum RendererError {
     ViewCreateError(ViewError),
     RendererThreadSetupFailed,
     BackendCreateError(RendererBackendError),
+    PipelineCreateError(String),
     ViewTickError(ViewError),
     BackendRenderError(RendererBackendError),
     PipelineExecuteError(),
@@ -81,13 +70,16 @@ impl std::fmt::Display for RendererError {
             RendererError::BackendRenderError(e) => write!(f, "Backend tick error: {}", e),
             RendererError::ProfilerSetupFailed => write!(f, "Failed to setup profiler"),
             RendererError::PipelineExecuteError() => write!(f, "Failed to execute render pipeline"),
+            RendererError::PipelineCreateError(s) => {
+                write!(f, "Failed to create render pipeline: {}", s)
+            }
         }
     }
 }
 
 impl std::error::Error for RendererError {}
 
-impl<E: Copy> Drop for Renderer<E> {
+impl<E: PassEventTrait> Drop for Renderer<E> {
     fn drop(&mut self) {
         info!("Stopping renderer thread");
 
@@ -104,10 +96,13 @@ impl<E: Copy> Drop for Renderer<E> {
     }
 }
 
-impl<E> Renderer<E>
-where
-    E: 'static + Copy + Send + Sync + Sized,
-{
+pub trait RenderChainConstructor<C, E> =
+    FnOnce() -> Result<RenderPipeline<C, E>, String> + Send + Sync + 'static + UnwindSafe
+    where
+        C: RenderChain<E>,
+        E: PassEventTrait;
+
+impl<E: PassEventTrait> Renderer<E> {
     /// Creates a new renderer instance that will immediately try to spawn a View,
     /// RendererBackend and all the necessary threads to run the rendering loop.
     ///
@@ -129,11 +124,11 @@ where
     pub fn new<C>(
         view_config: ViewConfig,
         backend_config: RendererBackendConfig,
-        constructor: impl FnOnce() -> RenderPipeline<C, E> + Send + Sync + 'static,
+        constructor: impl RenderChainConstructor<C, E>,
         use_profiling: bool,
     ) -> Result<Self, RendererError>
     where
-        C: RenderChain<E> + Send + Sync + 'static,
+        C: RenderChain<E>,
     {
         if use_profiling {
             Self::new_inner(
@@ -155,12 +150,12 @@ where
     fn new_inner<P, C>(
         view_config: ViewConfig,
         backend_config: RendererBackendConfig,
-        constructor: impl FnOnce() -> RenderPipeline<C, E> + Send + Sync + 'static,
+        constructor: impl RenderChainConstructor<C, E>,
         mut profiler: P,
     ) -> Result<Self, RendererError>
     where
-        P: RendererProfilerTrait + Send + Sync + 'static,
-        C: RenderChain<E> + Send + Sync + 'static,
+        P: RendererProfilerTrait,
+        C: RenderChain<E>,
     {
         // Setup profiler
         let stop_signal = Arc::new(AtomicBool::new(false));
@@ -185,22 +180,19 @@ where
             .spawn(move || {
                 info!("Renderer thread started");
 
-                // Create the view, backend and render pipeline
-                // There's nothing we can do if the view creation fails, so we unwrap it.
-                let mut view = View::open(view_config, inputs_queue_clone)
-                    .map_err(RendererError::ViewCreateError)
-                    .unwrap();
-                let mut backend = RendererBackend::<E>::new(backend_config, view.get_handle())
-                    .map_err(RendererError::BackendCreateError)
-                    .unwrap();
-                let mut pipeline = constructor();
+                let func = move || {
+                    // Create the view, backend and the rendering pipeline
+                    let mut view = View::open(view_config, inputs_queue_clone)
+                        .map_err(RendererError::ViewCreateError)?;
+                    let mut backend = RendererBackend::<E>::new(backend_config, view.get_handle())
+                        .map_err(RendererError::BackendCreateError)?;
+                    let mut pipeline = constructor().map_err(RendererError::PipelineCreateError)?;
 
-                // Notify the profiler about the pass names
-                let pass_names = pipeline.get_names();
-                profiler.set_pass_names(&pass_names);
+                    // Notify the profiler about the pass names
+                    let pass_names = pipeline.get_names();
+                    profiler.set_pass_names(&pass_names);
 
-                info!("Starting renderer loop");
-                let mut loop_fn = || {
+                    info!("Starting renderer loop");
                     while !stop_signal_clone1.load(Ordering::SeqCst) {
                         match Self::handle_view(&mut view, &mut profiler) {
                             Ok(false) => {
@@ -223,8 +215,8 @@ where
                     Ok(())
                 };
 
-                // TODO: Catch unwind?
-                let err: Result<(), RendererError> = loop_fn();
+                // TODO: Handle panics in the renderer thread
+                let err: Result<(), RendererError> = func();
 
                 // Request other threads to stop
                 stop_signal_clone2.store(true, Ordering::SeqCst);
@@ -280,7 +272,7 @@ where
         renderer_queue: &ArrayQueue<RenderPassEvent<E>>,
     ) -> Result<(), RendererError>
     where
-        C: RenderChain<E> + Send + Sync + 'static,
+        C: RenderChain<E>,
     {
         profiler.evens_start();
         while let Some(event) = renderer_queue.pop() {
@@ -299,7 +291,7 @@ where
         pipeline: &mut RenderPipeline<C, E>,
     ) -> Result<(), RendererError>
     where
-        C: RenderChain<E> + Send + Sync + 'static,
+        C: RenderChain<E>,
     {
         profiler.render_start();
         if let Err(e) = backend.before_frame() {

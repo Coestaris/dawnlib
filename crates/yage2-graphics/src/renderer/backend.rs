@@ -1,8 +1,8 @@
+use crate::passes::events::PassEventTrait;
 use crate::view::ViewHandle;
 
-pub(crate) trait RendererBackendTrait<E>
+pub(crate) trait RendererBackendTrait<E: PassEventTrait>
 where
-    E: Copy + 'static,
     Self: Sized,
 {
     fn new(

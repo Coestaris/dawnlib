@@ -1,5 +1,5 @@
 use crate::input::InputEvent;
-use crate::passes::events::RenderPassEvent;
+use crate::passes::events::{PassEventTrait, RenderPassEvent};
 use crate::renderable::{Material, Position, Renderable, RenderableMesh, Rotation, Scale};
 use crate::renderer::profile::RendererProfileFrame;
 use crate::renderer::Renderer;
@@ -14,37 +14,26 @@ use std::ptr::NonNull;
 use std::sync::atomic::Ordering;
 use yage2_core::ecs::{StopEventLoop, Tick};
 
-pub fn attach_to_ecs<E>(renderer: Renderer<E>, world: &mut World)
-where
-    E: 'static + Copy + Send + Sync,
-{
+pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World) {
     #[derive(Component)]
     struct Boxed {
         raw: NonNull<()>,
     }
+
     impl Boxed {
-        fn new<E>(renderer: Renderer<E>) -> Self
-        where
-            E: 'static + Copy + Send + Sync + Sized,
-        {
+        fn new<E: PassEventTrait>(renderer: Renderer<E>) -> Self {
             let raw =
                 unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(renderer)) as *mut ()) };
             Boxed { raw }
         }
 
-        fn cast<E>(&self) -> &Renderer<E>
-        where
-            E: 'static + Copy + Send + Sync + Sized,
-        {
+        fn cast<E: PassEventTrait>(&self) -> &Renderer<E> {
             // SAFETY: We are guaranteed that the raw pointer is valid
             // and points to a Renderer<E> because we created it from a Box<Renderer<E>>.
             unsafe { &*(self.raw.as_ptr() as *const Renderer<E>) }
         }
 
-        fn cast_mut<E>(&mut self) -> &mut Renderer<E>
-        where
-            E: 'static + Copy + Send + Sync + Sized,
-        {
+        fn cast_mut<E: PassEventTrait>(&mut self) -> &mut Renderer<E> {
             // SAFETY: We are guaranteed that the raw pointer is valid
             // and points to a Renderer<E> because we created it from a Box<Renderer<E>>.
             unsafe { &mut *(self.raw.as_ptr() as *mut Renderer<E>) }
@@ -57,7 +46,10 @@ where
 
             // SAFETY: We are guaranteed that the raw pointer is valid
             // and points to a Renderer<E> because we created it from a Box<Renderer<E>>.
-            unsafe { Box::from_raw(self.raw.as_ptr() as *mut Renderer<()>) };
+
+            todo!()
+            // TODO: Deal with generic types properly
+            // unsafe { Box::from_raw(self.raw.as_ptr() as *mut Renderer<E>) };
         }
     }
 
@@ -67,13 +59,11 @@ where
 
     // If renderer loop is closed or stopped,
     // we need to stop the event loop
-    fn view_closed_handler<E>(
+    fn view_closed_handler<E: PassEventTrait>(
         _: Receiver<Tick>,
         renderer: Single<&Boxed>,
         mut sender: Sender<StopEventLoop>,
-    ) where
-        E: 'static + Copy + Send + Sync + Sized,
-    {
+    ) {
         // Check if the view was closed, if so, send a global event to stop the event loop
         let renderer = renderer.cast::<E>();
         if renderer.stop_signal.load(Ordering::Relaxed) {
@@ -84,13 +74,11 @@ where
 
     // Check if there's any profile frame to process.
     // If so, push them to the ECS
-    fn profile_handler<E>(
+    fn profile_handler<E: PassEventTrait>(
         _: Receiver<Tick>,
         renderer: Single<&Boxed>,
         mut sender: Sender<RendererProfileFrame>,
-    ) where
-        E: 'static + Copy + Send + Sync + Sized,
-    {
+    ) {
         let renderer = renderer.cast::<E>();
         while let Some(frame) = renderer.profile_frames.pop() {
             sender.send(frame);
@@ -99,13 +87,11 @@ where
 
     // Check if there's any input event to process.
     // If so, push them to the ECS
-    fn inputs_handler<E>(
+    fn inputs_handler<E: PassEventTrait>(
         _: Receiver<Tick>,
         renderer: Single<&Boxed>,
         mut sender: Sender<InputEvent>,
-    ) where
-        E: 'static + Copy + Send + Sync + Sized,
-    {
+    ) {
         let renderer = renderer.cast::<E>();
         while let Some(input) = renderer.inputs_queue.pop() {
             sender.send(input);
@@ -113,10 +99,10 @@ where
     }
 
     // Transfer render pass events from the ECS to the renderer thread
-    fn render_pass_event_handler<E>(rpe: Receiver<RenderPassEvent<E>>, renderer: Single<&Boxed>)
-    where
-        E: 'static + Copy + Send + Sync + Sized,
-    {
+    fn render_pass_event_handler<E: PassEventTrait>(
+        rpe: Receiver<RenderPassEvent<E>>,
+        renderer: Single<&Boxed>,
+    ) {
         let renderer = renderer.cast::<E>();
         let _ = renderer.renderer_queue.push(rpe.event.clone());
     }
@@ -133,13 +119,11 @@ where
     // Collect renderables from the ECS and send them to the renderer thread
     // This function will be called every tick to collect the renderables
     // and send them to the renderer thread.
-    fn collect_renderables<E>(
+    fn collect_renderables<E: PassEventTrait>(
         _: Receiver<Tick>,
         mut renderer: Single<&mut Boxed>,
         fetcher: Fetcher<Query>,
-    ) where
-        E: 'static + Copy + Send + Sync + Sized,
-    {
+    ) {
         // TODO: Do not allocate a new vector every time, instead use a static one!
         let renderer = renderer.cast_mut::<E>();
         let mut renderables = Vec::new();
