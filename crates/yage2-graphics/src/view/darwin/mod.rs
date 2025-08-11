@@ -1,3 +1,4 @@
+use crate::gl::ViewHandleOpenGL;
 use crate::input::InputEvent;
 use crate::view::{TickResult, ViewConfig, ViewTrait};
 use crossbeam_queue::ArrayQueue;
@@ -6,7 +7,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct PlatformSpecificViewConfig {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ViewError {}
 
 impl std::fmt::Display for ViewError {
@@ -50,7 +51,7 @@ impl ViewTrait for View {
 pub struct ViewHandle {}
 
 #[cfg(feature = "gl")]
-impl ViewHandleTrait for ViewHandle {
+impl ViewHandleOpenGL for ViewHandle {
     fn create_context(&mut self, fps: usize, vsync: bool) -> Result<(), ViewError> {
         todo!()
     }

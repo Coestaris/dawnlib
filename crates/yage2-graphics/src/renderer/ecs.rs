@@ -1,4 +1,23 @@
-pub fn attach_to_ecs(Renderer<E>, world: &mut World) {
+use crate::input::InputEvent;
+use crate::passes::events::RenderPassEvent;
+use crate::renderable::{Material, Position, Renderable, RenderableMesh, Rotation, Scale};
+use crate::renderer::profile::RendererProfileFrame;
+use crate::renderer::Renderer;
+use evenio::component::Component;
+use evenio::event::{Receiver, Sender};
+use evenio::fetch::{Fetcher, Single};
+use evenio::query::Query;
+use evenio::world::World;
+use glam::Vec3;
+use log::info;
+use std::ptr::NonNull;
+use std::sync::atomic::Ordering;
+use yage2_core::ecs::{StopEventLoop, Tick};
+
+pub fn attach_to_ecs<E>(renderer: Renderer<E>, world: &mut World)
+where
+    E: 'static + Copy + Send + Sync,
+{
     #[derive(Component)]
     struct Boxed {
         raw: NonNull<()>,
@@ -44,7 +63,7 @@ pub fn attach_to_ecs(Renderer<E>, world: &mut World) {
 
     // Setup the renderer player entity in the ECS
     let renderer_entity = world.spawn();
-    world.insert(renderer_entity, Boxed::new(self));
+    world.insert(renderer_entity, Boxed::new(renderer));
 
     // If renderer loop is closed or stopped,
     // we need to stop the event loop
@@ -136,12 +155,7 @@ pub fn attach_to_ecs(Renderer<E>, world: &mut World) {
             let renderable = Renderable {
                 model: glam::Mat4::from_scale_rotation_translation(
                     scale,
-                    glam::Quat::from_euler(
-                        glam::EulerRot::XYZ,
-                        rotation.x,
-                        rotation.y,
-                        rotation.z,
-                    ),
+                    glam::Quat::from_euler(glam::EulerRot::XYZ, rotation.x, rotation.y, rotation.z),
                     position,
                 ),
                 mesh_id,

@@ -1,3 +1,5 @@
+use crate::view::ViewHandle;
+
 pub(crate) trait RendererBackendTrait<E>
 where
     E: Copy + 'static,

@@ -5,6 +5,9 @@ use crate::passes::pipeline::RenderPipeline;
 use crate::passes::result::PassExecuteResult;
 use crate::passes::{ChainExecuteCtx, MAX_RENDER_PASSES};
 use crate::renderable::{Material, Position, Renderable, RenderableMesh, Rotation, Scale};
+use crate::renderer::backend::{RendererBackend, RendererBackendError, RendererBackendTrait};
+use crate::renderer::ecs::attach_to_ecs;
+use crate::renderer::profile::{DummyRendererProfiler, RendererProfiler, RendererProfilerTrait};
 use crate::view::{TickResult, View, ViewConfig, ViewError, ViewHandle, ViewTrait};
 use crossbeam_queue::ArrayQueue;
 use evenio::component::Component;
@@ -24,9 +27,13 @@ use triple_buffer::{triple_buffer, Input, Output};
 use yage2_core::ecs::{StopEventLoop, Tick};
 use yage2_core::profile::{PeriodProfiler, ProfileFrame, TickProfiler};
 
-mod backend;
+pub(crate) mod backend;
 mod ecs;
 mod profile;
+
+// Re-export the necessary types for user
+pub use backend::RendererBackendConfig;
+pub use profile::RendererProfileFrame;
 
 const STATISTICS_THREAD_NAME: &str = "ren_stats";
 const INPUTS_QUEUE_CAPACITY: usize = 1024;
@@ -179,10 +186,13 @@ where
                 info!("Renderer thread started");
 
                 // Create the view, backend and render pipeline
+                // There's nothing we can do if the view creation fails, so we unwrap it.
                 let mut view = View::open(view_config, inputs_queue_clone)
-                    .map_err(RendererError::ViewCreateError)?;
+                    .map_err(RendererError::ViewCreateError)
+                    .unwrap();
                 let mut backend = RendererBackend::<E>::new(backend_config, view.get_handle())
-                    .map_err(RendererError::BackendCreateError)?;
+                    .map_err(RendererError::BackendCreateError)
+                    .unwrap();
                 let mut pipeline = constructor();
 
                 // Notify the profiler about the pass names
@@ -190,7 +200,7 @@ where
                 profiler.set_pass_names(&pass_names);
 
                 info!("Starting renderer loop");
-                let loop_fn = || {
+                let mut loop_fn = || {
                     while !stop_signal_clone1.load(Ordering::SeqCst) {
                         match Self::handle_view(&mut view, &mut profiler) {
                             Ok(false) => {
@@ -209,10 +219,12 @@ where
                             &mut pipeline,
                         )?;
                     }
+
+                    Ok(())
                 };
 
                 // TODO: Catch unwind?
-                let err = loop_fn();
+                let err: Result<(), RendererError> = loop_fn();
 
                 // Request other threads to stop
                 stop_signal_clone2.store(true, Ordering::SeqCst);
@@ -235,7 +247,10 @@ where
     }
 
     #[inline(always)]
-    fn handle_view<P>(view: &mut View, profiler: P) -> Result<bool, RendererError> {
+    fn handle_view(
+        view: &mut View,
+        profiler: &mut impl RendererProfilerTrait,
+    ) -> Result<bool, RendererError> {
         // Process View. Usually this will produce input events
         profiler.view_tick_start();
         match view.tick() {
@@ -255,14 +270,18 @@ where
             }
         }
         profiler.view_tick_end();
+        Ok(true)
     }
 
     #[inline(always)]
-    fn handle_events<P, C>(
-        profiler: P,
+    fn handle_events<C>(
+        profiler: &mut impl RendererProfilerTrait,
         pipeline: &mut RenderPipeline<C, E>,
         renderer_queue: &ArrayQueue<RenderPassEvent<E>>,
-    ) -> Result<(), RendererError> {
+    ) -> Result<(), RendererError>
+    where
+        C: RenderChain<E> + Send + Sync + 'static,
+    {
         profiler.evens_start();
         while let Some(event) = renderer_queue.pop() {
             pipeline.dispatch(&event);
@@ -273,12 +292,15 @@ where
     }
 
     #[inline(always)]
-    fn handle_render<P, C>(
-        profiler: P,
+    fn handle_render<C>(
+        profiler: &mut impl RendererProfilerTrait,
         backend: &mut RendererBackend<E>,
         renderables_buffer: &mut Output<Vec<Renderable>>,
         pipeline: &mut RenderPipeline<C, E>,
-    ) -> Result<(), RendererError> {
+    ) -> Result<(), RendererError>
+    where
+        C: RenderChain<E> + Send + Sync + 'static,
+    {
         profiler.render_start();
         if let Err(e) = backend.before_frame() {
             return Err(RendererError::BackendRenderError(e));
@@ -317,6 +339,6 @@ where
     ///
     /// This function moves the renderer into the ECS world.
     pub fn attach_to_ecs(self, world: &mut World) {
-        attach_renderer_to_ecs::<E>(world, self);
+        attach_to_ecs::<E>(self, world);
     }
 }
