@@ -1,6 +1,6 @@
-use std::thread::sleep;
 use glam::{Vec2, Vec3};
 use log::info;
+use std::thread::sleep;
 use yage2_graphics::construct_chain;
 use yage2_graphics::gl::bindings;
 use yage2_graphics::passes::chain::{ChainCons, ChainNil};

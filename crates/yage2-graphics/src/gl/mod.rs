@@ -154,6 +154,7 @@ where
         })
     }
 
+    #[inline(always)]
     fn before_frame(&mut self) -> Result<(), RendererBackendError> {
         // Process events asset factories
         if let Some(factory) = &mut self.texture_factory {
@@ -172,6 +173,7 @@ where
         Ok(())
     }
 
+    #[inline(always)]
     fn after_frame(&mut self) -> Result<(), RendererBackendError> {
         self.view_handle
             .swap_buffers()

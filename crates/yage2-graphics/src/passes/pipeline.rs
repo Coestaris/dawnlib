@@ -74,6 +74,7 @@ where
         self.chain.get_names()
     }
 
+    #[inline(always)]
     pub(crate) fn execute(&mut self, ctx: &mut ChainExecuteCtx) -> PassExecuteResult {
         // Execute the chain of render passes.
         self.chain.execute(0, ctx)

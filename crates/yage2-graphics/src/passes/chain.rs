@@ -45,22 +45,27 @@ where
     }
 }
 
+/// A trait for optimization-frieandly processing a chain (HList) of render passes.
 pub trait RenderChain<E> {
+    /// Sequentially execute the chain of render passes.
     #[inline(always)]
     fn execute(&mut self, _: usize, _: &mut ChainExecuteCtx) -> PassExecuteResult {
         PassExecuteResult::default()
     }
 
+    /// Get the length of the chain.
     #[inline(always)]
     fn length(&self) -> usize {
         0
     }
 
+    /// Collect all targets from the chain.
     #[inline(always)]
     fn get_targets(&self) -> Vec<PassEventTarget<E>> {
         vec![]
     }
 
+    /// Collect all names from the chain.
     #[inline(always)]
     fn get_names(&self) -> Vec<&str> {
         vec![]
@@ -116,6 +121,30 @@ where
 /// Contracts a heterogeneous list of render passes.
 /// This macro allows you to create a chain of render passes
 /// using a simple syntax.
+///
+/// # Example:
+/// ```
+/// use yage2_graphics::passes::RenderPass;
+///
+/// struct PassA;
+/// struct PassB;
+/// struct PassC;
+///
+/// struct Event;
+///
+/// impl RenderPass<Event> for PassA {
+///    fn name(&self) -> &str { "PassA" }
+/// }
+/// impl RenderPass<Event> for PassB {
+///   fn name(&self) -> &str { "PassB" }
+/// }
+/// impl RenderPass<Event> for PassC {
+///   fn name(&self) -> &str { "PassC" }
+/// }
+///
+/// use yage2_graphics::construct_chain;
+/// let chain = construct_chain!(PassA, PassB, PassC);
+/// ```
 #[macro_export]
 macro_rules! construct_chain {
     () => { ChainNil::new() };
