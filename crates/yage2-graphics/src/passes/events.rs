@@ -1,17 +1,16 @@
 use evenio::event::GlobalEvent;
 
+pub trait PassEventTrait = 'static + Copy + Send + Sync + Sized;
+
 /// Targeted event of the render pass.
 /// Used to asynchronously send events to the render pass.
 #[derive(GlobalEvent, Debug, Clone)]
-pub struct RenderPassEvent<E>
-where
-    E: 'static,
-{
+pub struct RenderPassEvent<E: PassEventTrait> {
     target_id: RenderPassTargetId,
     event: E,
 }
 
-impl<E> RenderPassEvent<E> {
+impl<E: PassEventTrait> RenderPassEvent<E> {
     pub fn new(target_id: RenderPassTargetId, event: E) -> Self {
         RenderPassEvent { target_id, event }
     }
@@ -60,16 +59,16 @@ type EventDispatcher<E> = fn(*mut u8, &E);
 /// This struct is used by the dispatcher to address
 /// events to specific render pass targets.
 #[derive(Copy, Clone, Debug, Hash)]
-pub struct PassEventTarget<E> {
+pub struct PassEventTarget<E: PassEventTrait> {
     dispatcher: EventDispatcher<E>,
     id: RenderPassTargetId,
     ptr: *mut u8,
 }
 
-unsafe impl<E> Send for PassEventTarget<E> {}
-unsafe impl<E> Sync for PassEventTarget<E> {}
+unsafe impl<E: PassEventTrait> Send for PassEventTarget<E> {}
+unsafe impl<E: PassEventTrait> Sync for PassEventTarget<E> {}
 
-impl<E> Default for PassEventTarget<E> {
+impl<E: PassEventTrait> Default for PassEventTarget<E> {
     fn default() -> Self {
         PassEventTarget {
             dispatcher: |_, _| {},
@@ -79,7 +78,7 @@ impl<E> Default for PassEventTarget<E> {
     }
 }
 
-impl<E> PassEventTarget<E> {
+impl<E: PassEventTrait> PassEventTarget<E> {
     pub fn new<T>(dispatcher: EventDispatcher<E>, id: RenderPassTargetId, ptr: &T) -> Self {
         PassEventTarget {
             dispatcher,

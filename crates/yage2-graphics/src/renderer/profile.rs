@@ -4,6 +4,7 @@ use crossbeam_queue::ArrayQueue;
 use evenio::event::GlobalEvent;
 use log::{debug, warn};
 use std::collections::HashMap;
+use std::panic::UnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 use yage2_core::profile::{PeriodProfiler, ProfileFrame, TickProfiler};
@@ -39,9 +40,9 @@ pub struct RendererProfileFrame {
     pub pass_profile: HashMap<String, ProfileFrame>,
 }
 
-pub(crate) trait RendererProfilerTrait {
-    fn set_queue(&mut self, queue: Arc<ArrayQueue<RendererProfileFrame>>) {}
-    fn set_pass_names(&mut self, names: &[&str]) {}
+pub(crate) trait RendererProfilerTrait: Send + Sync + 'static + UnwindSafe {
+    fn set_queue(&mut self, _queue: Arc<ArrayQueue<RendererProfileFrame>>) {}
+    fn set_pass_names(&mut self, _names: &[&str]) {}
     fn view_tick_start(&mut self) {}
     fn view_tick_end(&mut self) {}
     fn evens_start(&mut self) {}
@@ -49,8 +50,8 @@ pub(crate) trait RendererProfilerTrait {
     fn render_start(&mut self) {}
     fn render_end(
         &mut self,
-        execute_result: PassExecuteResult,
-        prof: &[Duration; MAX_RENDER_PASSES],
+        _execute_result: PassExecuteResult,
+        _prof: &[Duration; MAX_RENDER_PASSES],
     ) {
     }
 }

@@ -1,11 +1,8 @@
 use glam::{Vec2, Vec3};
 use log::info;
 use std::thread::sleep;
-use yage2_graphics::construct_chain;
 use yage2_graphics::gl::bindings;
-use yage2_graphics::passes::chain::{ChainCons, ChainNil};
 use yage2_graphics::passes::events::{PassEventTarget, RenderPassTargetId};
-use yage2_graphics::passes::pipeline::RenderPipeline;
 use yage2_graphics::passes::result::PassExecuteResult;
 use yage2_graphics::passes::RenderPass;
 use yage2_graphics::renderable::Renderable;
@@ -14,7 +11,6 @@ use yage2_graphics::renderable::Renderable;
 pub(crate) enum CustomPassEvent {
     ChangeColor(Vec3),
 }
-
 pub(crate) struct GeometryPass {
     id: RenderPassTargetId,
     color: Vec3,

@@ -1,5 +1,5 @@
 use crate::passes::chain::RenderChain;
-use crate::passes::events::{PassEventTarget, RenderPassEvent};
+use crate::passes::events::{PassEventTarget, PassEventTrait, RenderPassEvent};
 use crate::passes::result::PassExecuteResult;
 use crate::passes::{ChainExecuteCtx, MAX_RENDER_PASSES};
 
@@ -11,8 +11,8 @@ const ROUTER_CAPACITY: usize = 64;
 /// list of render passes that implements `ChainExecute`.
 pub struct RenderPipeline<C, E>
 where
-    E: Copy + 'static,
-    C: RenderChain<E> + Send + Sync + 'static,
+    E: PassEventTrait,
+    C: RenderChain<E>,
 {
     chain: C,
     event_router: [PassEventTarget<E>; ROUTER_CAPACITY],
@@ -20,8 +20,8 @@ where
 
 impl<C, E> RenderPipeline<C, E>
 where
-    E: Copy + 'static,
-    C: RenderChain<E> + Send + Sync + 'static,
+    E: PassEventTrait,
+    C: RenderChain<E>,
 {
     pub fn new(chain: C) -> Self {
         let l = chain.length();

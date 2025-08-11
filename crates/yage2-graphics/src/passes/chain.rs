@@ -1,21 +1,15 @@
-use crate::passes::events::PassEventTarget;
+use crate::passes::events::{PassEventTarget, PassEventTrait};
 use crate::passes::result::PassExecuteResult;
 use crate::passes::{ChainExecuteCtx, RenderPass};
 use std::marker::PhantomData;
 
 // Compile-time Heterogeneous List (HList) for Render Passes
 // Lisp is Love. Lisp is Life.
-pub struct ChainNil<E>
-where
-    E: Copy + 'static,
-{
+pub struct ChainNil<E: PassEventTrait> {
     _marker: PhantomData<E>,
 }
 
-impl<E> ChainNil<E>
-where
-    E: Copy + 'static,
-{
+impl<E: PassEventTrait> ChainNil<E> {
     pub fn new() -> Self {
         ChainNil {
             _marker: Default::default(),
@@ -23,19 +17,13 @@ where
     }
 }
 
-pub struct ChainCons<E, H, T>
-where
-    E: Copy + 'static,
-{
+pub struct ChainCons<E: PassEventTrait, H, T> {
     _marker: PhantomData<E>,
     head: Box<H>,
     tail: T,
 }
 
-impl<E, H, T> ChainCons<E, H, T>
-where
-    E: Copy + 'static,
-{
+impl<E: PassEventTrait, H, T> ChainCons<E, H, T> {
     pub fn new(head: H, tail: T) -> Self {
         ChainCons {
             _marker: Default::default(),
@@ -45,8 +33,8 @@ where
     }
 }
 
-/// A trait for optimization-frieandly processing a chain (HList) of render passes.
-pub trait RenderChain<E> {
+/// A trait for optimization-friendly processing a chain (HList) of render passes.
+pub trait RenderChain<E: PassEventTrait> {
     /// Sequentially execute the chain of render passes.
     #[inline(always)]
     fn execute(&mut self, _: usize, _: &mut ChainExecuteCtx) -> PassExecuteResult {
@@ -73,14 +61,13 @@ pub trait RenderChain<E> {
 }
 
 // Nil is the dead-end. Doing nothing.
-impl<E> RenderChain<E> for ChainNil<E> where E: Copy + 'static {}
+impl<E: PassEventTrait> RenderChain<E> for ChainNil<E> {}
 
 // Cons is the recursive case.
 // It runs the head pass and then recurses on the tail.
-impl<E, H, T> RenderChain<E> for ChainCons<E, H, T>
+impl<E: PassEventTrait, H, T> RenderChain<E> for ChainCons<E, H, T>
 where
-    E: Copy + 'static,
-    H: RenderPass<E> + Send + Sync + 'static,
+    H: RenderPass<E>,
     T: RenderChain<E>,
 {
     #[inline(always)]
