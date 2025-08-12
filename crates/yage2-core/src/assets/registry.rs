@@ -1,12 +1,13 @@
 use crate::assets::factory::AssetQueryID;
-use crate::assets::reader::AssetHeader;
+use crate::assets::metadata::{AssetHeader, TypeSpecificMetadata};
+use crate::assets::reader::AssetRaw;
 use crate::assets::AssetID;
 use log::{info, warn};
 use std::any::TypeId;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 pub(crate) enum AssetState {
@@ -17,6 +18,7 @@ pub(crate) enum AssetState {
 
 pub(crate) struct AssetContainer {
     pub(crate) header: AssetHeader,
+    pub(crate) metadata: TypeSpecificMetadata,
     pub(crate) state: AssetState,
     pub(crate) rc: Arc<AtomicUsize>,
 }
@@ -28,14 +30,18 @@ impl AssetRegistry {
         AssetRegistry(HashMap::new())
     }
 
-    pub fn push(&mut self, id: AssetID, raw: Vec<u8>, header: AssetHeader) {
-        info!("Registering asset: {} (type {:?})", id, header.asset_type);
+    pub fn push(&mut self, id: AssetID, asset_read: AssetRaw) {
+        info!(
+            "Registering asset: {} (type {:?})",
+            id, asset_read.header.asset_type
+        );
 
-        let state = AssetState::Raw(raw);
+        let state = AssetState::Raw(asset_read.data);
         self.0.insert(
             id,
             AssetContainer {
-                header,
+                header: asset_read.header,
+                metadata: asset_read.metadata,
                 state,
                 rc: Arc::new(AtomicUsize::new(0)),
             },

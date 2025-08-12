@@ -1,5 +1,5 @@
 use crate::assets::factory::{AssetQueryID, FactoryBinding, InMessage, OutMessage};
-use crate::assets::reader::AssetReader;
+use crate::assets::reader::{AssetRaw, AssetReader};
 use crate::assets::registry::{AssetContainer, AssetRegistry, AssetState, QueriesRegistry};
 use crate::assets::{Asset, AssetID, AssetType};
 use crate::ecs::Tick;
@@ -23,6 +23,7 @@ pub enum AssetHubEvent {
     QueryCompleted(AssetQueryID),
     AssetLoaded(AssetID),
     AssetFreed(AssetID),
+    LoadFailed(AssetQueryID, AssetID, String), 
     AllAssetsLoaded,
     AllAssetsFreed,
 }
@@ -99,9 +100,8 @@ pub struct AssetHub {
 impl AssetHub {
     pub fn new<R: AssetReader>(mut reader: R) -> Result<Self, String> {
         let mut registry = AssetRegistry::new();
-        for (item_id, header) in reader.enumerate()? {
-            let raw = reader.load(item_id.clone())?;
-            registry.push(item_id.clone(), raw, header);
+        for (item_id, read) in reader.read()? {
+            registry.push(item_id.clone(), read);
         }
 
         Ok(AssetHub {
@@ -168,7 +168,16 @@ impl AssetHub {
         match &item.state {
             AssetState::Raw(raw) => {
                 // If the asset is raw, we need to load it
-                let message = InMessage::Load(qid, aid.clone(), raw.clone(), item.header.clone());
+                let message = InMessage::Load(
+                    qid,
+                    aid.clone(),
+                    AssetRaw {
+                        id: aid.clone(),
+                        header: item.header.clone(),
+                        metadata: item.metadata.clone(),
+                        data: raw.clone(),
+                    },
+                );
                 Self::send_message(factory, message)?;
             }
             _ => {
@@ -309,6 +318,13 @@ impl AssetHub {
                             info!("All assets loaded");
                             sender.send(AssetHubEvent::AllAssetsFreed);
                         }
+                    },
+                    OutMessage::Failed(qid, aid, error) => {
+                        debug!("Query {} failed on asset {}. Error: {}", qid, aid, error);
+                        
+                        sender.send(AssetHubEvent::LoadFailed(qid.clone(), aid.clone(), error));
+                        sender.send(AssetHubEvent::QueryCompleted(qid.clone()));
+                        manager.queries.remove_query(&qid);
                     }
                 }
             }

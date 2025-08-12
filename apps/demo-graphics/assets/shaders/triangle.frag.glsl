@@ -1,9 +1,10 @@
-#version 450
+#version 330 core
+#extension GL_ARB_explicit_uniform_location : enable
 
-layout(location = 0) in vec3 fragColor;
+in vec3 Normal;
+out vec4 FragColor;
 
-layout(location = 0) out vec4 outColor;
-
-void main() {
-    outColor = vec4(fragColor, 1.0);
+void main()
+{
+    FragColor = vec4(Normal, 0) + vec4(0.5, 0.5, 0.5, 1.0);
 }

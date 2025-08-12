@@ -9,6 +9,7 @@ pub mod factory;
 pub mod hub;
 pub mod reader;
 pub(crate) mod registry;
+pub mod metadata;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AssetType {
