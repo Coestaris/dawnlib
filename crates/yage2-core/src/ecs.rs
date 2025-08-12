@@ -1,10 +1,12 @@
-use crate::profile::{PeriodProfiler, ProfileFrame, TickProfiler};
+use crate::monitor::sync::{Counter, Stopwatch};
+use crate::monitor::MonitorSample;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver};
 use evenio::fetch::Single;
 use evenio::world::World;
 use glam::Vec3;
 use log::{info, warn};
+use std::time::{Duration, Instant};
 
 /// Event sent every tick in the main loop (usually 60 times per second).
 /// Can be used to update game logic, render frames, etc.
@@ -20,12 +22,12 @@ pub struct Tick {
 #[derive(GlobalEvent)]
 pub struct StopEventLoop;
 
-/// Event sent every second with profiling data about the main loop.
+/// Event sent every second with monitoring data about the main loop.
 #[derive(GlobalEvent)]
-pub struct MainLoopProfileFrame {
-    pub tick_time: ProfileFrame,
-    pub tick_tps: ProfileFrame,
-    pub average_load: f32, // Average load of the main loop in percent.
+pub struct MainLoopMonitoring {
+    pub cycle_time: MonitorSample<Duration>,
+    pub tps: MonitorSample<f32>,
+    pub load: MonitorSample<f32>,
 }
 
 /// Generic component for storing the 'main camera' of the game.
@@ -37,79 +39,97 @@ pub struct Head {
     pub position: Vec3,
 }
 
-trait MainLoopProfilerTrait {
-    fn tick_start(&self) {}
+trait MainLoopMonitorTrait {
+    fn cycle_start(&mut self) {}
     fn tick_end(&mut self) {}
-    fn profile(&mut self, world: &mut World) {}
+    fn cycle(&mut self, world: &mut World) {}
 }
 
-struct MainLoopProfiler {
-    tick_profiler: TickProfiler,
-    period_profiler: PeriodProfiler,
-    last_profile_time: std::time::Instant,
+struct MainLoopMonitor {
+    cycle_time: Stopwatch,
+    tps: Counter,
+    las_update: Instant,
+    counter: usize,
 }
 
-impl MainLoopProfiler {
+impl MainLoopMonitor {
     pub fn new() -> Self {
-        MainLoopProfiler {
-            tick_profiler: TickProfiler::new(0.5),
-            period_profiler: PeriodProfiler::new(0.5),
-            last_profile_time: std::time::Instant::now(),
+        MainLoopMonitor {
+            cycle_time: Stopwatch::new(0.5),
+            tps: Counter::new(Duration::from_secs(1), 0.5),
+            las_update: Instant::now(),
+            counter: 0,
         }
     }
 }
 
-impl MainLoopProfilerTrait for MainLoopProfiler {
-    fn tick_start(&self) {
-        self.period_profiler.start();
+impl MainLoopMonitorTrait for MainLoopMonitor {
+    #[inline(always)]
+    fn cycle_start(&mut self) {
+        self.cycle_time.start();
     }
 
+    #[inline(always)]
     fn tick_end(&mut self) {
-        self.period_profiler.end();
+        self.cycle_time.stop();
     }
 
-    fn profile(&mut self, world: &mut World) {
-        self.tick_profiler.tick(1);
+    #[inline(always)]
+    fn cycle(&mut self, world: &mut World) {
+        self.tps.count(1);
 
-        // Check if one second has passed since the last profile
-        if self.last_profile_time.elapsed().as_secs_f32() >= 1.0 {
-            self.last_profile_time = std::time::Instant::now();
-            self.tick_profiler.update();
+        // Check if one second has passed since the last monitor
+        if self.las_update.elapsed().as_secs_f32() >= 1.0 {
+            self.las_update = Instant::now();
+            self.tps.update();
 
             // Calculate the average load of the main loop
-            let tick_time = self.period_profiler.get_frame();
-            let load = tick_time.average() / self.tick_profiler.get_frame().average();
+            let cycle_time = self.cycle_time.get();
+            let tps = self.tps.get();
+            let load = MonitorSample::new(
+                cycle_time.min().as_secs_f32() / tps.min(),
+                cycle_time.average().as_secs_f32() / tps.max(),
+                cycle_time.max().as_secs_f32() / tps.min(),
+            );
 
-            // Call the handler with the profile frame
-            world.send(MainLoopProfileFrame {
-                tick_time,
-                tick_tps: self.tick_profiler.get_frame(),
-                average_load: load,
+            // Reset the counters each 5 seconds to get more smooth data
+            if self.counter % 5 == 0 {
+                self.cycle_time.reset();
+                self.tps.reset();
+            }
+            self.counter += 1;
+
+            // Send the data to the ECS
+            world.send(MainLoopMonitoring {
+                cycle_time,
+                tps,
+                load,
             });
         }
     }
 }
 
-struct DummyMainLoopProfiler;
+struct DummyMainLoopMonitor;
 
-impl MainLoopProfilerTrait for DummyMainLoopProfiler {}
+impl MainLoopMonitorTrait for DummyMainLoopMonitor {}
 
 /// Runs the main loop of the application.
 /// Every `tps` ticks per second, it sends a `Tick` event to the ECS.
 /// You can stop the loop by sending a `StopEventLoop` event to the ECS.
-/// If `use_profiling` is true, it will also send profiling data every second
-/// to the ECS as `MainLoopProfileFrame` events.
-pub fn run_loop(world: &mut World, tps: f32, use_profiling: bool) {
-    if use_profiling {
-        run_loop_inner(world, tps, MainLoopProfiler::new());
-    } else {
-        run_loop_inner(world, tps, DummyMainLoopProfiler);
-    }
+pub fn run_loop(world: &mut World, tps: f32) {
+    run_loop_inner(world, tps, DummyMainLoopMonitor);
 }
 
-fn run_loop_inner<P>(world: &mut World, tps: f32, mut profiler: P)
+/// Same as `run_loop`, but it will also send monitoring data every second
+/// to the ECS as `MainLoopMonitorSample` events.
+/// That may affect the performance of the main loop.
+pub fn run_loop_with_monitoring(world: &mut World, tps: f32) {
+    run_loop_inner(world, tps, MainLoopMonitor::new());
+}
+
+fn run_loop_inner<M>(world: &mut World, tps: f32, mut monitor: M)
 where
-    P: MainLoopProfilerTrait + 'static,
+    M: MainLoopMonitorTrait + 'static,
 {
     #[derive(Component, Debug)]
     struct PrivateData {
@@ -129,7 +149,7 @@ where
     let loop_start = std::time::Instant::now();
 
     loop {
-        profiler.profile(world);
+        monitor.cycle(world);
 
         // Check if the event loop should stop
         if let Some(private_data) = world.get::<PrivateData>(entity) {
@@ -147,18 +167,18 @@ where
         let total_time = start.duration_since(loop_start).as_secs_f32();
 
         // Dispatch the Tick event
-        profiler.tick_start();
+        monitor.cycle_start();
         world.send(Tick {
             delta,
             time: total_time,
         });
-        profiler.tick_end();
+        monitor.tick_end();
 
         // Update the previous tick time
         prev_tick = start;
 
         // Sleep to maintain the target ticks per second
-        let target_duration = std::time::Duration::from_secs_f32(1.0 / tps);
+        let target_duration = Duration::from_secs_f32(1.0 / tps);
         let elapsed = start.duration_since(prev_tick);
         if elapsed < target_duration {
             let sleep_duration = target_duration - elapsed;

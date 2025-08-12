@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 use yage2_core::assets::reader::AssetHeader;
 use yage2_core::assets::AssetType;
 
@@ -174,11 +175,31 @@ pub struct WriteOptions {
     pub checksum_algorithm: ChecksumAlgorithm,
 }
 
+fn serialize_instant<S>(instant: &Instant, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let duration = instant.elapsed();
+    serializer.serialize_u64(duration.as_secs() * 1_000 + u64::from(duration.subsec_millis()))
+}
+
+fn deserialize_instant<'de, D>(deserializer: D) -> Result<Instant, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let timestamp = u64::deserialize(deserializer)?;
+    Ok(Instant::now() - std::time::Duration::from_millis(timestamp))
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Manifest {
     pub tool_created: String,
     pub tool_version: String,
-    pub date_created: String,
+    #[serde(
+        serialize_with = "serialize_instant",
+        deserialize_with = "deserialize_instant"
+    )]
+    pub date_created: Instant,
     pub write_options: WriteOptions,
     pub headers: Vec<AssetHeader>,
 }

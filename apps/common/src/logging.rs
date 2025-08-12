@@ -1,6 +1,44 @@
 use ansi_term::Color::{Blue, Cyan, Green, Red, Yellow};
 use log::{Level, Log, Metadata, Record};
-use yage2_core::utils::format_now;
+use std::mem;
+use std::ptr::addr_of_mut;
+
+/* Use a simple format instead of something like strftime,
+ * to avoid unnecessary complexity, and to not extend the
+ * dependency tree with a crate that provides it. */
+#[allow(unused_imports)]
+fn format_now() -> Option<String> {
+    /* Get tm-like representation of the current time */
+    let system_time = std::time::SystemTime::now();
+    let duration = system_time.duration_since(std::time::UNIX_EPOCH).ok()?;
+
+    let tm = unsafe {
+        let datetime = libc::time_t::try_from(duration.as_secs()).ok()?;
+        let mut ret = mem::zeroed();
+        #[cfg(windows)]
+        {
+            libc::localtime_s(addr_of_mut!(ret), &datetime);
+        }
+        #[cfg(unix)]
+        {
+            libc::localtime_r(&datetime, addr_of_mut!(ret));
+        }
+        ret
+    };
+
+    /* Format:
+     * YYYY.MM.DD HH:MM:SS.{ms} */
+    Some(format!(
+        "{:04}.{:02}.{:02} {:02}:{:02}:{:02}.{:03}",
+        tm.tm_year + 1900,
+        tm.tm_mon + 1,
+        tm.tm_mday,
+        tm.tm_hour,
+        tm.tm_min,
+        tm.tm_sec,
+        duration.subsec_millis()
+    ))
+}
 
 pub struct CommonLogger;
 

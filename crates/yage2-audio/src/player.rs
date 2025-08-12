@@ -19,7 +19,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::{atomic::AtomicBool, Arc};
 use std::thread::{Builder, JoinHandle};
 use yage2_core::ecs::Tick;
-use yage2_core::profile::{PeriodProfiler, ProfileFrame, TickProfiler};
+use yage2_core::monitor::{PeriodProfiler, MonitorSample, TickProfiler};
 
 const STATISTICS_THREAD_NAME: &str = "aud_stats";
 const EVENTS_QUEUE_CAPACITY: usize = 1024;
@@ -29,13 +29,13 @@ const PROFILE_QUEUE_CAPACITY: usize = 32;
 #[derive(GlobalEvent)]
 pub struct PlayerProfileFrame {
     // Time consumed by the renderer (in milliseconds)
-    pub render: ProfileFrame,
+    pub render: MonitorSample,
     // Number of ticks per second the renderer was called
-    pub render_tps: ProfileFrame,
+    pub render_tps: MonitorSample,
     // Time consumed by the event processing (in milliseconds)
-    pub events: ProfileFrame,
+    pub events: MonitorSample,
     // Number of events processed per second
-    pub events_tps: ProfileFrame,
+    pub events_tps: MonitorSample,
     // Average load of the player in percent
     pub average_renderer_load: f32,
     pub average_events_load: f32,

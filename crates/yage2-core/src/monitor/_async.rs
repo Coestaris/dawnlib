@@ -1,41 +1,21 @@
-use crate::time::current_us;
+use crate::monitor::MonitorSample;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::atomic::{AtomicU32, AtomicU64};
 use std::sync::Arc;
+use std::time::SystemTime;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct ProfileFrame {
-    min: f32,
-    average: f32,
-    max: f32,
+fn current_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
-impl std::fmt::Display for ProfileFrame {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "ProfileFrame {{{:.2}/{:.2}/{:.2} ms}}",
-            self.min, self.average, self.max
-        )
-    }
-}
-
-impl ProfileFrame {
-    pub fn new(min: f32, average: f32, max: f32) -> Self {
-        Self { min, average, max }
-    }
-
-    pub fn min(&self) -> f32 {
-        self.min
-    }
-
-    pub fn average(&self) -> f32 {
-        self.average
-    }
-
-    pub fn max(&self) -> f32 {
-        self.max
-    }
+fn current_us() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_micros() as u64
 }
 
 pub struct TickProfiler {
@@ -114,14 +94,14 @@ impl TickProfiler {
     }
 
     /* In milliseconds */
-    pub fn get_frame(&self) -> ProfileFrame {
+    pub fn get_frame(&self) -> MonitorSample<f32> {
         let (min_average, average, max_average) = (
             self.min_average_us.load(Relaxed),
             self.average_us.load(Relaxed),
             self.max_average_us.load(Relaxed),
         );
 
-        ProfileFrame::new(
+        MonitorSample::new(
             min_average as f32 / 1000.0,
             average as f32 / 1000.0,
             max_average as f32 / 1000.0,
@@ -186,13 +166,13 @@ impl PeriodProfiler {
     }
 
     /* In milliseconds */
-    pub fn get_frame(&self) -> ProfileFrame {
+    pub fn get_frame(&self) -> MonitorSample<f32> {
         // Return the statistics for the period counter
         let min = self.min_us.load(Relaxed);
         let current = self.current_us.load(Relaxed);
         let max = self.max_us.load(Relaxed);
 
-        ProfileFrame::new(
+        MonitorSample::new(
             min as f32 / 1000.0,
             current as f32 / 1000.0,
             max as f32 / 1000.0,
@@ -247,8 +227,8 @@ impl MinMaxProfiler {
     }
 
     /* In milliseconds */
-    pub fn get_stat(&self) -> ProfileFrame {
-        ProfileFrame::new(
+    pub fn get_stat(&self) -> MonitorSample<f32> {
+        MonitorSample::new(
             self.min.load(Relaxed) as f32,
             self.average.load(Relaxed) as f32,
             self.max.load(Relaxed) as f32,

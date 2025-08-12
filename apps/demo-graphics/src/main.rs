@@ -12,7 +12,7 @@ use log::info;
 use yage2_core::assets::factory::FactoryBinding;
 use yage2_core::assets::hub::AssetHub;
 use yage2_core::assets::AssetType;
-use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop};
+use yage2_core::ecs::{run_loop, run_loop_with_monitoring, MainLoopMonitoring, StopEventLoop};
 use yage2_graphics::construct_chain;
 use yage2_graphics::input::{InputEvent, KeyCode};
 use yage2_graphics::passes::chain::ChainCons;
@@ -20,7 +20,7 @@ use yage2_graphics::passes::chain::ChainNil;
 use yage2_graphics::passes::events::{RenderPassEvent, RenderPassTargetId};
 use yage2_graphics::passes::pipeline::RenderPipeline;
 use yage2_graphics::renderable::{Position, RenderableMesh};
-use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererProfileFrame};
+use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererMonitoring};
 use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
 
 // On my linux machine, the refresh rate is 60 Hz.
@@ -79,19 +79,14 @@ impl GameController {
         let geometry_pass_id = RenderPassTargetId::new();
         let aabb_pass_id = RenderPassTargetId::new();
 
-        let renderer = Renderer::new(
-            view_config,
-            backend_config,
-            move || {
-                let geometry_pass = GeometryPass::new(geometry_pass_id);
-                let aabb_pass = AABBPass::new(aabb_pass_id);
-                Ok(RenderPipeline::new(construct_chain!(
-                    geometry_pass,
-                    aabb_pass
-                )))
-            },
-            true,
-        )
+        let renderer = Renderer::new_with_monitoring(view_config, backend_config, move || {
+            let geometry_pass = GeometryPass::new(geometry_pass_id);
+            let aabb_pass = AABBPass::new(aabb_pass_id);
+            Ok(RenderPipeline::new(construct_chain!(
+                geometry_pass,
+                aabb_pass
+            )))
+        })
         .unwrap();
         renderer.attach_to_ecs(world);
 
@@ -110,20 +105,20 @@ impl GameController {
     }
 }
 
-fn main_loop_profile_handler(r: Receiver<MainLoopProfileFrame>) {
+fn main_loop_profile_handler(r: Receiver<MainLoopMonitoring>) {
     info!(
         "Main loop: {:.1}tps ({:.1}%)",
-        r.event.tick_tps.average(),
-        r.event.average_load * 100.0
+        r.event.tps.average(),
+        r.event.load.average() * 100.0
     );
 }
 
-fn renderer_profile_handler(r: Receiver<RendererProfileFrame>) {
+fn renderer_profile_handler(r: Receiver<RendererMonitoring>) {
     info!(
         "Renderer: {:.1} FPS. {:.1}/{:.1}",
         r.event.fps.average(),
-        r.event.render.average(),
-        r.event.view_tick.average(),
+        r.event.render.average().as_millis(),
+        r.event.view.average().as_millis(),
     );
 }
 
@@ -186,5 +181,5 @@ fn main() {
         },
     );
 
-    run_loop(&mut world, REFRESH_RATE, true);
+    run_loop_with_monitoring(&mut world, REFRESH_RATE);
 }

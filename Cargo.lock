@@ -226,6 +226,7 @@ name = "common"
 version = "0.1.0"
 dependencies = [
  "ansi_term",
+ "libc",
  "log",
  "yage2-core",
  "yage2-yarc",
