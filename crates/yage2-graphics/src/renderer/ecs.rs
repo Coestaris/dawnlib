@@ -1,7 +1,7 @@
 use crate::input::InputEvent;
 use crate::passes::events::{PassEventTrait, RenderPassEvent};
 use crate::renderable::{Material, Position, Renderable, RenderableMesh, Rotation, Scale};
-use crate::renderer::profile::RendererProfileFrame;
+use crate::renderer::monitor::RendererMonitoring;
 use crate::renderer::Renderer;
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
@@ -44,12 +44,13 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         fn drop(&mut self) {
             info!("Dropping renderer box");
 
-            // SAFETY: We are guaranteed that the raw pointer is valid
-            // and points to a Renderer<E> because we created it from a Box<Renderer<E>>.
+            // TODO: Empty is not an E. Can this break something?
+            #[derive(Copy, Clone)]
+            struct Empty {}
 
-            todo!()
-            // TODO: Deal with generic types properly
-            // unsafe { Box::from_raw(self.raw.as_ptr() as *mut Renderer<E>) };
+            unsafe {
+                let _ = Box::from_raw(self.raw.as_ptr() as *mut Renderer<Empty>);
+            };
         }
     }
 
@@ -57,7 +58,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
     let renderer_entity = world.spawn();
     world.insert(renderer_entity, Boxed::new(renderer));
 
-    // If renderer loop is closed or stopped,
+    // If the renderer loop is closed or stopped,
     // we need to stop the event loop
     fn view_closed_handler<E: PassEventTrait>(
         _: Receiver<Tick>,
@@ -72,15 +73,15 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         }
     }
 
-    // Check if there's any profile frame to process.
+    // Check if there's any monitor frame to process.
     // If so, push them to the ECS
-    fn profile_handler<E: PassEventTrait>(
+    fn monitoring_handler<E: PassEventTrait>(
         _: Receiver<Tick>,
         renderer: Single<&Boxed>,
-        mut sender: Sender<RendererProfileFrame>,
+        mut sender: Sender<RendererMonitoring>,
     ) {
         let renderer = renderer.cast::<E>();
-        while let Some(frame) = renderer.profile_frames.pop() {
+        while let Some(frame) = renderer.monitor_queue.pop() {
             sender.send(frame);
         }
     }
@@ -154,7 +155,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         renderer.renderables_buffer_input.write(renderables);
     }
 
-    world.add_handler(profile_handler::<E>);
+    world.add_handler(monitoring_handler::<E>);
     world.add_handler(inputs_handler::<E>);
     world.add_handler(view_closed_handler::<E>);
     world.add_handler(collect_renderables::<E>);

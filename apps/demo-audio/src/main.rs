@@ -18,7 +18,7 @@ use yage2_audio::entities::sources::actor::{
 use yage2_audio::player::{Player, PlayerProfileFrame};
 use yage2_core::assets::hub::{AssetHub, AssetHubEvent};
 use yage2_core::assets::{Asset, AssetID, AssetType};
-use yage2_core::ecs::{run_loop, MainLoopProfileFrame, StopEventLoop, Tick};
+use yage2_core::ecs::{run_loop, MainLoopMonitoring, StopEventLoop, Tick};
 
 #[cfg(target_os = "linux")]
 // Alsa backend works A LOT better with 44,100 Hz sample rate
@@ -112,7 +112,7 @@ fn timeout_handler(t: Receiver<Tick>, mut stopper: Sender<StopEventLoop>) {
     }
 }
 
-fn main_loop_profile_handler(r: Receiver<MainLoopProfileFrame>) {
+fn main_loop_profile_handler(r: Receiver<MainLoopMonitoring>) {
     info!(
         "Main loop: {:.1}tps ({:.1}%)",
         r.event.tick_tps.average(),

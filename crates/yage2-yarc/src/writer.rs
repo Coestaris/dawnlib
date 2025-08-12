@@ -9,10 +9,10 @@ use crate::structures::{
 use log::{debug, info};
 use std::fs::File;
 use std::io::{BufReader, Read};
+use std::time::Instant;
 use tempdir::TempDir;
 use yage2_core::assets::reader::{AssetChecksum, AssetHeader};
 use yage2_core::assets::AssetType;
-use yage2_core::utils::format_now;
 
 #[derive(Debug)]
 struct Container {
@@ -179,7 +179,7 @@ fn create_manifest(create_options: WriteOptions, containers: &[Container]) -> Ma
     Manifest {
         tool_created: "Yage2 Packager".to_string(),
         tool_version: "0.1.0".to_string(), // TODO: Get from Cargo.toml
-        date_created: format_now().unwrap(),
+        date_created: Instant::now(),
         write_options: create_options,
         headers,
     }

@@ -1,6 +1,6 @@
 pub(crate) mod backend;
 mod ecs;
-mod profile;
+mod monitor;
 
 use crate::input::InputEvent;
 use crate::passes::chain::RenderChain;
@@ -11,7 +11,7 @@ use crate::passes::ChainExecuteCtx;
 use crate::renderable::Renderable;
 use crate::renderer::backend::{RendererBackend, RendererBackendError, RendererBackendTrait};
 use crate::renderer::ecs::attach_to_ecs;
-use crate::renderer::profile::{DummyRendererProfiler, RendererProfiler, RendererProfilerTrait};
+use crate::renderer::monitor::{DummyRendererMonitor, RendererMonitor, RendererMonitorTrait};
 use crate::view::{TickResult, View, ViewConfig, ViewError, ViewTrait};
 use crossbeam_queue::ArrayQueue;
 use evenio::component::Component;
@@ -25,11 +25,11 @@ use triple_buffer::{triple_buffer, Input, Output};
 
 // Re-export the necessary types for user
 pub use backend::RendererBackendConfig;
-pub use profile::RendererProfileFrame;
+pub use monitor::RendererMonitoring;
 
 const INPUTS_QUEUE_CAPACITY: usize = 1024;
 const RENDERER_QUEUE_CAPACITY: usize = 1024;
-const PROFILE_QUEUE_CAPACITY: usize = 32;
+const MONITOR_QUEUE_CAPACITY: usize = 32;
 
 #[derive(Component)]
 pub struct Renderer<E: PassEventTrait> {
@@ -42,7 +42,7 @@ pub struct Renderer<E: PassEventTrait> {
     inputs_queue: Arc<ArrayQueue<InputEvent>>,
     // Used for transferring render pass events from the ECS to the renderer thread.
     renderer_queue: Arc<ArrayQueue<RenderPassEvent<E>>>,
-    profile_frames: Arc<ArrayQueue<RendererProfileFrame>>,
+    monitor_queue: Arc<ArrayQueue<RendererMonitoring>>,
     handle: Option<JoinHandle<()>>,
 }
 
@@ -55,7 +55,7 @@ pub enum RendererError {
     ViewTickError(ViewError),
     BackendRenderError(RendererBackendError),
     PipelineExecuteError(),
-    ProfilerSetupFailed,
+    MonitoringSetupFailed,
 }
 
 impl std::fmt::Display for RendererError {
@@ -68,7 +68,7 @@ impl std::fmt::Display for RendererError {
             RendererError::BackendCreateError(e) => write!(f, "Failed to create backend: {}", e),
             RendererError::ViewTickError(e) => write!(f, "View tick error: {}", e),
             RendererError::BackendRenderError(e) => write!(f, "Backend tick error: {}", e),
-            RendererError::ProfilerSetupFailed => write!(f, "Failed to setup profiler"),
+            RendererError::MonitoringSetupFailed => write!(f, "Failed to setup monitor"),
             RendererError::PipelineExecuteError() => write!(f, "Failed to execute render pipeline"),
             RendererError::PipelineCreateError(s) => {
                 write!(f, "Failed to create render pipeline: {}", s)
@@ -118,69 +118,74 @@ impl<E: PassEventTrait> Renderer<E> {
     /// `constructor` is a function that will be called to create the render pipeline.
     /// It is called once after the view and backend are created. So you can safely
     /// allocate resources in it.
-    ///
-    /// `use_profiling` is a flag that indicates whether to use profiling or not.
-    /// It is only useful when connecting the renderer to the ECS.
     pub fn new<C>(
         view_config: ViewConfig,
         backend_config: RendererBackendConfig,
         constructor: impl RenderChainConstructor<C, E>,
-        use_profiling: bool,
     ) -> Result<Self, RendererError>
     where
         C: RenderChain<E>,
     {
-        if use_profiling {
-            Self::new_inner(
-                view_config,
-                backend_config,
-                constructor,
-                RendererProfiler::new(),
-            )
-        } else {
-            Self::new_inner(
-                view_config,
-                backend_config,
-                constructor,
-                DummyRendererProfiler {},
-            )
-        }
+        Self::new_inner(
+            view_config,
+            backend_config,
+            constructor,
+            DummyRendererMonitor {},
+        )
+    }
+
+    /// Creates a new renderer instance with enabled monitoring.
+    /// Monitoring is only beneficial if the renderer is attached to the ECS -
+    /// it will send monitoring data to the ECS every second.
+    /// That may affect the performance of the renderer.
+    ///
+    /// See more information on the function `new`.
+    pub fn new_with_monitoring<C>(
+        view_config: ViewConfig,
+        backend_config: RendererBackendConfig,
+        constructor: impl RenderChainConstructor<C, E>,
+    ) -> Result<Self, RendererError>
+    where
+        C: RenderChain<E>,
+    {
+        Self::new_inner(
+            view_config,
+            backend_config,
+            constructor,
+            RendererMonitor::new(),
+        )
     }
 
     fn new_inner<P, C>(
         view_config: ViewConfig,
         backend_config: RendererBackendConfig,
         constructor: impl RenderChainConstructor<C, E>,
-        mut profiler: P,
+        mut monitor: P,
     ) -> Result<Self, RendererError>
     where
-        P: RendererProfilerTrait,
+        P: RendererMonitorTrait,
         C: RenderChain<E>,
     {
-        // Setup profiler
+        // Setup monitor
         let stop_signal = Arc::new(AtomicBool::new(false));
-        let profile_frames = Arc::new(ArrayQueue::<RendererProfileFrame>::new(
-            PROFILE_QUEUE_CAPACITY,
-        ));
-        profiler.set_queue(profile_frames.clone());
+        let monitor_queue = Arc::new(ArrayQueue::new(MONITOR_QUEUE_CAPACITY));
+        monitor.set_queue(monitor_queue.clone());
 
         // Setup renderer
         let inputs_queue = Arc::new(ArrayQueue::<InputEvent>::new(INPUTS_QUEUE_CAPACITY));
+        let renderer_queue = Arc::new(ArrayQueue::new(RENDERER_QUEUE_CAPACITY));
+        let (buffer_input, mut buffer_output) = triple_buffer::<Vec<Renderable>>(&vec![]);
+
         let inputs_queue_clone = inputs_queue.clone();
-        let renderer_queue = Arc::new(ArrayQueue::<RenderPassEvent<E>>::new(
-            RENDERER_QUEUE_CAPACITY,
-        ));
         let renderer_queue_clone = renderer_queue.clone();
-        let stop_signal_clone1 = stop_signal.clone();
-        let stop_signal_clone2 = stop_signal.clone();
-        let (renderables_buffer_input, mut renderables_buffer_output) =
-            triple_buffer::<Vec<Renderable>>(&vec![]);
+        let stop_signal_clone = stop_signal.clone();
+
         let handle = Builder::new()
             .name("renderer".to_string())
             .spawn(move || {
                 info!("Renderer thread started");
 
-                let func = move || {
+                let func = || {
                     // Create the view, backend and the rendering pipeline
                     let mut view = View::open(view_config, inputs_queue_clone)
                         .map_err(RendererError::ViewCreateError)?;
@@ -188,13 +193,13 @@ impl<E: PassEventTrait> Renderer<E> {
                         .map_err(RendererError::BackendCreateError)?;
                     let mut pipeline = constructor().map_err(RendererError::PipelineCreateError)?;
 
-                    // Notify the profiler about the pass names
+                    // Notify the monitor about the pass names
                     let pass_names = pipeline.get_names();
-                    profiler.set_pass_names(&pass_names);
+                    monitor.set_pass_names(&pass_names);
 
                     info!("Starting renderer loop");
-                    while !stop_signal_clone1.load(Ordering::SeqCst) {
-                        match Self::handle_view(&mut view, &mut profiler) {
+                    while !stop_signal_clone.load(Ordering::SeqCst) {
+                        match Self::handle_view(&mut view, &mut monitor) {
                             Ok(false) => {
                                 return Ok(());
                             }
@@ -203,11 +208,11 @@ impl<E: PassEventTrait> Renderer<E> {
                             }
                             _ => {}
                         }
-                        Self::handle_events(&mut profiler, &mut pipeline, &renderer_queue_clone)?;
+                        Self::handle_events(&mut monitor, &mut pipeline, &renderer_queue_clone)?;
                         Self::handle_render(
-                            &mut profiler,
+                            &mut monitor,
                             &mut backend,
-                            &mut renderables_buffer_output,
+                            &mut buffer_output,
                             &mut pipeline,
                         )?;
                     }
@@ -219,7 +224,7 @@ impl<E: PassEventTrait> Renderer<E> {
                 let err: Result<(), RendererError> = func();
 
                 // Request other threads to stop
-                stop_signal_clone2.store(true, Ordering::SeqCst);
+                stop_signal_clone.store(true, Ordering::SeqCst);
                 info!("Renderer thread finished");
 
                 if let Err(e) = err {
@@ -230,10 +235,10 @@ impl<E: PassEventTrait> Renderer<E> {
 
         Ok(Self {
             stop_signal,
-            renderables_buffer_input,
+            renderables_buffer_input: buffer_input,
             inputs_queue,
             renderer_queue,
-            profile_frames,
+            monitor_queue,
             handle: Some(handle),
         })
     }
@@ -241,10 +246,10 @@ impl<E: PassEventTrait> Renderer<E> {
     #[inline(always)]
     fn handle_view(
         view: &mut View,
-        profiler: &mut impl RendererProfilerTrait,
+        monitor: &mut impl RendererMonitorTrait,
     ) -> Result<bool, RendererError> {
         // Process View. Usually this will produce input events
-        profiler.view_tick_start();
+        monitor.view_start();
         match view.tick() {
             TickResult::Continue => {
                 // View tick was successful, continue processing
@@ -261,31 +266,31 @@ impl<E: PassEventTrait> Renderer<E> {
                 Err(RendererError::ViewTickError(e))?;
             }
         }
-        profiler.view_tick_end();
+        monitor.view_stop();
         Ok(true)
     }
 
     #[inline(always)]
     fn handle_events<C>(
-        profiler: &mut impl RendererProfilerTrait,
+        monitor: &mut impl RendererMonitorTrait,
         pipeline: &mut RenderPipeline<C, E>,
         renderer_queue: &ArrayQueue<RenderPassEvent<E>>,
     ) -> Result<(), RendererError>
     where
         C: RenderChain<E>,
     {
-        profiler.evens_start();
+        monitor.events_start();
         while let Some(event) = renderer_queue.pop() {
             pipeline.dispatch(&event);
         }
-        profiler.evens_end();
+        monitor.events_stop();
 
         Ok(())
     }
 
     #[inline(always)]
     fn handle_render<C>(
-        profiler: &mut impl RendererProfilerTrait,
+        monitor: &mut impl RendererMonitorTrait,
         backend: &mut RendererBackend<E>,
         renderables_buffer: &mut Output<Vec<Renderable>>,
         pipeline: &mut RenderPipeline<C, E>,
@@ -293,7 +298,7 @@ impl<E: PassEventTrait> Renderer<E> {
     where
         C: RenderChain<E>,
     {
-        profiler.render_start();
+        monitor.render_start();
         if let Err(e) = backend.before_frame() {
             return Err(RendererError::BackendRenderError(e));
         }
@@ -306,10 +311,10 @@ impl<E: PassEventTrait> Renderer<E> {
             return Err(RendererError::PipelineExecuteError());
         }
 
-        // Do not include after frame in the profiler, because it usually synchronizes
+        // Do not include after frame in the monitoring, because it usually synchronizes
         // the rendered frame with the OS by swapping buffer, that usually is synchronized
         // with the refresh rate of the display. So this will not be informative.
-        profiler.render_end(pass_result, &ctx.profile);
+        monitor.render_stop(pass_result, &ctx.durations);
 
         if let Err(e) = backend.after_frame() {
             return Err(RendererError::BackendRenderError(e))?;
@@ -324,7 +329,7 @@ impl<E: PassEventTrait> Renderer<E> {
     /// When any input event is received, it will be sent to the ECS as `InputEvent` events.
     /// It will capture all user's render pass events as `RenderPassEvent<E>` events and
     /// send them to the renderer thread for processing.
-    /// Also, if you enabled profiling, it will send profiling data as `RendererProfileFrame`
+    /// Also, if you've enabled monitoring, it will send monitor data as `RendererMonitoring`
     /// events to the ECS every second.
     /// Additionally, if the Window or Renderer is closed/failed the event loop will be stopped
     /// by sending a `StopEventLoop` event to the ECS.

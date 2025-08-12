@@ -61,14 +61,14 @@ pub(crate) struct ChainExecuteCtx<'a> {
     // The renderables to be processed by the render pass.
     pub(crate) renderables: &'a [Renderable],
     // Amount of time consumed by render pass in the chain.
-    pub(crate) profile: [Duration; MAX_RENDER_PASSES],
+    pub(crate) durations: [Duration; MAX_RENDER_PASSES],
 }
 
 impl<'a> ChainExecuteCtx<'a> {
     pub fn new(renderables: &'a [Renderable]) -> Self {
         ChainExecuteCtx {
             renderables,
-            profile: [Duration::ZERO; MAX_RENDER_PASSES],
+            durations: [Duration::ZERO; MAX_RENDER_PASSES],
         }
     }
 
@@ -92,7 +92,7 @@ impl<'a> ChainExecuteCtx<'a> {
         result += pass.end();
 
         let elapsed = start.elapsed();
-        self.profile[idx] = elapsed;
+        self.durations[idx] = elapsed;
 
         result
     }

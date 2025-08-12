@@ -86,9 +86,6 @@ impl RenderPass<CustomPassEvent> for GeometryPass {
             );
         }
 
-        // Imitate some heavy computation
-        sleep(std::time::Duration::from_millis(3));
-
         PassExecuteResult::ok(1, 1)
     }
 }
