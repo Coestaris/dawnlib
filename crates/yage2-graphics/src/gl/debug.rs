@@ -164,7 +164,8 @@ impl Debugger {
             let message_type = MessageType::new(gltype);
             let severity = MessageSeverity::new(severity);
 
-            let bytes = unsafe { std::slice::from_raw_parts(message as *const u8, length as usize) };
+            let bytes =
+                unsafe { std::slice::from_raw_parts(message as *const u8, length as usize) };
             let msg = std::borrow::Cow::from(String::from_utf8_lossy(bytes)); // Cow<'_, str>
 
             // Restore the outer Box from the raw pointer
