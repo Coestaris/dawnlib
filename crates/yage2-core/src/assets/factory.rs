@@ -1,11 +1,7 @@
-use crate::assets::reader::AssetHeader;
+use crate::assets::metadata::AssetHeader;
+use crate::assets::reader::AssetRaw;
 use crate::assets::{AssetID, AssetType};
-use crate::ecs::Tick;
 use crossbeam_queue::ArrayQueue;
-use evenio::component::Component;
-use evenio::event::Receiver;
-use evenio::fetch::Single;
-use evenio::prelude::World;
 use log::{error, warn};
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -31,13 +27,14 @@ impl AssetQueryID {
 }
 
 pub enum InMessage {
-    Load(AssetQueryID, AssetID, Vec<u8>, AssetHeader),
+    Load(AssetQueryID, AssetID, AssetRaw),
     Free(AssetQueryID, AssetID),
 }
 
 #[derive(Debug)]
 pub enum OutMessage {
     Loaded(AssetQueryID, AssetID, TypeId, NonNull<()>),
+    Failed(AssetQueryID, AssetID, String),
     Freed(AssetQueryID, AssetID),
 }
 
@@ -88,7 +85,7 @@ impl FactoryBinding {
 pub struct BasicFactory<T> {
     // Storing assets in the heap allows safely sharing pointers
     // across threads for read access.
-    storage: HashMap<AssetID, Box<T>>,
+    storage: HashMap<AssetID, NonNull<T>>,
     in_queue: Option<Arc<ArrayQueue<InMessage>>>,
     out_queue: Option<Arc<ArrayQueue<OutMessage>>>,
 }
@@ -109,37 +106,53 @@ impl<T: 'static> BasicFactory<T> {
 
     pub fn process_events<F, P>(&mut self, parse: P, free: F)
     where
-        P: Fn(&AssetHeader, &[u8]) -> Option<T>,
+        P: Fn(&AssetRaw) -> Result<T, String>,
         F: Fn(&T),
     {
         if let Some(in_queue) = &self.in_queue {
             while let Some(msg) = in_queue.pop() {
                 match msg {
-                    InMessage::Load(qid, id, raw, header) => {
-                        if let Some(clip) = parse(&header, &raw) {
-                            let ptr = unsafe {
-                                self.storage.insert(id.clone(), Box::new(clip));
-                                NonNull::new(mem::transmute::<&mut T, &mut ()>(
-                                    self.storage.get_mut(&id).unwrap(),
-                                ))
-                                .unwrap()
-                            };
+                    InMessage::Load(qid, id, raw) => match parse(&raw) {
+                        Ok(parsed) => {
+                            // Move the parsed asset to the Heap and take raw pointer of it.
+                            let ptr =
+                                unsafe { NonNull::new(Box::into_raw(Box::new(parsed))).unwrap() };
+                            // Store the asset in the storage
+                            self.storage.insert(id.clone(), ptr);
+
                             if let Some(out_queue) = &self.out_queue {
                                 out_queue
-                                    .push(OutMessage::Loaded(qid, id, TypeId::of::<T>(), ptr))
+                                    .push(OutMessage::Loaded(
+                                        qid,
+                                        id,
+                                        TypeId::of::<T>(),
+                                        ptr.cast(),
+                                    ))
                                     .unwrap();
                             }
-                        } else {
-                            error!("Failed to parse WAV resource: {}", header.name);
                         }
-                    }
+
+                        Err(e) => {
+                            if let Some(out_queue) = &self.out_queue {
+                                out_queue.push(OutMessage::Failed(qid, id, e)).unwrap();
+                            }
+                        }
+                    },
                     InMessage::Free(qid, id) => {
                         if let Some(asset) = self.storage.get(&id) {
-                            free(asset);
+                            // Restore the Box from the raw pointer
+                            let boxed = unsafe { Box::from_raw(asset.cast::<T>().as_ptr()) };
+
+                            // Call the free function to clean up the asset
+                            free(&*boxed);
+                            // Remove the asset from the storage
                             self.storage.remove(&id);
+
                             if let Some(out_queue) = &self.out_queue {
                                 out_queue.push(OutMessage::Freed(qid, id)).unwrap();
                             }
+
+                            // Box will be dropped here, freeing the memory
                         } else {
                             error!("Failed to free asset: {}. Asset not found.", id);
                         }

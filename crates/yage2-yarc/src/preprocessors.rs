@@ -1,5 +1,6 @@
-use crate::structures::{AssetMetadata, ShaderType, TypeSpecificMetadata};
+use crate::structures::AssetMetadata;
 use log::{debug, info};
+use yage2_core::assets::metadata::{ShaderType, TypeSpecificMetadata};
 
 #[derive(Debug)]
 pub enum PreprocessorsError {

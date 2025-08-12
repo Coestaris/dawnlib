@@ -3,7 +3,7 @@ use crate::preprocessors::{
     resample_wav_file, PreProcessor, PreprocessorsError,
 };
 use crate::structures::{
-    AssetMetadata, ChecksumAlgorithm, Compression, Manifest, ReadMode, TypeSpecificMetadata,
+    AssetMetadata, ChecksumAlgorithm, Compression, Manifest, ReadMode,
     WriteOptions,
 };
 use log::{debug, info};
@@ -11,8 +11,9 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::time::Instant;
 use tempdir::TempDir;
-use yage2_core::assets::reader::{AssetChecksum, AssetHeader};
+use yage2_core::assets::reader::{AssetHeader};
 use yage2_core::assets::AssetType;
+use yage2_core::assets::metadata::{AssetChecksum, TypeSpecificMetadata};
 
 #[derive(Debug)]
 struct Container {
