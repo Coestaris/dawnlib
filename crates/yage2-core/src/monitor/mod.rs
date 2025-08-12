@@ -12,7 +12,6 @@ pub struct MonitorSample<D: MonitorSampleTrait> {
     max: D,
 }
 
-
 impl<D: MonitorSampleTrait> MonitorSample<D> {
     pub fn new(min: D, average: D, max: D) -> Self {
         Self { min, average, max }

@@ -19,7 +19,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::{atomic::AtomicBool, Arc};
 use std::thread::{Builder, JoinHandle};
 use yage2_core::ecs::Tick;
-use yage2_core::monitor::{PeriodProfiler, MonitorSample, TickProfiler};
+use yage2_core::monitor::{MonitorSample, PeriodProfiler, TickProfiler};
 
 const STATISTICS_THREAD_NAME: &str = "aud_stats";
 const EVENTS_QUEUE_CAPACITY: usize = 1024;

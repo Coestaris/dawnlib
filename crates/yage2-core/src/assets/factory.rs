@@ -41,7 +41,7 @@ pub enum OutMessage {
     Freed(AssetQueryID, AssetID),
 }
 
-// Make rust happy with sending NonNull 
+// Make rust happy with sending NonNull
 unsafe impl Send for OutMessage {}
 unsafe impl Sync for OutMessage {}
 unsafe impl Send for InMessage {}
