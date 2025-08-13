@@ -1,11 +1,10 @@
+mod manifest;
 mod reader;
 mod writer;
-mod manifest;
 
-use log::warn;
+pub use manifest::Manifest;
 pub use reader::read;
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
 pub use writer::write_from_directory;
 pub use writer::WriterError;
 use yage2_core::assets::raw::AssetRaw;

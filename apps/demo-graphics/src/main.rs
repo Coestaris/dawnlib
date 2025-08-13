@@ -7,7 +7,7 @@ use evenio::event::{Receiver, Sender};
 use evenio::fetch::{Fetcher, Single};
 use evenio::world::World;
 use glam::*;
-use log::info;
+use log::{debug, info};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use yage2_core::assets::factory::FactoryBinding;
@@ -25,6 +25,7 @@ use yage2_graphics::passes::pipeline::RenderPipeline;
 use yage2_graphics::renderable::{Position, RenderableMesh};
 use yage2_graphics::renderer::{Renderer, RendererBackendConfig, RendererMonitoring};
 use yage2_graphics::view::{PlatformSpecificViewConfig, ViewConfig};
+use yage2_yarc::Manifest;
 
 // On my linux machine, the refresh rate is 60 Hz.
 // I'll deal with it later
@@ -53,14 +54,20 @@ impl GameController {
                 info!("Reading assets from: {}", yarc);
 
                 let (manifest, assets) = yage2_yarc::read(PathBuf::from(yarc)).unwrap();
-                info!("> Version: {}", manifest.version.unwrap_or("unknown".to_string()));
-                info!("> Author: {}", manifest.author.unwrap_or("unknown".to_string()));
-                info!("> Description: {}", manifest.description.unwrap_or("No description".to_string()));
-                info!("> License: {}", manifest.license.unwrap_or("No license".to_string()));
-                info!("> Created: {}", format_system_time(manifest.created).unwrap());
-                info!("> Tool: {} (version {})", manifest.tool, manifest.tool_version);
-                info!("> Serialzer: {} (version {})", manifest.serializer, manifest.serializer_version);
-                info!("> Assets: {}", assets.len());
+                #[rustfmt::skip]
+                fn log(manifest: Manifest) {
+                    debug!("> Version: {}", manifest.version.unwrap_or("unknown".to_string()));
+                    debug!("> Author: {}", manifest.author.unwrap_or("unknown".to_string()));
+                    debug!("> Description: {}", manifest.description.unwrap_or("No description".to_string()));
+                    debug!("> License: {}", manifest.license.unwrap_or("No license".to_string()));
+                    debug!("> Created: {}", format_system_time(manifest.created).unwrap());
+                    debug!("> Tool: {} (version {})", manifest.tool, manifest.tool_version);
+                    debug!("> Serializer: {} (version {})", manifest.serializer, manifest.serializer_version);
+                    debug!("> Assets: {}", manifest.headers.len());
+                }
+                // Move manifest to the logger.
+                // There's no better use for it.
+                log(manifest);
 
                 let mut result = HashMap::new();
                 for (header, raw) in assets {
