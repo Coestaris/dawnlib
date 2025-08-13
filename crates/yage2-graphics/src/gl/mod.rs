@@ -1,4 +1,4 @@
-mod assets;
+pub mod assets;
 pub mod bindings;
 mod debug;
 mod probe;

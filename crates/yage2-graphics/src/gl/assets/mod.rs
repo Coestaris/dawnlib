@@ -1,28 +1,12 @@
-use crate::gl::bindings;
+pub mod shader;
+
+use crate::gl::assets::shader::Shader;
 use yage2_core::assets::factory::{BasicFactory, FactoryBinding};
-use yage2_core::assets::raw::{AssetRaw, ShaderAssetRaw};
+use yage2_core::assets::raw::AssetRaw;
 use yage2_core::assets::AssetType;
 
-pub struct ShaderAsset {
-    // TODO: id, uniform bindings, etc.
-}
-
-impl ShaderAsset {
-    fn new(raw: &ShaderAssetRaw) -> Result<ShaderAsset, String> {
-        // TODO: Cache the compilation result
-        // TODO: Try load SPIRV insteaad of compiling from source
-        unsafe {
-            let program = bindings::CreateProgram();
-            if program == 0 {
-                return Err("Failed to create shader program".to_string());
-            }
-            todo!()
-        }
-    }
-}
-
 pub(crate) struct ShaderAssetFactory {
-    basic_factory: BasicFactory<ShaderAsset>,
+    basic_factory: BasicFactory<Shader>,
 }
 
 impl ShaderAssetFactory {
@@ -42,7 +26,7 @@ impl ShaderAssetFactory {
             |header, raw| {
                 // Construct source string from the bytes array
                 if let AssetRaw::Shader(shader_raw) = raw {
-                    ShaderAsset::new(shader_raw)
+                    Shader::from_raw(shader_raw)
                 } else {
                     Err("Expected shader metadata".to_string())
                 }

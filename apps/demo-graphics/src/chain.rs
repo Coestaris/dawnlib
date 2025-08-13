@@ -1,18 +1,22 @@
 use glam::{Vec2, Vec3};
 use log::info;
-use std::thread::sleep;
+use yage2_core::assets::TypedAsset;
+use yage2_graphics::gl::assets::shader::Shader;
 use yage2_graphics::gl::bindings;
 use yage2_graphics::passes::events::{PassEventTarget, RenderPassTargetId};
 use yage2_graphics::passes::result::PassExecuteResult;
 use yage2_graphics::passes::RenderPass;
 use yage2_graphics::renderable::Renderable;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum CustomPassEvent {
+    UpdateShader(TypedAsset<Shader>),
     ChangeColor(Vec3),
 }
+
 pub(crate) struct GeometryPass {
     id: RenderPassTargetId,
+    shader: Option<TypedAsset<Shader>>,
     color: Vec3,
 }
 
@@ -20,6 +24,7 @@ impl GeometryPass {
     pub fn new(id: RenderPassTargetId) -> Self {
         GeometryPass {
             id,
+            shader: None,
             color: Vec3::new(1.0, 1.0, 1.0),
         }
     }
@@ -41,6 +46,10 @@ impl RenderPass<CustomPassEvent> for GeometryPass {
                 info!("Changing color to: {:?}", color);
                 self.color = *color;
             }
+            CustomPassEvent::UpdateShader(shader) => {
+                info!("Updating shader: {:?}", shader);
+                self.shader = Some(shader.clone());
+            }
         }
     }
 
@@ -50,6 +59,11 @@ impl RenderPass<CustomPassEvent> for GeometryPass {
 
     #[inline(always)]
     fn on_renderable(&mut self, renderable: &Renderable) -> PassExecuteResult {
+        // Nothing to do if no shader is set
+        if self.shader.is_none() {
+            return PassExecuteResult::default();
+        }
+
         let mut vertices = [
             Vec3::new(-0.5, -0.5, 0.0),
             Vec3::new(0.5, -0.5, 0.0),
@@ -119,6 +133,7 @@ impl RenderPass<CustomPassEvent> for AABBPass {
                 info!("Changing color to: {:?}", color);
                 self.color = *color;
             }
+            _ => {}
         }
     }
 
