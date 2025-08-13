@@ -7,38 +7,55 @@ use std::sync::Arc;
 
 pub mod factory;
 pub mod hub;
+pub mod raw;
 pub mod reader;
 pub(crate) mod registry;
-pub mod metadata;
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AssetChecksum([u8; 16]);
+
+impl AssetChecksum {
+    pub fn from_bytes(bytes: &[u8]) -> AssetChecksum {
+        let mut checksum = [0; 16];
+        let len = bytes.len().min(16);
+        checksum[..len].copy_from_slice(&bytes[..len]);
+        AssetChecksum(checksum)
+    }
+}
+
+impl Default for AssetChecksum {
+    fn default() -> Self {
+        AssetChecksum([0; 16])
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AssetHeader {
+    pub id: AssetID,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub asset_type: AssetType,
+    #[serde(default)]
+    pub checksum: AssetChecksum,
+}
+
+impl Default for AssetHeader {
+    fn default() -> Self {
+        AssetHeader {
+            id: AssetID::default(),
+            tags: Vec::new(),
+            asset_type: AssetType::Unknown,
+            checksum: AssetChecksum::default(),
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AssetType {
     Unknown,
-
-    // Shader types
-    ShaderGLSL,
-    ShaderSPIRV,
-    ShaderHLSL,
-
-    // Audio types
-    AudioMIDI,
-    AudioFLAC,
-    AudioWAV,
-    AudioOGG,
-
-    // Image types
-    ImagePNG,
-    ImageJPEG,
-    ImageBMP,
-
-    // Font types
-    FontTTF,
-    FontOTF,
-
-    // Model types
-    ModelOBJ,
-    ModelGLTF,
-    ModelFBX,
+    Shader,
+    Texture,
+    Audio,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -47,6 +64,12 @@ pub struct AssetID(String);
 impl AssetID {
     pub fn new(str: String) -> AssetID {
         AssetID(str)
+    }
+}
+
+impl Default for AssetID {
+    fn default() -> Self {
+        AssetID(String::new())
     }
 }
 

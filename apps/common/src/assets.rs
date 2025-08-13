@@ -1,7 +1,8 @@
-use log::{debug, info};
+use log::info;
 use std::collections::HashMap;
-use yage2_core::assets::reader::{AssetRaw, AssetReader};
-use yage2_core::assets::AssetID;
+use yage2_core::assets::raw::AssetRaw;
+use yage2_core::assets::reader::AssetReader;
+use yage2_core::assets::{AssetHeader, AssetID};
 
 fn get_current_exe() -> std::path::PathBuf {
     std::env::current_exe().expect("Failed to get current executable path")
@@ -9,43 +10,23 @@ fn get_current_exe() -> std::path::PathBuf {
 
 pub struct YARCReader {
     filename: String,
-    containers: HashMap<AssetID, yage2_yarc::Container>,
 }
 
 impl YARCReader {
     pub fn new(filename: String) -> YARCReader {
-        YARCReader {
-            filename,
-            containers: HashMap::new(),
-        }
+        YARCReader { filename }
     }
 }
 
 impl AssetReader for YARCReader {
-    fn read(&mut self) -> Result<HashMap<AssetID, AssetRaw>, String> {
-        self.containers =
-            yage2_yarc::read(get_current_exe().parent().unwrap().join(&self.filename))
-                .map_err(|e| format!("Failed to read assets: {}", e.to_string()))?;
+    fn read(&mut self) -> Result<HashMap<AssetID, (AssetHeader, AssetRaw)>, String> {
+        let assets = yage2_yarc::read(get_current_exe().parent().unwrap().join(&self.filename))
+            .map_err(|e| format!("Failed to read assets: {}", e.to_string()))?;
 
-        info!("Loaded {} assets", self.containers.len());
-        for (name, container) in &self.containers {
-            debug!(
-                "Asset: {} (type {:?}). Size: {} bytes",
-                name,
-                container.metadata.header.asset_type,
-                container.binary.len()
-            );
-        }
-
+        info!("Loaded {} assets", assets.len());
         let mut result = HashMap::new();
-        for (name, container) in &self.containers {
-            let read = AssetRaw {
-                id: name.clone(),
-                header: container.metadata.header.clone(),
-                metadata: container.metadata.type_specific.clone(),
-                data: container.binary.clone(),
-            };
-            result.insert(name.clone(), read);
+        for (header, raw) in assets {
+            result.insert(header.id.clone(), (header, raw));
         }
 
         Ok(result)

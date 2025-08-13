@@ -1,5 +1,6 @@
 use clap::{command, Parser};
 use common::logging::CommonLogger;
+use std::path::PathBuf;
 use yage2_yarc::{ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
 
 #[derive(Parser)]
@@ -25,6 +26,19 @@ struct CLI {
     /// Checksum algorithm to use for the YARC
     #[arg(short = 'a', long)]
     checksum_algorithm: Option<String>,
+
+    /// Embed author of the YARC container content
+    #[arg(long)]
+    content_author: Option<String>,
+    /// Embed description of the YARC container content
+    #[arg(long)]
+    content_description: Option<String>,
+    /// Embed version of the YARC container content
+    #[arg(long)]
+    content_version: Option<String>,
+    /// Embed license of the YARC container content
+    #[arg(long)]
+    content_license: Option<String>,
 }
 
 fn main() {
@@ -49,7 +63,7 @@ fn main() {
     };
 
     yage2_yarc::write_from_directory(
-        cli.input,
+        PathBuf::from(cli.input),
         WriteOptions {
             compression: if cli.compression.unwrap_or(true) {
                 Compression::Gzip
@@ -62,8 +76,12 @@ fn main() {
                 ReadMode::Flat
             },
             checksum_algorithm: checksum,
+            author: cli.content_author,
+            description: cli.content_description,
+            version: cli.content_version,
+            license: cli.content_license,
         },
-        cli.output,
+        PathBuf::from(cli.output),
     )
     .unwrap_or_else(|err| {
         log::error!("Failed to create YARC: {}", err);

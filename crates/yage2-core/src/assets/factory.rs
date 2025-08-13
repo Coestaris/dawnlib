@@ -1,11 +1,9 @@
-use crate::assets::metadata::AssetHeader;
-use crate::assets::reader::AssetRaw;
-use crate::assets::{AssetID, AssetType};
+use crate::assets::raw::AssetRaw;
+use crate::assets::{AssetHeader, AssetID, AssetType};
 use crossbeam_queue::ArrayQueue;
 use log::{error, warn};
 use std::any::TypeId;
 use std::collections::HashMap;
-use std::mem;
 use std::ptr::NonNull;
 use std::sync::Arc;
 
@@ -27,7 +25,7 @@ impl AssetQueryID {
 }
 
 pub enum InMessage {
-    Load(AssetQueryID, AssetID, AssetRaw),
+    Load(AssetQueryID, AssetID, AssetHeader, AssetRaw),
     Free(AssetQueryID, AssetID),
 }
 
@@ -106,17 +104,16 @@ impl<T: 'static> BasicFactory<T> {
 
     pub fn process_events<F, P>(&mut self, parse: P, free: F)
     where
-        P: Fn(&AssetRaw) -> Result<T, String>,
+        P: Fn(&AssetHeader, &AssetRaw) -> Result<T, String>,
         F: Fn(&T),
     {
         if let Some(in_queue) = &self.in_queue {
             while let Some(msg) = in_queue.pop() {
                 match msg {
-                    InMessage::Load(qid, id, raw) => match parse(&raw) {
+                    InMessage::Load(qid, id, header, raw) => match parse(&header, &raw) {
                         Ok(parsed) => {
                             // Move the parsed asset to the Heap and take raw pointer of it.
-                            let ptr =
-                                unsafe { NonNull::new(Box::into_raw(Box::new(parsed))).unwrap() };
+                            let ptr = NonNull::new(Box::into_raw(Box::new(parsed))).unwrap();
                             // Store the asset in the storage
                             self.storage.insert(id.clone(), ptr);
 

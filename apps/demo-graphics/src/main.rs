@@ -49,8 +49,8 @@ impl GameController {
         // Unlike other factories, shader and texture assets are
         // managed directly by the renderer, instead of processing assets
         // in the main loop (via ECS).
-        let shader_binding = manager.create_factory_biding(AssetType::ShaderSPIRV);
-        let texture_binding = manager.create_factory_biding(AssetType::ImagePNG);
+        let shader_binding = manager.create_factory_biding(AssetType::Shader);
+        let texture_binding = manager.create_factory_biding(AssetType::Texture);
 
         manager.attach_to_ecs(world);
 
@@ -130,6 +130,36 @@ fn input_events_handler(r: Receiver<InputEvent>, mut s: Sender<StopEventLoop>) {
     }
 }
 
+fn events_handler(
+    ie: Receiver<InputEvent>,
+    mut f: Fetcher<&mut Position>,
+    gc: Single<&mut GameController>,
+    mut s: Sender<RenderPassEvent<CustomPassEvent>>,
+) {
+    for pos in f.iter_mut() {
+        match ie.event {
+            InputEvent::MouseMove { x, y } => {
+                pos.0.x = x / 400.0 - 0.5; // Adjusting for screen size
+                pos.0.y = -y / 300.0 + 0.5; // Adjusting for screen size
+            }
+
+            InputEvent::KeyRelease(KeyCode::Space) => {
+                info!("Space key pressed, changing color");
+                let new_color = Vec3::new(
+                    rand::random::<f32>(),
+                    rand::random::<f32>(),
+                    rand::random::<f32>(),
+                );
+                s.send(RenderPassEvent::new(
+                    gc.geometry_pass_id,
+                    CustomPassEvent::ChangeColor(new_color),
+                ));
+            }
+            _ => {}
+        }
+    }
+}
+
 fn main() {
     // Initialize the logger
     log::set_logger(&CommonLogger).unwrap();
@@ -150,36 +180,7 @@ fn main() {
     world.add_handler(main_loop_profile_handler);
     world.add_handler(renderer_profile_handler);
     world.add_handler(input_events_handler);
-
-    world.add_handler(
-        |ie: Receiver<InputEvent>,
-         mut f: Fetcher<&mut Position>,
-         gc: Single<&mut GameController>,
-         mut s: Sender<RenderPassEvent<CustomPassEvent>>| {
-            for pos in f.iter_mut() {
-                match ie.event {
-                    InputEvent::MouseMove { x, y } => {
-                        pos.0.x = x / 400.0 - 0.5; // Adjusting for screen size
-                        pos.0.y = -y / 300.0 + 0.5; // Adjusting for screen size
-                    }
-
-                    InputEvent::KeyRelease(KeyCode::Space) => {
-                        info!("Space key pressed, changing color");
-                        let new_color = Vec3::new(
-                            rand::random::<f32>(),
-                            rand::random::<f32>(),
-                            rand::random::<f32>(),
-                        );
-                        s.send(RenderPassEvent::new(
-                            gc.geometry_pass_id,
-                            CustomPassEvent::ChangeColor(new_color),
-                        ));
-                    }
-                    _ => {}
-                }
-            }
-        },
-    );
+    world.add_handler(events_handler);
 
     run_loop_with_monitoring(&mut world, REFRESH_RATE);
 }
