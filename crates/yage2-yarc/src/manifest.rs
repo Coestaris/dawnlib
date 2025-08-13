@@ -1,8 +1,7 @@
-use std::fmt::Display;
 use crate::{asset_serialize, ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
 use log::warn;
 use serde::{Deserialize, Serialize};
-use std::time::{Instant, SystemTime};
+use std::time::{SystemTime};
 use yage2_core::assets::AssetHeader;
 
 #[derive(Serialize, Deserialize, Debug)]
