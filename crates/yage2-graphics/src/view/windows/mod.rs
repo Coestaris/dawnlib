@@ -10,7 +10,8 @@ use std::ffi::c_void;
 use std::sync::Arc;
 use windows::core::{s, HSTRING, PCSTR, PCWSTR};
 use windows::Win32::Foundation::{
-    GetLastError, FARPROC, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WIN32_ERROR, WPARAM,
+    FreeLibrary, GetLastError, FARPROC, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WIN32_ERROR,
+    WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC, HDC};
 use windows::Win32::Graphics::OpenGL::{
@@ -264,7 +265,7 @@ pub struct ViewHandle {
 #[cfg(feature = "gl")]
 
 impl ViewHandle {
-    unsafe fn load_gl_proc(&self, symbol: &str) -> Option<*const c_void> {
+    unsafe fn load_gl_proc(&mut self, symbol: &str) -> Option<*const c_void> {
         unsafe {
             // Convert the symbol to a C-style string
             let c = std::ffi::CString::new(symbol).ok()?;
@@ -284,12 +285,12 @@ impl ViewHandle {
             // 2) Fallback to GetProcAddress
             // This is needed for OpenGL 1.0 and some core functions.
             // It will return NULL if the function is not found.
-            let hmod = if let Some(hmod) = self.opengl32_hmod {
-                hmod
+            self.opengl32_hmod = if let Some(hmod) = self.opengl32_hmod {
+                Some(hmod)
             } else {
                 if let Ok(hmod) = GetModuleHandleA(s!("opengl32.dll")) {
                     debug!("Loaded opengl32.dll module handle");
-                    hmod
+                    Some(hmod)
                 } else {
                     // If we can't get the module handle, return None
                     warn!("Failed to get module handle for opengl32.dll");
@@ -297,7 +298,7 @@ impl ViewHandle {
                 }
             };
 
-            let p2 = GetProcAddress(hmod, PCSTR(c.as_ptr() as _))?;
+            let p2 = GetProcAddress(self.opengl32_hmod.unwrap(), PCSTR(c.as_ptr() as _))?;
             Some(p2 as *const c_void)
         }
     }
@@ -340,8 +341,8 @@ impl ViewHandleOpenGL for ViewHandle {
         }
     }
 
-    fn get_proc_addr(&self, symbol: &str) -> Result<*const c_void, crate::view::ViewError> {
-        debug!("Loading OpenGL function: {}", symbol);
+    fn get_proc_addr(&mut self, symbol: &str) -> Result<*const c_void, crate::view::ViewError> {
+        // debug!("Loading OpenGL function: {}", symbol);
 
         if self.hdc.is_none() || self.ctx.is_none() {
             return Err(ViewError::InvalidHDC);
@@ -387,6 +388,10 @@ impl Drop for ViewHandle {
         let hglrc = self.ctx.unwrap();
 
         unsafe {
+            // Close opengl32.dll module handle if it was loaded
+            if let Some(hmod) = self.opengl32_hmod {
+                FreeLibrary(hmod).ok();
+            }
             // Delete the OpenGL context
             wglDeleteContext(hglrc).ok();
             // Release the device context

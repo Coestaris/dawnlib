@@ -1,5 +1,6 @@
+use crate::manifest::Manifest;
 use crate::PackedAsset;
-use flate2::bufread::GzDecoder;
+use flate2::read::GzDecoder;
 use log::info;
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -27,22 +28,17 @@ impl std::fmt::Display for ReadError {
     }
 }
 
-fn read_internal<R>(reader: R) -> Result<Vec<(AssetHeader, AssetRaw)>, ReadError>
+fn read_internal<R>(reader: R) -> Result<(Manifest, Vec<(AssetHeader, AssetRaw)>), ReadError>
 where
     R: Read,
 {
     let mut archive = Archive::new(reader);
 
     let mut assets: Vec<(AssetHeader, AssetRaw)> = Vec::new();
+    let mut manifest: Option<Manifest> = None;
     for entry in archive.entries().map_err(ReadError::ReadTarError)? {
         let mut entry = entry.map_err(ReadError::ReadTarError)?;
-        let path = entry.path().map_err(ReadError::IoError)?;
-
-        // Manifest is not actually needed for reading assets,
-        // but we still read it to ensure compatibility with the format.
-        if path == std::path::Path::new(".manifest.toml") {
-            continue;
-        }
+        let path = entry.path().map_err(ReadError::IoError)?.to_path_buf();
 
         // Read file and try to deserialize it
         let mut contents = Vec::new();
@@ -50,14 +46,35 @@ where
             .read_to_end(&mut contents)
             .map_err(ReadError::ReadTarError)?;
 
+        // Manifest is not actually needed for reading assets,
+        // but we still read it to ensure compatibility with the format.
+        if path == Path::new(Manifest::location()) {
+            if manifest.is_some() {
+                return Err(ReadError::ParseAssetError(
+                    "Manifest found multiple times".to_string(),
+                ));
+            }
+
+            manifest = Some(Manifest::deserialize(&contents).map_err(ReadError::DecodeError)?);
+            continue;
+        }
+
         let asset = PackedAsset::deserialize(&contents).map_err(ReadError::DecodeError)?;
         assets.push((asset.header, asset.raw));
     }
 
-    Ok(assets)
+    if manifest.is_none() {
+        return Err(ReadError::ParseAssetError(
+            "Manifest not found in the archive".to_string(),
+        ));
+    }
+
+    Ok((manifest.unwrap(), assets))
 }
 
-pub fn read_from_file_compressed(path: &Path) -> Result<Vec<(AssetHeader, AssetRaw)>, ReadError> {
+pub fn read_from_file_compressed(
+    path: &Path,
+) -> Result<(Manifest, Vec<(AssetHeader, AssetRaw)>), ReadError> {
     let file = File::open(path).unwrap();
     let buf_reader = BufReader::new(file);
     let decoder = GzDecoder::new(buf_reader);
@@ -65,14 +82,16 @@ pub fn read_from_file_compressed(path: &Path) -> Result<Vec<(AssetHeader, AssetR
     read_internal(decoder)
 }
 
-pub fn read_from_file_uncompressed(path: &Path) -> Result<Vec<(AssetHeader, AssetRaw)>, ReadError> {
+pub fn read_from_file_uncompressed(
+    path: &Path,
+) -> Result<(Manifest, Vec<(AssetHeader, AssetRaw)>), ReadError> {
     let file = File::open(path).unwrap();
     let buf_reader = BufReader::new(file);
 
     read_internal(buf_reader)
 }
 
-pub fn read(path: PathBuf) -> Result<Vec<(AssetHeader, AssetRaw)>, ReadError> {
+pub fn read(path: PathBuf) -> Result<(Manifest, Vec<(AssetHeader, AssetRaw)>), ReadError> {
     match read_from_file_compressed(path.as_path()) {
         Err(ReadError::ReadTarError(e)) => {
             // Try to read as non-compressed tar

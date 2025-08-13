@@ -7,6 +7,10 @@ edition = "2021"
 default = ["gl"]
 gl = ["yage2-graphics/gl"]
 
+[build-dependencies]
+yage2-yarc = { path = "../../crates/yage2-yarc" }
+log = "0.4.27"
+
 [dependencies]
 common = { path = "../common" }
 yage2-graphics = { path = "../../crates/yage2-graphics" }

@@ -41,7 +41,7 @@ pub enum GLRendererError {
 #[cfg(feature = "gl")]
 pub(crate) trait ViewHandleOpenGL {
     fn create_context(&mut self, fps: usize, vsync: bool) -> Result<(), ViewError>;
-    fn get_proc_addr(&self, symbol: &str) -> Result<*const std::ffi::c_void, ViewError>;
+    fn get_proc_addr(&mut self, symbol: &str) -> Result<*const std::ffi::c_void, ViewError>;
     fn swap_buffers(&self) -> Result<(), ViewError>;
 }
 

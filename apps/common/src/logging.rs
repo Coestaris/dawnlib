@@ -2,14 +2,13 @@ use ansi_term::Color::{Blue, Cyan, Green, Red, Yellow};
 use log::{Level, Log, Metadata, Record};
 use std::mem;
 use std::ptr::addr_of_mut;
-
+use std::time::SystemTime;
 /* Use a simple format instead of something like strftime,
  * to avoid unnecessary complexity, and to not extend the
  * dependency tree with a crate that provides it. */
 #[allow(unused_imports)]
-fn format_now() -> Option<String> {
+pub fn format_system_time(system_time: SystemTime) -> Option<String> {
     /* Get tm-like representation of the current time */
-    let system_time = std::time::SystemTime::now();
     let duration = system_time.duration_since(std::time::UNIX_EPOCH).ok()?;
 
     let tm = unsafe {
@@ -59,7 +58,8 @@ impl Log for CommonLogger {
                 }
             }
 
-            let formatted_date = format_now().unwrap_or("unknown".to_string());
+            let formatted_date =
+                format_system_time(SystemTime::now()).unwrap_or("unknown".to_string());
 
             println!(
                 "[{}][{:>19}][{:>14}]: {} [{}:{}]",
