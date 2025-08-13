@@ -1,5 +1,5 @@
 use crate::assets::factory::{AssetQueryID, FactoryBinding, InMessage, OutMessage};
-use crate::assets::reader::{AssetRaw, AssetReader};
+use crate::assets::reader::AssetReader;
 use crate::assets::registry::{AssetContainer, AssetRegistry, AssetState, QueriesRegistry};
 use crate::assets::{Asset, AssetID, AssetType};
 use crate::ecs::Tick;
@@ -18,12 +18,15 @@ const IN_QUEUE_CAPACITY: usize = 100;
 /// Capacity of the queue for messages sent from the asset factory.
 const OUT_QUEUE_CAPACITY: usize = 100;
 
+/// AssetHub events are used to notify the ECS world about asset-related events.
+/// These events can be used to track the status
+/// of asset queries, loading, and freeing operations
 #[derive(GlobalEvent)]
 pub enum AssetHubEvent {
     QueryCompleted(AssetQueryID),
     AssetLoaded(AssetID),
     AssetFreed(AssetID),
-    LoadFailed(AssetQueryID, AssetID, String), 
+    LoadFailed(AssetQueryID, AssetID, String),
     AllAssetsLoaded,
     AllAssetsFreed,
 }
@@ -100,8 +103,8 @@ pub struct AssetHub {
 impl AssetHub {
     pub fn new<R: AssetReader>(mut reader: R) -> Result<Self, String> {
         let mut registry = AssetRegistry::new();
-        for (item_id, read) in reader.read()? {
-            registry.push(item_id.clone(), read);
+        for (item_id, (header, raw)) in reader.read()? {
+            registry.push(item_id.clone(), header, raw);
         }
 
         Ok(AssetHub {
@@ -168,16 +171,7 @@ impl AssetHub {
         match &item.state {
             AssetState::Raw(raw) => {
                 // If the asset is raw, we need to load it
-                let message = InMessage::Load(
-                    qid,
-                    aid.clone(),
-                    AssetRaw {
-                        id: aid.clone(),
-                        header: item.header.clone(),
-                        metadata: item.metadata.clone(),
-                        data: raw.clone(),
-                    },
-                );
+                let message = InMessage::Load(qid, aid.clone(), item.header.clone(), raw.clone());
                 Self::send_message(factory, message)?;
             }
             _ => {
@@ -318,10 +312,10 @@ impl AssetHub {
                             info!("All assets loaded");
                             sender.send(AssetHubEvent::AllAssetsFreed);
                         }
-                    },
+                    }
                     OutMessage::Failed(qid, aid, error) => {
                         debug!("Query {} failed on asset {}. Error: {}", qid, aid, error);
-                        
+
                         sender.send(AssetHubEvent::LoadFailed(qid.clone(), aid.clone(), error));
                         sender.send(AssetHubEvent::QueryCompleted(qid.clone()));
                         manager.queries.remove_query(&qid);

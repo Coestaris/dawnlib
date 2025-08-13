@@ -1,0 +1,9 @@
+[header]
+id = "triangle"
+asset_type = "Shader"
+
+[properties.Shader]
+files = [
+    ["Vertex", "triangle.vsh"],
+    ["Fragment", "triangle.fsh"]
+]

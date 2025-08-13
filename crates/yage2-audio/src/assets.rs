@@ -105,7 +105,7 @@ pub(crate) mod wav {
                 if spec.sample_rate as SampleRate != sample_rate {
                     error!(
                             "WAV {} sample rate mismatch: expected {}, got {}. Resampling is currently not supported.",
-                            header.name, sample_rate, spec.sample_rate
+                            header.id, sample_rate, spec.sample_rate
                         );
                     return None;
                 }
@@ -136,7 +136,7 @@ pub(crate) mod wav {
                     _ => {
                         error!(
                             "Unsupported WAV {} format: {:?} with {} bits per sample",
-                            header.name, spec.sample_format, spec.bits_per_sample
+                            header.id, spec.sample_format, spec.bits_per_sample
                         );
                         return None;
                     }
@@ -151,7 +151,7 @@ pub(crate) mod wav {
             }
 
             Err(e) => {
-                error!("Failed to read WAV {}: {}", header.name, e);
+                error!("Failed to read WAV {}: {}", header.id, e);
                 None
             }
         }

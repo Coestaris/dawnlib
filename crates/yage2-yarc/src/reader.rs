@@ -1,23 +1,19 @@
-use crate::structures::AssetMetadata;
+use crate::PackedAsset;
+use flate2::bufread::GzDecoder;
 use log::info;
-use std::collections::HashMap;
-use std::io::Read;
+use std::fs::File;
+use std::io::{BufReader, Read};
+use std::path::{Path, PathBuf};
 use tar::Archive;
-use yage2_core::assets::AssetID;
-
-#[derive(Default)]
-pub struct Container {
-    pub name: String,
-    pub binary: Vec<u8>,
-    pub metadata: AssetMetadata,
-}
+use yage2_core::assets::raw::AssetRaw;
+use yage2_core::assets::AssetHeader;
 
 #[derive(Debug)]
 pub enum ReadError {
     IoError(std::io::Error),
     ReadTarError(std::io::Error),
     DecodeError(String),
-    TomlError(toml::de::Error),
+    ParseAssetError(String),
 }
 
 impl std::fmt::Display for ReadError {
@@ -26,90 +22,65 @@ impl std::fmt::Display for ReadError {
             ReadError::IoError(e) => write!(f, "I/O error: {}", e),
             ReadError::ReadTarError(e) => write!(f, "Failed to read tar entry: {}", e),
             ReadError::DecodeError(e) => write!(f, "Failed to decode contents: {}", e),
-            ReadError::TomlError(e) => write!(f, "Failed to parse TOML: {}", e),
+            ReadError::ParseAssetError(e) => write!(f, "Failed to parse asset: {}", e),
         }
     }
 }
 
-fn read_from_reader<R>(reader: R) -> Result<HashMap<AssetID, Container>, ReadError>
+fn read_internal<R>(reader: R) -> Result<Vec<(AssetHeader, AssetRaw)>, ReadError>
 where
     R: Read,
 {
     let mut archive = Archive::new(reader);
 
-    let mut containers: HashMap<AssetID, Container> = HashMap::new();
+    let mut assets: Vec<(AssetHeader, AssetRaw)> = Vec::new();
     for entry in archive.entries().map_err(ReadError::ReadTarError)? {
         let mut entry = entry.map_err(ReadError::ReadTarError)?;
+        let path = entry.path().map_err(ReadError::IoError)?;
 
+        // Manifest is not actually needed for reading assets,
+        // but we still read it to ensure compatibility with the format.
+        if path == std::path::Path::new(".manifest.toml") {
+            continue;
+        }
+
+        // Read file and try to deserialize it
         let mut contents = Vec::new();
         entry
             .read_to_end(&mut contents)
             .map_err(ReadError::ReadTarError)?;
 
-        let path = entry.path().map_err(ReadError::IoError)?;
-
-        // Manifest is not actually needed for reading assets,
-        // but we still read it to ensure compatibility with the format.
-        if path != std::path::Path::new(".manifest.toml") {
-            // Metadata or binary
-            let we = path
-                .file_stem()
-                .and_then(|f| f.to_str())
-                .unwrap()
-                .to_string();
-            let extension = path
-                .extension()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-
-            let container = containers
-                .entry(AssetID::new(we.clone()))
-                .or_insert_with(|| Container::default());
-
-            if extension == "toml" {
-                // Metadata file
-                let string = String::from_utf8(contents)
-                    .map_err(|e| ReadError::DecodeError(e.to_string()))?;
-                container.metadata = toml::from_str(&string).map_err(ReadError::TomlError)?;
-            } else {
-                // Binary file
-                container.binary = contents;
-            }
-        }
+        let asset = PackedAsset::deserialize(&contents).map_err(ReadError::DecodeError)?;
+        assets.push((asset.header, asset.raw));
     }
 
-    Ok(containers)
+    Ok(assets)
 }
 
-pub fn read_from_file_compressed<P: AsRef<std::path::Path>>(
-    input: P,
-) -> Result<HashMap<AssetID, Container>, ReadError> {
-    let file = std::fs::File::open(input).unwrap();
-    let buf_reader = std::io::BufReader::new(file);
-    let decoder = flate2::read::GzDecoder::new(buf_reader);
+pub fn read_from_file_compressed(path: &Path) -> Result<Vec<(AssetHeader, AssetRaw)>, ReadError> {
+    let file = File::open(path).unwrap();
+    let buf_reader = BufReader::new(file);
+    let decoder = GzDecoder::new(buf_reader);
 
-    read_from_reader(decoder)
+    read_internal(decoder)
 }
 
-pub fn read_from_file_uncompressed<P: AsRef<std::path::Path>>(
-    input: P,
-) -> Result<HashMap<AssetID, Container>, ReadError> {
-    let file = std::fs::File::open(input).unwrap();
-    let buf_reader = std::io::BufReader::new(file);
+pub fn read_from_file_uncompressed(path: &Path) -> Result<Vec<(AssetHeader, AssetRaw)>, ReadError> {
+    let file = File::open(path).unwrap();
+    let buf_reader = BufReader::new(file);
 
-    read_from_reader(buf_reader)
+    read_internal(buf_reader)
 }
 
-pub fn read<P: AsRef<std::path::Path>>(input: P) -> Result<HashMap<AssetID, Container>, ReadError> {
-    match read_from_file_compressed(input.as_ref()) {
+pub fn read(path: PathBuf) -> Result<Vec<(AssetHeader, AssetRaw)>, ReadError> {
+    match read_from_file_compressed(path.as_path()) {
         Err(ReadError::ReadTarError(e)) => {
             // Try to read as non-compressed tar
             info!(
                 "Failed to read as compressed tar, trying uncompressed: {}",
                 e
             );
-            read_from_file_uncompressed(input)
+            read_from_file_uncompressed(path.as_path())
         }
         any => any,
     }

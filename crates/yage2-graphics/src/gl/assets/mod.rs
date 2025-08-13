@@ -1,6 +1,6 @@
 use crate::gl::bindings;
 use yage2_core::assets::factory::{BasicFactory, FactoryBinding};
-use yage2_core::assets::metadata::{ShaderType, TypeSpecificMetadata};
+use yage2_core::assets::raw::{AssetRaw, ShaderAssetRaw};
 use yage2_core::assets::AssetType;
 
 pub struct ShaderAsset {
@@ -8,7 +8,7 @@ pub struct ShaderAsset {
 }
 
 impl ShaderAsset {
-    fn new(source: &String, shader_type: ShaderType) -> Result<ShaderAsset, String> {
+    fn new(raw: &ShaderAssetRaw) -> Result<ShaderAsset, String> {
         // TODO: Cache the compilation result
         // TODO: Try load SPIRV insteaad of compiling from source
         unsafe {
@@ -33,18 +33,16 @@ impl ShaderAssetFactory {
     }
 
     pub fn bind(&mut self, binding: FactoryBinding) {
-        assert_eq!(binding.asset_type(), AssetType::ShaderSPIRV);
+        assert_eq!(binding.asset_type(), AssetType::Shader);
         self.basic_factory.bind(binding);
     }
 
     pub fn process_events(&mut self) {
         self.basic_factory.process_events(
-            |raw| {
+            |header, raw| {
                 // Construct source string from the bytes array
-                let source = String::from_utf8(raw.data.clone())
-                    .map_err(|e| format!("Failed to parse shader source: {}", e))?;
-                if let TypeSpecificMetadata::Shader(shader_meta) = &raw.metadata {
-                    ShaderAsset::new(&source, shader_meta.shader_type.clone())
+                if let AssetRaw::Shader(shader_raw) = raw {
+                    ShaderAsset::new(shader_raw)
                 } else {
                     Err("Expected shader metadata".to_string())
                 }
@@ -72,13 +70,13 @@ impl TextureAssetFactory {
     }
 
     pub fn bind(&mut self, binding: FactoryBinding) {
-        assert_eq!(binding.asset_type(), AssetType::ImagePNG);
+        assert_eq!(binding.asset_type(), AssetType::Texture);
         self.basic_factory.bind(binding);
     }
 
     pub fn process_events(&mut self) {
         self.basic_factory.process_events(
-            |raw| {
+            |header, raw| {
                 // Parse the message to create a ShaderAsset
                 // For now, we just return a dummy asset
                 Ok(TextureAsset {
