@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "apps/demo-graphics",
     "apps/demo-audio",
-    "apps/packager",
     "crates/yage2-core",
     "crates/yage2-graphics",
     "crates/yage2-audio",

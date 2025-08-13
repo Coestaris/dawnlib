@@ -1,20 +1,18 @@
 mod raw;
 mod user;
 
-use crate::writer::raw::{
-    user_asset_to_raw, user_audio_to_raw, user_shader_to_raw, user_texture_to_raw,
-};
-use crate::writer::user::{UserAsset, UserAssetProperties};
-use crate::{ChecksumAlgorithm, Compression, Manifest, PackedAsset, ReadMode, WriteOptions};
-use flate2::read::GzEncoder;
+use crate::manifest::Manifest;
+use crate::writer::raw::user_asset_to_raw;
+use crate::writer::user::UserAsset;
+use crate::{ChecksumAlgorithm, Compression, PackedAsset, ReadMode, WriteOptions};
+use flate2::write::GzEncoder;
 use log::info;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
-use std::time::Instant;
 use tar::Builder;
 use yage2_core::assets::raw::AssetRaw;
-use yage2_core::assets::{AssetChecksum, AssetHeader, AssetType};
+use yage2_core::assets::AssetHeader;
 
 #[derive(Debug)]
 pub enum WriterError {
@@ -164,7 +162,7 @@ fn raws_to_binary(
     let serialized = manifest
         .serialize()
         .map_err(WriterError::SerializationError)?;
-    binary.push((serialized, PathBuf::from(".manifest.toml")));
+    binary.push((serialized, PathBuf::from(Manifest::location())));
 
     // Serialize each raw asset
     for (header, raw, path) in raws {
@@ -178,7 +176,7 @@ fn raws_to_binary(
     Ok(binary)
 }
 
-fn add_binary<W>(tar: &mut Builder<W>, raws: &[(Vec<u8>, PathBuf)]) -> Result<(), WriterError>
+fn add_binaries<W>(tar: &mut Builder<W>, raws: &[(Vec<u8>, PathBuf)]) -> Result<(), WriterError>
 where
     W: std::io::Write,
 {
@@ -190,6 +188,14 @@ where
             .map_err(WriterError::TarError)?;
         header.set_size(raw.len() as u64);
         header.set_mode(0o644); // Set file mode to 644
+        header.set_uid(0); // Set user ID to 0 (root)
+        header.set_gid(0); // Set group ID to 0 (root)
+        header.set_mtime(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        );
         header.set_cksum();
 
         tar.append(&header, raw.as_slice())
@@ -211,11 +217,11 @@ pub fn write_from_directory(
     let user_assets = collect_user_assets(&input_files, options.clone())?;
     let raws = user_assets_to_raws(user_assets, options.checksum_algorithm)?;
     let manifest = Manifest::new(&options, raws.iter().map(|(h, _, _)| h.clone()).collect());
-    let binary = raws_to_binary(raws, &manifest)?;
+    let binaries = raws_to_binary(raws, &manifest)?;
 
     info!(
         "Writing {} files to {}",
-        binary.len(),
+        binaries.len(),
         output.to_str().unwrap()
     );
 
@@ -224,15 +230,18 @@ pub fn write_from_directory(
         Compression::None => {
             // Create a tar archive
             let mut tar = Builder::new(output_file);
-            add_binary(&mut tar, &binary)?;
+            add_binaries(&mut tar, &binaries)?;
             tar.finish().map_err(WriterError::TarError)
         }
         Compression::Gzip => {
             // Create a gzipped tar archive
             let enc = GzEncoder::new(output_file, flate2::Compression::default());
             let mut tar = Builder::new(enc);
-            add_binary(&mut tar, &binary)?;
-            tar.finish().map_err(WriterError::TarError)
+            add_binaries(&mut tar, &binaries)?;
+            tar.finish().map_err(WriterError::TarError)?;
+            let mut enc = tar.into_inner().map_err(WriterError::TarError)?;
+            enc.finish().map_err(WriterError::IoError)?;
+            Ok(())
         }
     }
 }
