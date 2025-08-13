@@ -1,6 +1,6 @@
 use evenio::event::GlobalEvent;
 
-pub trait PassEventTrait = 'static + Copy + Send + Sync + Sized;
+pub trait PassEventTrait = 'static + Clone + Send + Sync + Sized;
 
 /// Targeted event of the render pass.
 /// Used to asynchronously send events to the render pass.

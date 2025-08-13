@@ -3,20 +3,21 @@ mod chain;
 use crate::chain::{AABBPass, CustomPassEvent, GeometryPass};
 use common::logging::{format_system_time, CommonLogger};
 use evenio::component::Component;
-use evenio::event::{Receiver, Sender};
+use evenio::event::{Event, Receiver, Sender};
 use evenio::fetch::{Fetcher, Single};
 use evenio::world::World;
 use glam::*;
-use log::{debug, info};
+use log::{debug, error, info};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use yage2_core::assets::factory::FactoryBinding;
-use yage2_core::assets::hub::AssetHub;
+use yage2_core::assets::hub::{AssetHub, AssetHubEvent};
 use yage2_core::assets::raw::AssetRaw;
 use yage2_core::assets::reader::AssetReader;
 use yage2_core::assets::{AssetHeader, AssetID, AssetType};
 use yage2_core::ecs::{run_loop, run_loop_with_monitoring, MainLoopMonitoring, StopEventLoop};
 use yage2_graphics::construct_chain;
+use yage2_graphics::gl::assets::shader::Shader;
 use yage2_graphics::input::{InputEvent, KeyCode};
 use yage2_graphics::passes::chain::ChainCons;
 use yage2_graphics::passes::chain::ChainNil;
@@ -85,6 +86,7 @@ impl GameController {
         let shader_binding = hub.create_factory_biding(AssetType::Shader);
         let texture_binding = hub.create_factory_biding(AssetType::Texture);
 
+        hub.query_load_all().unwrap();
         hub.attach_to_ecs(world);
 
         (shader_binding, texture_binding)
@@ -155,11 +157,43 @@ fn renderer_profile_handler(r: Receiver<RendererMonitoring>) {
     );
 }
 
-fn input_events_handler(r: Receiver<InputEvent>, mut s: Sender<StopEventLoop>) {
+fn escape_handler(r: Receiver<InputEvent>, mut s: Sender<StopEventLoop>) {
     // info!("Input event: {:?}", r.event);
     if let InputEvent::KeyRelease(KeyCode::Escape) = r.event {
         info!("Escape key pressed, stopping the event loop");
         s.send(StopEventLoop);
+    }
+}
+
+fn assets_failed_handler(r: Receiver<AssetHubEvent>, mut stopper: Sender<StopEventLoop>) {
+    match r.event {
+        AssetHubEvent::LoadFailed(_, _, _) => {
+            error!("Aborting due to asset load failure");
+            stopper.send(StopEventLoop);
+        }
+        AssetHubEvent::AllAssetsFreed => {
+            info!("All assets have been freed");
+            stopper.send(StopEventLoop);
+        }
+        _ => {}
+    }
+}
+
+fn assets_loaded_handler(
+    r: Receiver<AssetHubEvent>,
+    hub: Single<&mut AssetHub>,
+    gc: Single<&GameController>,
+    mut rpe: Sender<RenderPassEvent<CustomPassEvent>>,
+) {
+    match r.event {
+        AssetHubEvent::AllAssetsLoaded => {
+            let asset = hub.get_typed::<Shader>(AssetID::from("triangle")).unwrap();
+            rpe.send(RenderPassEvent::new(
+                gc.geometry_pass_id,
+                CustomPassEvent::UpdateShader(asset),
+            ));
+        }
+        _ => {}
     }
 }
 
@@ -212,8 +246,10 @@ fn main() {
 
     world.add_handler(main_loop_profile_handler);
     world.add_handler(renderer_profile_handler);
-    world.add_handler(input_events_handler);
+    world.add_handler(escape_handler);
     world.add_handler(events_handler);
+    world.add_handler(assets_failed_handler);
+    world.add_handler(assets_loaded_handler);
 
     run_loop_with_monitoring(&mut world, REFRESH_RATE);
 }

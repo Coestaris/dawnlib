@@ -2,6 +2,7 @@ use crate::passes::chain::RenderChain;
 use crate::passes::events::{PassEventTarget, PassEventTrait, RenderPassEvent};
 use crate::passes::result::PassExecuteResult;
 use crate::passes::{ChainExecuteCtx, MAX_RENDER_PASSES};
+use std::mem;
 
 const ROUTER_CAPACITY: usize = 64;
 
@@ -41,9 +42,10 @@ where
             );
         }
 
-        let mut event_router = [PassEventTarget::default(); ROUTER_CAPACITY];
+        let mut event_router: [PassEventTarget<E>; ROUTER_CAPACITY] = unsafe { mem::zeroed() };
         for target in targets {
-            event_router[target.get_id().as_usize()] = target;
+            let id = target.get_id();
+            event_router[id.as_usize()] = target;
         }
 
         RenderPipeline {

@@ -1,6 +1,7 @@
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::any::TypeId;
+use std::marker::PhantomData;
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -67,6 +68,18 @@ impl AssetID {
     }
 }
 
+impl From<String> for AssetID {
+    fn from(str: String) -> Self {
+        AssetID(str)
+    }
+}
+
+impl From<&str> for AssetID {
+    fn from(str: &str) -> Self {
+        AssetID(str.to_string())
+    }
+}
+
 impl Default for AssetID {
     fn default() -> Self {
         AssetID(String::new())
@@ -84,6 +97,8 @@ impl Default for AssetType {
         AssetType::Unknown
     }
 }
+
+pub trait AssetCastable: 'static {}
 
 #[derive(Debug)]
 pub struct Asset {
@@ -112,7 +127,7 @@ impl Asset {
         Asset { tid, rc, ptr }
     }
 
-    pub fn cast<'a, T: 'static>(&self) -> &'a T {
+    pub fn cast<'a, T: AssetCastable>(&self) -> &'a T {
         #[cfg(debug_assertions)]
         if self.tid != TypeId::of::<T>() {
             panic!(
@@ -136,3 +151,41 @@ impl Drop for Asset {
 
 unsafe impl Send for Asset {}
 unsafe impl Sync for Asset {}
+
+#[derive(Debug)]
+pub struct TypedAsset<T: AssetCastable> {
+    inner: Asset,
+    _marker: PhantomData<T>,
+}
+
+impl<T: AssetCastable> Clone for TypedAsset<T> {
+    fn clone(&self) -> Self {
+        // Clone the inner Asset, which increments the reference count
+        TypedAsset {
+            inner: self.inner.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T: AssetCastable> TypedAsset<T> {
+    pub fn new(asset: Asset) -> TypedAsset<T> {
+        #[cfg(debug_assertions)]
+        if asset.tid != TypeId::of::<T>() {
+            panic!(
+                "TypedAsset type mismatch: expected {:?}, found {:?}",
+                TypeId::of::<T>(),
+                asset.tid
+            );
+        }
+
+        TypedAsset {
+            inner: asset,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn cast(&self) -> &T {
+        self.inner.cast()
+    }
+}

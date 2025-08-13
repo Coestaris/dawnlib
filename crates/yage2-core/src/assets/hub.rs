@@ -1,14 +1,14 @@
 use crate::assets::factory::{AssetQueryID, FactoryBinding, InMessage, OutMessage};
 use crate::assets::reader::AssetReader;
 use crate::assets::registry::{AssetContainer, AssetRegistry, AssetState, QueriesRegistry};
-use crate::assets::{Asset, AssetID, AssetType};
+use crate::assets::{Asset, AssetCastable, AssetID, AssetType, TypedAsset};
 use crate::ecs::Tick;
 use crossbeam_queue::ArrayQueue;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver, Sender};
 use evenio::fetch::Single;
 use evenio::prelude::World;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -262,6 +262,13 @@ impl AssetHub {
         }
     }
 
+    /// Retrieves a typed asset by its ID.
+    /// Typed assets are wrappers around the `Asset` type that provide
+    /// type-safe access to the asset data.
+    pub fn get_typed<T: AssetCastable>(&self, id: AssetID) -> Result<TypedAsset<T>, GetAssetError> {
+        Ok(TypedAsset::new(self.get(id)?))
+    }
+
     /// Moves the Asset Hub into the ECS world.
     /// This will allow automatically processing async events on each main loop tick.
     /// This also will provide additional ECS events as `AssetHubEvent` that can be
@@ -314,7 +321,7 @@ impl AssetHub {
                         }
                     }
                     OutMessage::Failed(qid, aid, error) => {
-                        debug!("Query {} failed on asset {}. Error: {}", qid, aid, error);
+                        error!("Query {} failed on asset {}. Error: {}", qid, aid, error);
 
                         sender.send(AssetHubEvent::LoadFailed(qid.clone(), aid.clone(), error));
                         sender.send(AssetHubEvent::QueryCompleted(qid.clone()));
