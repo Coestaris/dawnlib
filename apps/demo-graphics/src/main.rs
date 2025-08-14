@@ -1,6 +1,6 @@
 mod chain;
 
-use crate::chain::{AABBPass, CustomPassEvent, GeometryPass};
+use crate::chain::{create_quad, AABBPass, CustomPassEvent, GeometryPass};
 use common::logging::{format_system_time, CommonLogger};
 use evenio::component::Component;
 use evenio::event::{Event, Receiver, Sender};
@@ -17,7 +17,7 @@ use yage2_core::assets::reader::AssetReader;
 use yage2_core::assets::{AssetHeader, AssetID, AssetType};
 use yage2_core::ecs::{run_loop, run_loop_with_monitoring, MainLoopMonitoring, StopEventLoop};
 use yage2_graphics::construct_chain;
-use yage2_graphics::gl::assets::shader::Shader;
+use yage2_graphics::gl::entities::ShaderProgram;
 use yage2_graphics::input::{InputEvent, KeyCode};
 use yage2_graphics::passes::chain::ChainCons;
 use yage2_graphics::passes::chain::ChainNil;
@@ -114,8 +114,8 @@ impl GameController {
         let geometry_pass_id = RenderPassTargetId::new();
         let aabb_pass_id = RenderPassTargetId::new();
 
-        let renderer = Renderer::new_with_monitoring(view_config, backend_config, move || {
-            let geometry_pass = GeometryPass::new(geometry_pass_id);
+        let renderer = Renderer::new_with_monitoring(view_config, backend_config, move |_| {
+            let geometry_pass = GeometryPass::new(geometry_pass_id, create_quad());
             let aabb_pass = AABBPass::new(aabb_pass_id);
             Ok(RenderPipeline::new(construct_chain!(
                 geometry_pass,
@@ -187,7 +187,9 @@ fn assets_loaded_handler(
 ) {
     match r.event {
         AssetHubEvent::AllAssetsLoaded => {
-            let asset = hub.get_typed::<Shader>(AssetID::from("triangle")).unwrap();
+            let asset = hub
+                .get_typed::<ShaderProgram>(AssetID::from("triangle"))
+                .unwrap();
             rpe.send(RenderPassEvent::new(
                 gc.geometry_pass_id,
                 CustomPassEvent::UpdateShader(asset),

@@ -1,6 +1,7 @@
 use crate::passes::events::{PassEventTarget, PassEventTrait};
 use crate::passes::result::PassExecuteResult;
 use crate::renderable::Renderable;
+use crate::renderer::backend::RendererBackend;
 use std::time::Duration;
 
 pub mod chain;
@@ -33,47 +34,54 @@ pub trait RenderPass<E: PassEventTrait>: Send + Sync + 'static {
     /// Begin the render pass execution.
     /// This method is called before processing any renderables or meshes.
     #[inline(always)]
-    fn begin(&mut self) -> PassExecuteResult {
+    fn begin(&mut self, _backend: &RendererBackend<E>) -> PassExecuteResult {
         PassExecuteResult::default()
     }
 
     /// End the render pass execution.
     /// This method is called after processing all renderables and meshes.
     #[inline(always)]
-    fn end(&mut self) -> PassExecuteResult {
+    fn end(&mut self, _backend: &mut RendererBackend<E>) -> PassExecuteResult {
         PassExecuteResult::default()
     }
 
     /// Process a renderable object.
     #[inline(always)]
-    fn on_renderable(&mut self, _renderable: &Renderable) -> PassExecuteResult {
+    fn on_renderable(
+        &mut self,
+        _backend: &mut RendererBackend<E>,
+        _renderable: &Renderable,
+    ) -> PassExecuteResult {
         PassExecuteResult::default()
     }
 
     /// This method is called for each mesh in the renderable.
     #[inline(always)]
-    fn on_mesh(&mut self, _mesh: u32) -> PassExecuteResult {
+    fn on_mesh(&mut self, _backend: &mut RendererBackend<E>, _mesh: u32) -> PassExecuteResult {
         PassExecuteResult::default()
     }
 }
 
-pub(crate) struct ChainExecuteCtx<'a> {
+pub(crate) struct ChainExecuteCtx<'a, E: PassEventTrait> {
     // The renderables to be processed by the render pass.
     pub(crate) renderables: &'a [Renderable],
     // Amount of time consumed by render pass in the chain.
     pub(crate) durations: [Duration; MAX_RENDER_PASSES],
+    // The renderer backend context
+    pub(crate) backend: &'a mut RendererBackend<E>,
 }
 
-impl<'a> ChainExecuteCtx<'a> {
-    pub fn new(renderables: &'a [Renderable]) -> Self {
+impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
+    pub fn new(renderables: &'a [Renderable], backend: &'a mut RendererBackend<E>) -> Self {
         ChainExecuteCtx {
             renderables,
             durations: [Duration::ZERO; MAX_RENDER_PASSES],
+            backend,
         }
     }
 
     /// Executes the render pass on using the current context.
-    pub fn execute<E, P>(&mut self, idx: usize, pass: &mut P) -> PassExecuteResult
+    pub fn execute<P>(&mut self, idx: usize, pass: &mut P) -> PassExecuteResult
     where
         E: PassEventTrait,
         P: RenderPass<E>,
@@ -81,15 +89,15 @@ impl<'a> ChainExecuteCtx<'a> {
         let start = std::time::Instant::now();
 
         let mut result = PassExecuteResult::default();
-        result += pass.begin();
+        result += pass.begin(self.backend);
         for renderable in self.renderables {
-            result += pass.on_renderable(renderable);
+            result += pass.on_renderable(self.backend, renderable);
 
             // TODO: Iterate over meshes when renderable has multiple meshes.
             //       For now, we assume each renderable has only one mesh.
-            result += pass.on_mesh(renderable.mesh_id);
+            result += pass.on_mesh(self.backend, renderable.mesh_id);
         }
-        result += pass.end();
+        result += pass.end(self.backend);
 
         let elapsed = start.elapsed();
         self.durations[idx] = elapsed;

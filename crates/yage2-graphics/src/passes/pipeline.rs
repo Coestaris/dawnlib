@@ -77,7 +77,7 @@ where
     }
 
     #[inline(always)]
-    pub(crate) fn execute(&mut self, ctx: &mut ChainExecuteCtx) -> PassExecuteResult {
+    pub(crate) fn execute(&mut self, ctx: &mut ChainExecuteCtx<E>) -> PassExecuteResult {
         // Execute the chain of render passes.
         self.chain.execute(0, ctx)
     }

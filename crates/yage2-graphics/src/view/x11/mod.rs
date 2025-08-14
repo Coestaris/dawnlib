@@ -541,7 +541,7 @@ impl ViewHandleOpenGL for ViewHandle {
     }
 
     fn get_proc_addr(
-        &self,
+        &mut self,
         symbol: &str,
     ) -> Result<*const std::ffi::c_void, crate::view::ViewError> {
         unsafe {

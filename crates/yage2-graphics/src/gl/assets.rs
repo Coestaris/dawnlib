@@ -1,12 +1,12 @@
-pub mod shader;
-
-use crate::gl::assets::shader::Shader;
+use crate::gl::entities::{ShaderProgram, Texture};
+use crate::passes::events::PassEventTrait;
+use crate::renderer::RendererBackend;
 use yage2_core::assets::factory::{BasicFactory, FactoryBinding};
 use yage2_core::assets::raw::AssetRaw;
 use yage2_core::assets::AssetType;
 
 pub(crate) struct ShaderAssetFactory {
-    basic_factory: BasicFactory<Shader>,
+    basic_factory: BasicFactory<ShaderProgram>,
 }
 
 impl ShaderAssetFactory {
@@ -21,29 +21,24 @@ impl ShaderAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events(&mut self) {
+    pub fn process_events<E: PassEventTrait>(&mut self) {
         self.basic_factory.process_events(
-            |header, raw| {
-                // Construct source string from the bytes array
+            |_, raw| {
                 if let AssetRaw::Shader(shader_raw) = raw {
-                    Shader::from_raw(shader_raw)
+                    ShaderProgram::from_raw::<E>(shader_raw)
                 } else {
                     Err("Expected shader metadata".to_string())
                 }
             },
-            |shader| {
-                // Free will be handled in the Drop implementation of ShaderAsset
+            |_| {
+                // Free will be handled in the Drop implementation of ShaderProgram
             },
         );
     }
 }
 
-pub struct TextureAsset {
-    // TODO: id, uniform bindings, etc.
-}
-
 pub(crate) struct TextureAssetFactory {
-    basic_factory: BasicFactory<TextureAsset>,
+    basic_factory: BasicFactory<Texture>,
 }
 
 impl TextureAssetFactory {
@@ -58,18 +53,17 @@ impl TextureAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events(&mut self) {
+    pub fn process_events<E: PassEventTrait>(&mut self) {
         self.basic_factory.process_events(
-            |header, raw| {
-                // Parse the message to create a ShaderAsset
-                // For now, we just return a dummy asset
-                Ok(TextureAsset {
-                    // Initialize with data from header and source
-                })
+            |_, raw| {
+                if let AssetRaw::Texture(texture_raw) = raw {
+                    Texture::from_raw::<E>(texture_raw)
+                } else {
+                    Err("Expected texture metadata".to_string())
+                }
             },
-            |texture| {
-                // Free the asset if needed
-                // For now, we do nothing
+            |_| {
+                // Free will be handled in the Drop implementation of Texture
             },
         );
     }

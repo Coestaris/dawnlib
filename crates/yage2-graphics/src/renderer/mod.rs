@@ -9,7 +9,7 @@ use crate::passes::pipeline::RenderPipeline;
 use crate::passes::result::PassExecuteResult;
 use crate::passes::ChainExecuteCtx;
 use crate::renderable::Renderable;
-use crate::renderer::backend::{RendererBackend, RendererBackendError, RendererBackendTrait};
+use crate::renderer::backend::{RendererBackendError, RendererBackendTrait};
 use crate::renderer::ecs::attach_to_ecs;
 use crate::renderer::monitor::{DummyRendererMonitor, RendererMonitor, RendererMonitorTrait};
 use crate::view::{TickResult, View, ViewConfig, ViewError, ViewTrait};
@@ -24,7 +24,7 @@ use std::thread::{Builder, JoinHandle};
 use triple_buffer::{triple_buffer, Input, Output};
 
 // Re-export the necessary types for user
-pub use backend::RendererBackendConfig;
+pub use backend::{RendererBackend, RendererBackendConfig};
 pub use monitor::RendererMonitoring;
 
 const INPUTS_QUEUE_CAPACITY: usize = 1024;
@@ -96,11 +96,14 @@ impl<E: PassEventTrait> Drop for Renderer<E> {
     }
 }
 
-pub trait RenderChainConstructor<C, E> =
-    FnOnce() -> Result<RenderPipeline<C, E>, String> + Send + Sync + 'static + UnwindSafe
-    where
-        C: RenderChain<E>,
-        E: PassEventTrait;
+pub trait RenderChainConstructor<C, E> = FnOnce(&mut RendererBackend<E>) -> Result<RenderPipeline<C, E>, String>
+    + Send
+    + Sync
+    + 'static
+    + UnwindSafe
+where
+    C: RenderChain<E>,
+    E: PassEventTrait;
 
 impl<E: PassEventTrait> Renderer<E> {
     /// Creates a new renderer instance that will immediately try to spawn a View,
@@ -191,7 +194,8 @@ impl<E: PassEventTrait> Renderer<E> {
                         .map_err(RendererError::ViewCreateError)?;
                     let mut backend = RendererBackend::<E>::new(backend_config, view.get_handle())
                         .map_err(RendererError::BackendCreateError)?;
-                    let mut pipeline = constructor().map_err(RendererError::PipelineCreateError)?;
+                    let mut pipeline =
+                        constructor(&mut backend).map_err(RendererError::PipelineCreateError)?;
 
                     // Notify the monitor about the pass names
                     let pass_names = pipeline.get_names();
@@ -304,7 +308,7 @@ impl<E: PassEventTrait> Renderer<E> {
         }
 
         let renderables = renderables_buffer.read();
-        let mut ctx = ChainExecuteCtx::new(renderables.as_slice());
+        let mut ctx = ChainExecuteCtx::new(renderables.as_slice(), backend);
 
         let pass_result = pipeline.execute(&mut ctx);
         if let PassExecuteResult::Failed = pass_result {
