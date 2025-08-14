@@ -37,7 +37,7 @@ impl<E: PassEventTrait, H, T> ChainCons<E, H, T> {
 pub trait RenderChain<E: PassEventTrait> {
     /// Sequentially execute the chain of render passes.
     #[inline(always)]
-    fn execute(&mut self, _: usize, _: &mut ChainExecuteCtx) -> PassExecuteResult {
+    fn execute(&mut self, _: usize, _: &mut ChainExecuteCtx<E>) -> PassExecuteResult {
         PassExecuteResult::default()
     }
 
@@ -71,10 +71,10 @@ where
     T: RenderChain<E>,
 {
     #[inline(always)]
-    fn execute(&mut self, idx: usize, ctx: &mut ChainExecuteCtx) -> PassExecuteResult {
+    fn execute(&mut self, idx: usize, ctx: &mut ChainExecuteCtx<E>) -> PassExecuteResult {
         // Execute the head pass.
         // This will handle all required operations for the head pass
-        let mut result = ctx.execute::<E, H>(idx, &mut self.head);
+        let mut result = ctx.execute::<H>(idx, &mut self.head);
 
         // Continue with the next pass in the chain.
         // Accumulate the results from the tail.

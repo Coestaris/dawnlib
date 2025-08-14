@@ -1,6 +1,7 @@
 pub mod assets;
 pub mod bindings;
 mod debug;
+pub mod entities;
 mod probe;
 
 use crate::gl::assets::{ShaderAssetFactory, TextureAssetFactory};
@@ -154,10 +155,10 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     fn before_frame(&mut self) -> Result<(), RendererBackendError> {
         // Process events asset factories
         if let Some(factory) = &mut self.texture_factory {
-            factory.process_events();
+            factory.process_events::<E>();
         }
         if let Some(factory) = &mut self.shader_factory {
-            factory.process_events();
+            factory.process_events::<E>();
         }
 
         // Clear the screen with a green color
