@@ -38,6 +38,8 @@ pub struct AssetHeader {
     pub asset_type: AssetType,
     #[serde(default)]
     pub checksum: AssetChecksum,
+    #[serde(default)]
+    pub dependencies: Vec<AssetID>,
 }
 
 impl Default for AssetHeader {
@@ -47,6 +49,7 @@ impl Default for AssetHeader {
             tags: Vec::new(),
             asset_type: AssetType::Unknown,
             checksum: AssetChecksum::default(),
+            dependencies: vec![],
         }
     }
 }

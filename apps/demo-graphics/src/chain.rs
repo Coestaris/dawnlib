@@ -6,6 +6,7 @@ use yage2_graphics::gl::entities::element_array_buffer::{
     ElementArrayBuffer, ElementArrayBufferUsage,
 };
 use yage2_graphics::gl::entities::shader_program::{ShaderProgram, UniformLocation};
+use yage2_graphics::gl::entities::texture::Texture;
 use yage2_graphics::gl::entities::vertex_array::{
     DrawElementsMode, VertexArray, VertexAttribute, VertexAttributeFormat,
 };
@@ -23,11 +24,12 @@ pub struct Mesh {
 }
 
 pub fn create_quad() -> Mesh {
-    let vertices: [f32; 12] = [
-        0.5, 0.5, 0.0, // top right
-        0.5, -0.5, 0.0, // bottom right
-        -0.5, -0.5, 0.0, // bottom letf
-        -0.5, 0.5, 0.0, // top left
+    let vertices: [f32; 20] = [
+        // positions          // texture coords
+        0.5, 0.5, 0.0, 1.0, 1.0, // top right
+        0.5, -0.5, 0.0, 1.0, 0.0, // bottom right
+        -0.5, -0.5, 0.0, 0.0, 0.0, // bottom left
+        -0.5, 0.5, 0.0, 0.0, 1.0, // top left
     ];
     let indices: [u32; 6] = [
         // note that we start from 0!
@@ -55,8 +57,17 @@ pub fn create_quad() -> Mesh {
             id: 0,
             sample_size: 3,
             format: VertexAttributeFormat::Float32,
-            stride_samples: 3,
+            stride_samples: 5,
             offset_samples: 0,
+        })
+        .unwrap();
+    vao_binding
+        .setup_attribute(VertexAttribute {
+            id: 1,
+            sample_size: 2,
+            format: VertexAttributeFormat::Float32,
+            stride_samples: 5,
+            offset_samples: 3,
         })
         .unwrap();
 
@@ -76,6 +87,7 @@ pub fn create_quad() -> Mesh {
 pub(crate) enum CustomPassEvent {
     UpdateShader(TypedAsset<ShaderProgram>),
     ChangeColor(Vec3),
+    UpdateTexture(TypedAsset<Texture>),
 }
 
 struct TriangleShaderContainer {
@@ -83,11 +95,17 @@ struct TriangleShaderContainer {
     model_location: UniformLocation,
     view_location: UniformLocation,
     proj_location: UniformLocation,
+    texture_uniform: UniformLocation,
+}
+
+struct TextureContainer {
+    texture: TypedAsset<Texture>,
 }
 
 pub(crate) struct GeometryPass {
     id: RenderPassTargetId,
     shader: Option<TriangleShaderContainer>,
+    texture: Option<TextureContainer>,
     color: Vec3,
     mesh: Mesh,
 }
@@ -97,6 +115,7 @@ impl GeometryPass {
         GeometryPass {
             id,
             shader: None,
+            texture: None,
             color: Vec3::new(1.0, 1.0, 1.0),
             mesh,
         }
@@ -127,7 +146,13 @@ impl RenderPass<CustomPassEvent> for GeometryPass {
                     model_location: shader.cast().get_uniform_location("model").unwrap(),
                     view_location: shader.cast().get_uniform_location("view").unwrap(),
                     proj_location: shader.cast().get_uniform_location("projection").unwrap(),
+                    texture_uniform: shader.cast().get_uniform_location("texture1").unwrap(),
                 });
+            }
+            CustomPassEvent::UpdateTexture(texture) => {
+                info!("Updating texture: {:?}", texture);
+                let clone = texture.clone();
+                self.texture = Some(TextureContainer { texture: clone });
             }
         }
     }
@@ -146,13 +171,23 @@ impl RenderPass<CustomPassEvent> for GeometryPass {
         if self.shader.is_none() {
             return PassExecuteResult::default();
         }
-        let container = self.shader.as_ref().unwrap();
-        let shader = container.shader.cast();
+        if self.texture.is_none() {
+            return PassExecuteResult::default();
+        }
 
-        let shader_use = shader.use_program();
-        shader_use.set_uniform(container.model_location, renderable.model);
-        shader_use.set_uniform(container.view_location, Mat4::IDENTITY);
-        shader_use.set_uniform(container.proj_location, Mat4::IDENTITY);
+        // Setup shader
+        let shader_container = self.shader.as_ref().unwrap();
+        let shader = shader_container.shader.cast();
+        let shader_binding = shader.bind();
+        shader_binding.set_uniform(shader_container.model_location, renderable.model);
+        shader_binding.set_uniform(shader_container.view_location, Mat4::IDENTITY);
+        shader_binding.set_uniform(shader_container.proj_location, Mat4::IDENTITY);
+        shader_binding.set_uniform(shader_container.texture_uniform, 0);
+
+        // Setup texture
+        let texture_container = self.texture.as_ref().unwrap();
+        let texture = texture_container.texture.cast();
+        let texture_binding = texture.bind(0);
 
         let binding = self.mesh.vao.bind();
         binding.draw_elements(self.mesh.count, DrawElementsMode::Triangles);

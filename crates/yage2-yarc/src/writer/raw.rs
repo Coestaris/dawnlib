@@ -1,10 +1,14 @@
+use crate::writer::pix::repack;
 use crate::writer::user::{
     UserAsset, UserAssetProperties, UserAudioAsset, UserShaderAsset, UserTextureAsset,
 };
-use crate::{ChecksumAlgorithm, PackedAsset, WriterError};
+use crate::{ChecksumAlgorithm, WriterError};
+use image::DynamicImage;
 use std::collections::HashMap;
-use std::path::Path;
-use yage2_core::assets::raw::{AssetRaw, AudioAssetRaw, ShaderAssetRaw, TextureAssetRaw};
+use std::path::{Path, PathBuf};
+use yage2_core::assets::raw::{
+    AssetRaw, AudioAssetRaw, PixelFormat, ShaderAssetRaw, TextureAssetRaw, TextureType,
+};
 use yage2_core::assets::{AssetChecksum, AssetHeader};
 
 fn checksum<T>(obj: &T, algorithm: ChecksumAlgorithm) -> Result<AssetChecksum, WriterError> {
@@ -39,6 +43,7 @@ fn with_checksum(
         tags: header.tags.clone(),
         asset_type: header.asset_type,
         checksum,
+        dependencies: header.dependencies.clone(),
     })
 }
 
@@ -90,7 +95,41 @@ pub fn user_texture_to_raw(
     asset_path: &Path,
     user: &UserTextureAsset,
 ) -> Result<TextureAssetRaw, String> {
-    todo!()
+    // Try to find the file in the same directory as the shader
+    let parent = asset_path.parent().unwrap();
+    let file = PathBuf::from(user.files[0].clone());
+    let file = parent.join(file);
+
+    let img = match image::open(&file) {
+        Ok(img) => img,
+        Err(e) => {
+            return Err(format!(
+                "Failed to load texture image '{}': {}",
+                file.display(),
+                e
+            ))
+        }
+    };
+
+    let texture_type = match user.texture_type {
+        TextureType::Unknown => TextureType::Texture2D {
+            width: img.width(),
+            height: img.height(),
+        },
+        any => any,
+    };
+
+    Ok(TextureAssetRaw {
+        data: repack(img, user.pixel_format, texture_type)?,
+        texture_type: texture_type.clone(),
+        pixel_format: user.pixel_format.clone(),
+        use_mipmaps: user.use_mipmaps,
+        min_filter: user.min_filter.clone(),
+        mag_filter: user.mag_filter.clone(),
+        wrap_s: user.wrap_s.clone(),
+        wrap_t: user.wrap_t.clone(),
+        wrap_r: user.wrap_r.clone(),
+    })
 }
 
 pub fn user_audio_to_raw(

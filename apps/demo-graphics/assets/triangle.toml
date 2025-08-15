@@ -4,6 +4,6 @@ asset_type = "Shader"
 
 [properties.Shader]
 files = [
-    ["Vertex", "triangle.vsh"],
-    ["Fragment", "triangle.fsh"]
+    ["Vertex", "bins/triangle.vsh"],
+    ["Fragment", "bins/triangle.fsh"]
 ]
