@@ -1,0 +1,34 @@
+[package]
+name = "dawn-graphics"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["gl"]
+gl = ["dep:gl_generator", "windows/Win32_Graphics_OpenGL"]
+
+[dependencies]
+dawn-profile = { path = "../profile" }
+dawn-ecs = { path = "../ecs" }
+log = "0.4.27"
+crossbeam-queue = "0.3.12"
+evenio = "0.6.0"
+glam = "0.30.5"
+triple_buffer = "8.1.1"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61.1", features = ["Win32_System_LibraryLoader", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11 = "2.21.0"
+
+[build-dependencies]
+gl_generator = { version = "0.14.0", optional = true }
+
+[profile.release]
+lto = true
+opt-level = 3
+
+[profile.dev]
+lto = false
+opt-level = 1

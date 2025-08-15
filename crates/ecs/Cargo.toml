@@ -1,0 +1,18 @@
+[package]
+name = "dawn-ecs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dawn-profile = { path = "../profile" }
+evenio = "0.6.0"
+glam = "0.30.5"
+log = "0.4.27"
+
+[profile.release]
+lto = true
+opt-level = 3
+
+[profile.dev]
+lto = false
+opt-level = 1
