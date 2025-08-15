@@ -1,5 +1,6 @@
 mod raw;
 mod user;
+mod pix;
 
 use crate::manifest::Manifest;
 use crate::writer::raw::user_asset_to_raw;
@@ -12,7 +13,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use tar::Builder;
 use yage2_core::assets::raw::AssetRaw;
-use yage2_core::assets::AssetHeader;
+use yage2_core::assets::{AssetHeader, AssetID};
 
 #[derive(Debug)]
 pub enum WriterError {
@@ -23,6 +24,7 @@ pub enum WriterError {
     ValidationFailed(String),
     SerializationError(String),
     UnsupportedChecksumAlgorithm(ChecksumAlgorithm),
+    DependenciesMissing(AssetID, AssetID),
 }
 
 impl std::fmt::Display for WriterError {
@@ -47,6 +49,9 @@ impl std::fmt::Display for WriterError {
             }
             WriterError::SerializationError(msg) => {
                 write!(f, "Serialization error: {}", msg)
+            }
+            WriterError::DependenciesMissing(id, dep) => {
+                write!(f, "Dependencies missing. {} requires {}", id, dep)
             }
         }
     }
@@ -176,6 +181,20 @@ fn raws_to_binary(
     Ok(binary)
 }
 
+fn check_dependencies(raws: &[(AssetHeader, AssetRaw, PathBuf)]) -> Result<(), WriterError> {
+    for (header, _, _) in raws {
+        for dep in &header.dependencies {
+            if !raws.iter().any(|(h, _, _)| &h.id == dep) {
+                return Err(WriterError::DependenciesMissing(
+                    header.id.clone(),
+                    dep.clone(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 fn add_binaries<W>(tar: &mut Builder<W>, raws: &[(Vec<u8>, PathBuf)]) -> Result<(), WriterError>
 where
     W: std::io::Write,
@@ -216,6 +235,7 @@ pub fn write_from_directory(
         collect_files(input_dir, options.read_mode).map_err(WriterError::CollectingFilesFailed)?;
     let user_assets = collect_user_assets(&input_files, options.clone())?;
     let raws = user_assets_to_raws(user_assets, options.checksum_algorithm)?;
+    check_dependencies(&raws)?;
     let manifest = Manifest::new(&options, raws.iter().map(|(h, _, _)| h.clone()).collect());
     let binaries = raws_to_binary(raws, &manifest)?;
 

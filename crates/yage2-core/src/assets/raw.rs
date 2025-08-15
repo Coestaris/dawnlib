@@ -134,41 +134,74 @@ pub enum PixelFormat {
     SRGBA(PixelDataType),
     R8,
     R16,
-    R32,
+    R32F,
     R64,
     RG8,
     RG16,
-    RG32,
-    RG64,
+    RG32F,
     // TODO: Compressed formats
 }
 
 impl Default for PixelFormat {
     fn default() -> Self {
-        PixelFormat::Unknown
+        PixelFormat::RGB(PixelDataType::U8)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TextureFilter {
+    Nearest,
+    Linear,
+}
+
+impl Default for TextureFilter {
+    fn default() -> Self {
+        TextureFilter::Nearest
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TextureWrap {
+    ClampToEdge,
+    ClampToBorder,
+    Repeat,
+    MirroredRepeat,
+}
+
+impl Default for TextureWrap {
+    fn default() -> Self {
+        TextureWrap::ClampToEdge
     }
 }
 
 /// Internal representation of texture data
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TextureAssetRaw {
-    #[serde(default)]
+    // Texture data is stored as an interleaved byte array,
+    // in GPU-friendly format
     pub data: Vec<u8>,
-    #[serde(default)]
     pub texture_type: TextureType,
-    #[serde(default)]
     pub pixel_format: PixelFormat,
+    pub use_mipmaps: bool,
+    pub min_filter: TextureFilter,
+    pub mag_filter: TextureFilter,
+    pub wrap_s: TextureWrap,
+    pub wrap_t: TextureWrap,
+    pub wrap_r: TextureWrap,
 }
 
 impl Default for TextureAssetRaw {
     fn default() -> Self {
         TextureAssetRaw {
             data: vec![],
-            texture_type: TextureType::Texture2D {
-                width: 0,
-                height: 0,
-            },
-            pixel_format: PixelFormat::RGBA(PixelDataType::U8),
+            texture_type: Default::default(),
+            pixel_format: Default::default(),
+            use_mipmaps: false,
+            min_filter: Default::default(),
+            mag_filter: Default::default(),
+            wrap_s: Default::default(),
+            wrap_t: Default::default(),
+            wrap_r: Default::default(),
         }
     }
 }

@@ -12,11 +12,11 @@ pub struct ShaderProgram {
     id: GLuint,
 }
 
-pub struct ShaderProgramUse<'a> {
+pub struct ShaderProgramBind<'a> {
     program: &'a ShaderProgram,
 }
 
-impl<'a> ShaderProgramUse<'a> {
+impl<'a> ShaderProgramBind<'a> {
     pub fn new(program: &'a ShaderProgram) -> Self {
         unsafe {
             bindings::UseProgram(program.id);
@@ -30,7 +30,7 @@ impl<'a> ShaderProgramUse<'a> {
     }
 }
 
-impl Drop for ShaderProgramUse<'_> {
+impl Drop for ShaderProgramBind<'_> {
     fn drop(&mut self) {
         unsafe {
             bindings::UseProgram(0);
@@ -160,8 +160,8 @@ impl ShaderProgram {
 
     #[inline(always)]
     #[must_use]
-    pub fn use_program(&self) -> ShaderProgramUse<'_> {
-        ShaderProgramUse::new(self)
+    pub fn bind(&self) -> ShaderProgramBind<'_> {
+        ShaderProgramBind::new(self)
     }
 
     #[inline(always)]

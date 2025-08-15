@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use yage2_core::assets::raw::{PixelFormat, ShaderSourceType, TextureType};
+use yage2_core::assets::raw::{PixelFormat, ShaderSourceType, TextureFilter, TextureType, TextureWrap};
 use yage2_core::assets::AssetHeader;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -11,9 +11,23 @@ pub(crate) struct UserShaderAsset {
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct UserTextureAsset {
-    pub texture_type: TextureType,
-    pub pixel_format: PixelFormat,
     pub files: Vec<String>,
+    #[serde(default)]
+    pub pixel_format: PixelFormat,
+    #[serde(default)]
+    pub use_mipmaps: bool,
+    #[serde(default)]
+    pub min_filter: TextureFilter,
+    #[serde(default)]
+    pub mag_filter: TextureFilter,
+    #[serde(default)]
+    pub texture_type: TextureType,
+    #[serde(default)]
+    pub wrap_s: TextureWrap,
+    #[serde(default)]
+    pub wrap_t: TextureWrap,
+    #[serde(default)]
+    pub wrap_r: TextureWrap,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
