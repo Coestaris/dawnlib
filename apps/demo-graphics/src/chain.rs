@@ -24,12 +24,12 @@ pub struct Mesh {
 }
 
 pub fn create_quad() -> Mesh {
-    let vertices: [f32; 20] = [
+    let vertices: [f32; 32] = [
         // positions          // texture coords
-        0.5, 0.5, 0.0, 1.0, 1.0, // top right
-        0.5, -0.5, 0.0, 1.0, 0.0, // bottom right
-        -0.5, -0.5, 0.0, 0.0, 0.0, // bottom left
-        -0.5, 0.5, 0.0, 0.0, 1.0, // top left
+        0.5, 0.5, 0.0, 0.5, 0.5, 0.0, 1.0, 1.0, // top right
+        0.5, -0.5, 0.0, 0.5, -0.5, 0.0, 1.0, 0.0, // bottom right
+        -0.5, -0.5, 0.0, -0.5, -0.5, 0.0, 0.0, 0.0, // bottom left
+        -0.5, 0.5, 0.0, -0.5, 0.5, 0.0, 0.0, 1.0, // top left
     ];
     let indices: [u32; 6] = [
         // note that we start from 0!
@@ -57,17 +57,26 @@ pub fn create_quad() -> Mesh {
             id: 0,
             sample_size: 3,
             format: VertexAttributeFormat::Float32,
-            stride_samples: 5,
-            offset_samples: 0,
+            stride_bytes: 8 * 4,
+            offset_bytes: 0,
         })
         .unwrap();
     vao_binding
         .setup_attribute(VertexAttribute {
             id: 1,
+            sample_size: 3,
+            format: VertexAttributeFormat::Float32,
+            stride_bytes: 8 * 4,
+            offset_bytes: 3 * 4,
+        })
+        .unwrap();
+    vao_binding
+        .setup_attribute(VertexAttribute {
+            id: 2,
             sample_size: 2,
             format: VertexAttributeFormat::Float32,
-            stride_samples: 5,
-            offset_samples: 3,
+            stride_bytes: 8 * 4,
+            offset_bytes: 6 * 4,
         })
         .unwrap();
 
@@ -146,7 +155,7 @@ impl RenderPass<CustomPassEvent> for GeometryPass {
                     model_location: shader.cast().get_uniform_location("model").unwrap(),
                     view_location: shader.cast().get_uniform_location("view").unwrap(),
                     proj_location: shader.cast().get_uniform_location("projection").unwrap(),
-                    texture_uniform: shader.cast().get_uniform_location("texture1").unwrap(),
+                    texture_uniform: shader.cast().get_uniform_location("texture_diffuse1").unwrap(),
                 });
             }
             CustomPassEvent::UpdateTexture(texture) => {
