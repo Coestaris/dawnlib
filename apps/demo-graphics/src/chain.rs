@@ -1,10 +1,13 @@
 use glam::{Mat4, Vec3};
 use log::info;
 use yage2_core::assets::TypedAsset;
-use yage2_graphics::gl::bindings;
-use yage2_graphics::gl::entities::{
-    Buffer, BufferType, BufferUsage, DrawElementsMode, ShaderProgram, UniformLocation, VertexArray,
-    VertexAttribute, VertexAttributeFormat,
+use yage2_graphics::gl::entities::array_buffer::{ArrayBuffer, ArrayBufferUsage};
+use yage2_graphics::gl::entities::element_array_buffer::{
+    ElementArrayBuffer, ElementArrayBufferUsage,
+};
+use yage2_graphics::gl::entities::shader_program::{ShaderProgram, UniformLocation};
+use yage2_graphics::gl::entities::vertex_array::{
+    DrawElementsMode, VertexArray, VertexAttribute, VertexAttributeFormat,
 };
 use yage2_graphics::passes::events::{PassEventTarget, RenderPassTargetId};
 use yage2_graphics::passes::result::PassExecuteResult;
@@ -14,8 +17,8 @@ use yage2_graphics::renderer::RendererBackend;
 
 pub struct Mesh {
     vao: VertexArray,
-    vbo: Buffer,
-    ebo: Buffer,
+    vbo: ArrayBuffer,
+    ebo: ElementArrayBuffer,
     count: usize,
 }
 
@@ -33,26 +36,29 @@ pub fn create_quad() -> Mesh {
     ];
 
     let vao = VertexArray::new().unwrap();
-    let mut vbo = Buffer::new(BufferType::ArrayBuffer).unwrap();
-    let mut ebo = Buffer::new(BufferType::ElementArrayBuffer).unwrap();
+    let mut vbo = ArrayBuffer::new().unwrap();
+    let mut ebo = ElementArrayBuffer::new().unwrap();
 
     let vao_binding = vao.bind();
     let vbo_binding = vbo.bind();
     let ebo_binding = ebo.bind();
 
     vbo_binding
-        .feed(&vertices, BufferUsage::StaticDraw)
+        .feed(&vertices, ArrayBufferUsage::StaticDraw)
         .unwrap();
-    ebo_binding.feed(&indices, BufferUsage::StaticDraw).unwrap();
+    ebo_binding
+        .feed(&indices, ElementArrayBufferUsage::StaticDraw)
+        .unwrap();
 
-    vao.setup_attribute(VertexAttribute {
-        id: 0,
-        sample_size: 3,
-        format: VertexAttributeFormat::Float32,
-        stride_samples: 3,
-        offset_samples: 0,
-    })
-    .unwrap();
+    vao_binding
+        .setup_attribute(VertexAttribute {
+            id: 0,
+            sample_size: 3,
+            format: VertexAttributeFormat::Float32,
+            stride_samples: 3,
+            offset_samples: 0,
+        })
+        .unwrap();
 
     drop(vbo_binding);
     drop(ebo_binding);

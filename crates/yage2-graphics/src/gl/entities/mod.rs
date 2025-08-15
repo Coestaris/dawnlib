@@ -1,11 +1,6 @@
-mod buffers;
-mod shader;
-mod shader_program;
-mod texture;
-
-pub use buffers::{
-    Buffer, BufferBinding, BufferType, BufferUsage, DrawElementsMode, VertexArray,
-    VertexArrayBinding, VertexAttribute, VertexAttributeFormat,
-};
-pub use shader_program::{ShaderProgram, ShaderProgramUse, UniformLocation, UniformTarget};
-pub use texture::Texture;
+pub mod array_buffer;
+pub mod element_array_buffer;
+pub mod shader;
+pub mod shader_program;
+pub mod texture;
+pub mod vertex_array;

@@ -1,6 +1,6 @@
-use crate::gl::entities::{ShaderProgram, Texture};
+use crate::gl::entities::shader_program::ShaderProgram;
+use crate::gl::entities::texture::Texture;
 use crate::passes::events::PassEventTrait;
-use crate::renderer::RendererBackend;
 use yage2_core::assets::factory::{BasicFactory, FactoryBinding};
 use yage2_core::assets::raw::AssetRaw;
 use yage2_core::assets::AssetType;

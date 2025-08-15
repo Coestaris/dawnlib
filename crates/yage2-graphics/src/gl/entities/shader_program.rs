@@ -61,9 +61,9 @@ macro_rules! define_target(
 
 #[rustfmt::skip]
 mod targets {
-    use crate::gl::entities::UniformLocation;
+    use crate::gl::entities::shader_program::UniformLocation;
+    use crate::gl::entities::shader_program::UniformTarget;
     use crate::gl::bindings::types::GLint;
-    use crate::gl::entities::UniformTarget;
     use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
     use crate::gl::bindings;
 
