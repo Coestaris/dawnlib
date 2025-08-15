@@ -18,6 +18,7 @@ use yage2_core::assets::{AssetHeader, AssetID, AssetType};
 use yage2_core::ecs::{run_loop, run_loop_with_monitoring, MainLoopMonitoring, StopEventLoop};
 use yage2_graphics::construct_chain;
 use yage2_graphics::gl::entities::shader_program::ShaderProgram;
+use yage2_graphics::gl::entities::texture::Texture;
 use yage2_graphics::input::{InputEvent, KeyCode};
 use yage2_graphics::passes::chain::ChainCons;
 use yage2_graphics::passes::chain::ChainNil;
@@ -187,12 +188,19 @@ fn assets_loaded_handler(
 ) {
     match r.event {
         AssetHubEvent::AllAssetsLoaded => {
-            let asset = hub
-                .get_typed::<ShaderProgram>(AssetID::from("triangle"))
-                .unwrap();
             rpe.send(RenderPassEvent::new(
                 gc.geometry_pass_id,
-                CustomPassEvent::UpdateShader(asset),
+                CustomPassEvent::UpdateShader(
+                    hub.get_typed::<ShaderProgram>(AssetID::from("triangle"))
+                        .unwrap(),
+                ),
+            ));
+            rpe.send(RenderPassEvent::new(
+                gc.geometry_pass_id,
+                CustomPassEvent::UpdateTexture(
+                    hub.get_typed::<Texture>(AssetID::from("texture"))
+                        .unwrap(),
+                ),
             ));
         }
         _ => {}

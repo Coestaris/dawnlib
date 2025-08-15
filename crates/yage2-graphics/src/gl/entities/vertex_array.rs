@@ -32,8 +32,8 @@ pub struct VertexAttribute {
     pub id: VertexAttributeId,
     pub sample_size: usize,
     pub format: VertexAttributeFormat,
-    pub stride_samples: usize, // In samples
-    pub offset_samples: usize, // In samples
+    pub stride_bytes: usize,
+    pub offset_bytes: usize,
 }
 
 pub struct VertexArrayBinding<'a> {
@@ -82,8 +82,8 @@ impl<'a> VertexArrayBinding<'a> {
                 attribute.sample_size as GLint,
                 attribute.format.gl_type(),
                 bindings::FALSE,
-                (attribute.stride_samples * attribute.format.size()) as GLsizei,
-                (attribute.offset_samples * attribute.format.size()) as *const _,
+                attribute.stride_bytes as GLsizei,
+                attribute.offset_bytes as *const _,
             );
         }
 

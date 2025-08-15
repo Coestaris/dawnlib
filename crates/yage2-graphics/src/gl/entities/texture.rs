@@ -181,7 +181,7 @@ impl Drop for TextureBinding<'_> {
 
 impl Texture {
     pub(crate) fn from_raw<E: PassEventTrait>(raw: &TextureAssetRaw) -> Result<Self, String> {
-        let mut texture = Self::new(raw.texture_type.clone())?;
+        let texture = Self::new(raw.texture_type.clone())?;
         let binding = texture.bind(0);
 
         binding.set_wrap_s(raw.wrap_s.clone())?;
