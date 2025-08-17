@@ -2,7 +2,7 @@ use crate::{asset_serialize, ChecksumAlgorithm, Compression, ReadMode, WriteOpti
 use log::warn;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime};
-use yage2_core::assets::AssetHeader;
+use dawn_assets::AssetHeader;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Manifest {
@@ -25,7 +25,7 @@ pub struct Manifest {
 }
 impl Manifest {
     fn generator_tool() -> String {
-        "yage2-yarc".to_string() // TODO: Get from Cargo.toml
+        "dawn-yarc".to_string() // TODO: Get from Cargo.toml
     }
 
     pub fn generator_tool_version() -> String {

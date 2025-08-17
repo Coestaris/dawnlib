@@ -1,4 +1,4 @@
-use crate::assets::{MIDIAsset, MIDIEvent};
+use crate::assets::MIDIAsset;
 use crate::entities::bus::Bus;
 use crate::entities::effects::bypass::BypassEffect;
 use crate::entities::effects::fir::FirFilterEffect;
@@ -9,11 +9,12 @@ use crate::entities::sources::multiplexer::MultiplexerSource;
 use crate::entities::sources::waveform::{WaveformSource, WaveformSourceEvent, WaveformType};
 use crate::player::Player;
 use crate::SampleRate;
+use dawn_assets::raw::MIDIEvent;
+use dawn_assets::TypedAsset;
 use log::warn;
 use std::thread::sleep;
 use std::time::Duration;
 use tinyrand::Rand;
-use yage2_core::assets::Asset;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteName {
@@ -107,12 +108,12 @@ pub struct MidiPlayer<const VOICES_COUNT: usize> {
     voices: [Voice; VOICES_COUNT],
     // Currently processing event index
     index: usize,
-    midi: Asset,
+    midi: TypedAsset<MIDIAsset>,
 }
 
 impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
     pub fn new<'a>(
-        midi: Asset,
+        midi: TypedAsset<MIDIAsset>,
         sample_rate: SampleRate,
     ) -> (
         MidiPlayer<VOICES_COUNT>,
@@ -206,8 +207,8 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
     pub fn play(&mut self, player: &Player) {
         // Using indirection to not borrow self mutably
         let r = self.midi.clone();
-        let r = r.cast::<MIDIAsset>();
-        let events = &r.events;
+        let r = r.cast();
+        let events = &r.0.events;
 
         while self.index < events.len() {
             match &events[self.index] {

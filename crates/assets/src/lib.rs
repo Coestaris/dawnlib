@@ -60,6 +60,7 @@ pub enum AssetType {
     Shader,
     Texture,
     Audio,
+    MIDI,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]

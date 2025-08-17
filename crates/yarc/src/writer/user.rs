@@ -1,6 +1,6 @@
+use dawn_assets::raw::*;
+use dawn_assets::AssetHeader;
 use serde::Deserialize;
-use yage2_core::assets::raw::{PixelFormat, ShaderSourceType, TextureFilter, TextureType, TextureWrap};
-use yage2_core::assets::AssetHeader;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct UserShaderAsset {

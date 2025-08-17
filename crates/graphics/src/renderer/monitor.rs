@@ -7,8 +7,8 @@ use std::collections::HashMap;
 use std::panic::UnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
-use yage2_core::monitor::sync::{Counter, Stopwatch};
-use yage2_core::monitor::MonitorSample;
+use dawn_profile::MonitorSample;
+use dawn_profile::sync::{Counter, Stopwatch};
 
 #[derive(GlobalEvent)]
 pub struct RendererMonitoring {

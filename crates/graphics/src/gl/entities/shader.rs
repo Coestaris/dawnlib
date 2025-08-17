@@ -1,7 +1,7 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::GLuint;
 use log::{debug, info, warn};
-use yage2_core::assets::raw::ShaderSourceType;
+use dawn_assets::raw::ShaderSourceType;
 
 // RAII wrapper for OpenGL shader
 pub struct Shader {

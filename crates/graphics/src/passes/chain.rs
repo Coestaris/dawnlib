@@ -111,7 +111,7 @@ where
 ///
 /// # Example:
 /// ```
-/// use yage2_graphics::passes::RenderPass;
+/// use dawn_graphics::passes::RenderPass;
 ///
 /// struct PassA;
 /// struct PassB;
@@ -129,7 +129,7 @@ where
 ///   fn name(&self) -> &str { "PassC" }
 /// }
 ///
-/// use yage2_graphics::construct_chain;
+/// use dawn_graphics::construct_chain;
 /// let chain = construct_chain!(PassA, PassB, PassC);
 /// ```
 #[macro_export]

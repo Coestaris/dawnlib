@@ -1,5 +1,5 @@
 use image::{DynamicImage, Rgba};
-use yage2_core::assets::raw::{PixelDataType, PixelFormat, TextureType};
+use dawn_assets::raw::{PixelDataType, PixelFormat, TextureType};
 
 pub fn repack(
     image: DynamicImage,

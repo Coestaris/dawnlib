@@ -3,8 +3,8 @@ use crate::gl::bindings::types::GLuint;
 use crate::gl::entities::shader::Shader;
 use crate::passes::events::PassEventTrait;
 use log::debug;
-use yage2_core::assets::raw::ShaderAssetRaw;
-use yage2_core::assets::AssetCastable;
+use dawn_assets::AssetCastable;
+use dawn_assets::raw::ShaderAssetRaw;
 
 #[derive(Debug)]
 // RAII wrapper for OpenGL shader program

@@ -170,7 +170,6 @@ impl<E: PassEventTrait> Renderer<E> {
         C: RenderChain<E>,
     {
         // Setup monitor
-        let stop_signal = Arc::new(AtomicBool::new(false));
         let monitor_queue = Arc::new(ArrayQueue::new(MONITOR_QUEUE_CAPACITY));
         monitor.set_queue(monitor_queue.clone());
 
@@ -181,6 +180,7 @@ impl<E: PassEventTrait> Renderer<E> {
 
         let inputs_queue_clone = inputs_queue.clone();
         let renderer_queue_clone = renderer_queue.clone();
+        let stop_signal = Arc::new(AtomicBool::new(false));
         let stop_signal_clone = stop_signal.clone();
 
         let handle = Builder::new()

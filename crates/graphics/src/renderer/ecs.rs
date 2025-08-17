@@ -12,7 +12,7 @@ use glam::Vec3;
 use log::info;
 use std::ptr::NonNull;
 use std::sync::atomic::Ordering;
-use yage2_core::ecs::{StopEventLoop, Tick};
+use dawn_ecs::{StopEventLoop, Tick};
 
 pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World) {
     #[derive(Component)]

@@ -3,29 +3,18 @@ name = "dawn-audio"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = ["wav-assets", "flac-assets", "ogg-assets", "midi-assets"]
-wav-assets = ["dep:hound"]
-flac-assets = ["dep:flac"]
-ogg-assets = ["dep:ogg", "dep:lewton"]
-midi-assets = ["dep:midly"]
-
 [dependencies]
+dawn-profile = { path = "../profile" }
+dawn-ecs = { path = "../ecs" }
+dawn-assets = { path = "../assets" }
 log = "0.4.27"
 cpal = { version = "0.16.0" } # Primary audio backend
 ringbuf = "0.4.8" # Used for double-buffering audio data
 crossbeam-queue = "0.3.12" # Used for sending messages to the render thread
 i24 = "2.1.0" # For 24-bit PCM support (used in WAV files)
-
 tinyrand = "0.5.0" # Used in a waveform noise generator source
 glam = "0.30.5" # Used in actors source
 evenio = "0.6.0"
-
-hound = { version = "3.5.1", optional = true } # For WAV file reading/writing
-flac = { version = "0.5.0", optional = true } # For FLAC file reading
-ogg = { version = "0.9.2", optional = true } # For OGG file reading
-lewton = { version = "0.10.0", optional = true } # For OGG Vorbis decoding
-midly = { version = "0.5.3", optional = true } # For MIDI decoding
 
 [profile.release]
 lto = true

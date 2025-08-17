@@ -2,13 +2,13 @@ mod manifest;
 mod reader;
 mod writer;
 
+use dawn_assets::raw::AssetRaw;
+use dawn_assets::AssetHeader;
 pub use manifest::Manifest;
 pub use reader::read;
 use serde::{Deserialize, Serialize};
 pub use writer::write_from_directory;
 pub use writer::WriterError;
-use yage2_core::assets::raw::AssetRaw;
-use yage2_core::assets::AssetHeader;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum Compression {

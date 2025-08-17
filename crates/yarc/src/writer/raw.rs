@@ -3,13 +3,10 @@ use crate::writer::user::{
     UserAsset, UserAssetProperties, UserAudioAsset, UserShaderAsset, UserTextureAsset,
 };
 use crate::{ChecksumAlgorithm, WriterError};
-use image::DynamicImage;
+use dawn_assets::raw::{AssetRaw, AudioAssetRaw, ShaderAssetRaw, TextureAssetRaw, TextureType};
+use dawn_assets::{AssetChecksum, AssetHeader};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use yage2_core::assets::raw::{
-    AssetRaw, AudioAssetRaw, PixelFormat, ShaderAssetRaw, TextureAssetRaw, TextureType,
-};
-use yage2_core::assets::{AssetChecksum, AssetHeader};
 
 fn checksum<T>(obj: &T, algorithm: ChecksumAlgorithm) -> Result<AssetChecksum, WriterError> {
     // Transmute object to a byte slice

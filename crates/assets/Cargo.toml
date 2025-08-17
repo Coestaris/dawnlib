@@ -8,6 +8,7 @@ dawn-ecs = { path = "../ecs" }
 log = "0.4.27"
 serde = { version = "1.0.219", features = ["derive"] }
 crossbeam-queue = "0.3.12"
+evenio = "0.6.0"
 
 [profile.release]
 lto = true

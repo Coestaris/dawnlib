@@ -46,7 +46,7 @@ pub struct AudioAssetRaw {
     pub data: Vec<f32>,
     pub sample_rate: u32,
     pub channels: u8,
-    pub duration: usize, // In samples
+    pub length: usize, // In samples
 }
 
 impl Default for AudioAssetRaw {
@@ -55,7 +55,7 @@ impl Default for AudioAssetRaw {
             data: vec![],
             sample_rate: 44100,
             channels: 2,
-            duration: 0,
+            length: 0,
         }
     }
 }
@@ -205,12 +205,25 @@ impl Default for TextureAssetRaw {
     }
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub enum MIDIEvent {
+    NoteOn { channel: u8, note: u8, velocity: u8 },
+    NoteOff { channel: u8, note: u8 },
+    Idle { ms: f32 },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct MIDIAssetRaw {
+    pub events: Vec<MIDIEvent>,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum AssetRaw {
     Unknown,
     Shader(ShaderAssetRaw),
     Audio(AudioAssetRaw),
     Texture(TextureAssetRaw),
+    MIDI(MIDIAssetRaw),
 }
 
 impl Default for AssetRaw {
