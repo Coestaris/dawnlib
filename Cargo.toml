@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "crates/assets",
+    "crates/audio",
+    "crates/ecs",
+    "crates/graphics",
+    "crates/profile",
+    "crates/yarc",
+]
