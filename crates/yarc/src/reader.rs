@@ -6,8 +6,8 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use tar::Archive;
-use yage2_core::assets::raw::AssetRaw;
-use yage2_core::assets::AssetHeader;
+use dawn_assets::AssetHeader;
+use dawn_assets::raw::AssetRaw;
 
 #[derive(Debug)]
 pub enum ReadError {

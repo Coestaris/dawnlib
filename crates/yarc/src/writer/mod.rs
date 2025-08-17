@@ -12,8 +12,8 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use tar::Builder;
-use yage2_core::assets::raw::AssetRaw;
-use yage2_core::assets::{AssetHeader, AssetID};
+use dawn_assets::{AssetHeader, AssetID};
+use dawn_assets::raw::AssetRaw;
 
 #[derive(Debug)]
 pub enum WriterError {

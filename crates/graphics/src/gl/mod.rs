@@ -11,7 +11,7 @@ use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, Rend
 use crate::view::{ViewError, ViewHandle};
 use log::{debug, error, info, warn};
 use std::fmt::{Display, Formatter};
-use yage2_core::assets::factory::FactoryBinding;
+use dawn_assets::factory::FactoryBinding;
 
 pub struct GLRenderer<E: PassEventTrait> {
     _marker: std::marker::PhantomData<E>,

@@ -8,6 +8,7 @@ default = ["gl"]
 gl = ["dep:gl_generator", "windows/Win32_Graphics_OpenGL"]
 
 [dependencies]
+dawn-assets = { path = "../assets" }
 dawn-profile = { path = "../profile" }
 dawn-ecs = { path = "../ecs" }
 log = "0.4.27"

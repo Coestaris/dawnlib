@@ -1,9 +1,9 @@
+use dawn_assets::AssetType;
+use dawn_assets::factory::{BasicFactory, FactoryBinding};
+use dawn_assets::raw::AssetRaw;
 use crate::gl::entities::shader_program::ShaderProgram;
 use crate::gl::entities::texture::Texture;
 use crate::passes::events::PassEventTrait;
-use yage2_core::assets::factory::{BasicFactory, FactoryBinding};
-use yage2_core::assets::raw::AssetRaw;
-use yage2_core::assets::AssetType;
 
 pub(crate) struct ShaderAssetFactory {
     basic_factory: BasicFactory<ShaderProgram>,

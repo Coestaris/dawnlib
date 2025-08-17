@@ -2,10 +2,10 @@ use crate::assets::AudioAsset;
 use crate::entities::{AudioEventTarget, AudioEventTargetId, AudioEventType, BlockInfo, Source};
 use crate::sample::PlanarBlock;
 use crate::{SamplesCount, BLOCK_SIZE};
+use dawn_assets::{Asset, TypedAsset};
 use glam::Vec3;
 use std::cmp::min;
 use std::collections::HashMap;
-use yage2_core::assets::Asset;
 
 const MAX_ACTORS: usize = 1024;
 
@@ -29,7 +29,7 @@ pub enum ActorsSourceEvent {
         id: Option<ActorID>,
         pos: Vec3,
         gain: f32,
-        clip: Asset,
+        clip: TypedAsset<AudioAsset>,
     },
     RemoveActor(ActorID),
     ChangeActorPosition {
@@ -50,11 +50,11 @@ struct Voice {
     position: Vec3,
     gain: f32,
     playback_position: SamplesCount,
-    clip: Option<Asset>,
+    clip: Option<TypedAsset<AudioAsset>>,
 }
 
 impl Voice {
-    pub fn new(id: ActorID, position: Vec3, gain: f32, clip: Asset) -> Self {
+    pub fn new(id: ActorID, position: Vec3, gain: f32, clip: TypedAsset<AudioAsset>) -> Self {
         Voice {
             id,
             position,
@@ -270,11 +270,12 @@ impl Source for ActorsSource {
                 let lpf_cutoff = self.lpf_func.cutoff(distance);
 
                 // Copy audio data from the clip to the output
-                let clip = clip.cast::<AudioAsset>();
-                let to_copy = min(BLOCK_SIZE, clip.len - actor.playback_position);
+                let clip = clip.cast();
+                let to_copy = min(BLOCK_SIZE, clip.0.length - actor.playback_position);
 
                 let mut block = PlanarBlock::default();
-                block.copy_from_planar_vec(&clip.data, actor.playback_position, to_copy);
+                // TODO: Implement copy
+                // block.copy_from_planar_vec(&clip.0.data, actor.playback_position, to_copy);
                 self.output.addm(&block, actor.gain * gain);
 
                 // TODO: Implement low-pass filtering based on lpf_cutoff
@@ -282,7 +283,7 @@ impl Source for ActorsSource {
                 actor.playback_position += to_copy;
 
                 // Check if the playback is finished
-                if actor.playback_position == clip.len {
+                if actor.playback_position == clip.0.length {
                     log::debug!("Actor {:?} finished playing clip", actor.id);
                     actor.id = ActorID::EMPTY; // Reset voice if clip is finished
                     actor.clip = None; // Drop the clip

@@ -83,7 +83,7 @@ impl std::fmt::Display for ViewError {
 
 impl std::error::Error for ViewError {}
 
-const CLASS_NAME: &str = "Yage2 Window Class";
+const CLASS_NAME: &str = "DAWN Window Class";
 pub const WM_APP_QUIT_REQUESTED: u32 = WM_APP + 1;
 
 pub(crate) struct View {

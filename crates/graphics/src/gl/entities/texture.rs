@@ -2,10 +2,8 @@ use crate::gl::bindings;
 use crate::gl::bindings::types::{GLenum, GLint, GLsizei, GLuint};
 use crate::passes::events::PassEventTrait;
 use log::debug;
-use yage2_core::assets::raw::{
-    PixelDataType, PixelFormat, TextureAssetRaw, TextureFilter, TextureType, TextureWrap,
-};
-use yage2_core::assets::AssetCastable;
+use dawn_assets::AssetCastable;
+use dawn_assets::raw::{PixelDataType, PixelFormat, TextureAssetRaw, TextureFilter, TextureType, TextureWrap};
 
 #[derive(Debug)]
 pub struct Texture {

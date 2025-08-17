@@ -1,8 +1,7 @@
-use crate::assets::factory::{AssetQueryID, FactoryBinding, InMessage, OutMessage};
-use crate::assets::reader::AssetReader;
-use crate::assets::registry::{AssetContainer, AssetRegistry, AssetState, QueriesRegistry};
-use crate::assets::{Asset, AssetCastable, AssetID, AssetType, TypedAsset};
-use crate::ecs::Tick;
+use crate::factory::{AssetQueryID, FactoryBinding, InMessage, OutMessage};
+use crate::reader::AssetReader;
+use crate::registry::{AssetContainer, AssetRegistry, AssetState, QueriesRegistry};
+use crate::{Asset, AssetCastable, AssetID, AssetType, TypedAsset};
 use crossbeam_queue::ArrayQueue;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver, Sender};
@@ -12,6 +11,7 @@ use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use dawn_ecs::Tick;
 
 /// Capacity of the queue for messages sent to the asset factory.
 const IN_QUEUE_CAPACITY: usize = 100;
