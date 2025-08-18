@@ -1,5 +1,7 @@
 use evenio::component::Component;
 use glam::{Mat4, Vec3, Vec4};
+use dawn_assets::TypedAsset;
+use crate::gl::entities::mesh::Mesh;
 
 /// ECS component for specifying the rotation of a renderable object.
 /// If entity has no `Rotation` component, it will use the default rotation (0, 0, 0).
@@ -22,31 +24,11 @@ pub struct Scale(pub(crate) Vec3);
 /// If entity has no `RenderableMesh` component, it will not be rendered.
 #[derive(Component)]
 pub struct RenderableMesh {
-    pub mesh_id: u32, // Identifier for the mesh resource
-}
-
-/// ECS component for specifying the material properties of a renderable object.
-/// If entity has no `Material` component, it will use the default material properties.
-#[derive(Component, Clone, Debug)]
-pub struct Material {
-    color: Vec4,
-    transparency: f32,
-}
-
-impl Default for Material {
-    fn default() -> Self {
-        Material {
-            // Default white color
-            color: Vec4::new(1.0, 1.0, 1.0, 1.0),
-            // Fully opaque
-            transparency: 1.0,
-        }
-    }
+    pub asset: TypedAsset<Mesh>,
 }
 
 #[derive(Clone)]
 pub struct Renderable {
     pub model: Mat4,
-    pub(crate) mesh_id: u32,
-    pub(crate) material: Material,
+    pub mesh: TypedAsset<Mesh>,
 }
