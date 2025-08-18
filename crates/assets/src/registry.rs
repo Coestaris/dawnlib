@@ -1,5 +1,5 @@
 use crate::factory::AssetQueryID;
-use crate::raw::AssetRaw;
+use crate::ir::IRAsset;
 use crate::{AssetHeader, AssetID};
 use log::{info, warn};
 use std::any::TypeId;
@@ -10,7 +10,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 pub(crate) enum AssetState {
-    Raw(AssetRaw),
+    IR(IRAsset),
     Loaded(TypeId, NonNull<()>),
     Freed,
 }
@@ -28,10 +28,10 @@ impl AssetRegistry {
         AssetRegistry(HashMap::new())
     }
 
-    pub fn push(&mut self, id: AssetID, header: AssetHeader, raw: AssetRaw) {
+    pub fn push(&mut self, id: AssetID, header: AssetHeader, ir: IRAsset) {
         info!("Registering asset: {} (type {:?})", id, header.asset_type);
 
-        let state = AssetState::Raw(raw);
+        let state = AssetState::IR(ir);
         self.0.insert(
             id,
             AssetContainer {

@@ -1,14 +1,14 @@
 use image::{DynamicImage, Rgba};
-use dawn_assets::raw::{PixelDataType, PixelFormat, TextureType};
+use dawn_assets::ir::texture::{IRPixelDataType, IRPixelFormat, IRTextureType};
 
 pub fn repack(
     image: DynamicImage,
-    pixel_format: PixelFormat,
-    texture_type: TextureType,
+    pixel_format: IRPixelFormat,
+    texture_type: IRTextureType,
 ) -> Result<Vec<u8>, String> {
     match texture_type {
-        TextureType::Texture2D { width, height } => match pixel_format {
-            PixelFormat::RGBA(PixelDataType::U8) => {
+        IRTextureType::Texture2D { width, height } => match pixel_format {
+            IRPixelFormat::RGBA(IRPixelDataType::U8) => {
                 pack_texture2d(image, width, height, |stream, pixel| {
                     stream.push(pixel[0]); // R
                     stream.push(pixel[1]); // G
@@ -16,14 +16,14 @@ pub fn repack(
                     stream.push(pixel[3]); // A
                 })
             }
-            PixelFormat::RGB(PixelDataType::U8) => {
+            IRPixelFormat::RGB(IRPixelDataType::U8) => {
                 pack_texture2d(image, width, height, |stream, pixel| {
                     stream.push(pixel[0]); // R
                     stream.push(pixel[1]); // G
                     stream.push(pixel[2]); // B
                 })
             }
-            PixelFormat::R8 => {
+            IRPixelFormat::R8 => {
                 pack_texture2d(image, width, height, |stream, pixel| {
                     stream.push(pixel[0]); // R
                 })
@@ -52,7 +52,7 @@ impl Stream {
     }
 
     fn push<T>(&mut self, value: T) {
-        let size = unsafe { size_of::<T>() };
+        let size = size_of::<T>();
         let bytes = unsafe { std::slice::from_raw_parts(&value as *const T as *const u8, size) };
         self.data.extend_from_slice(bytes);
     }

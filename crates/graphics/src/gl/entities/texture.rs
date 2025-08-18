@@ -3,7 +3,7 @@ use crate::gl::bindings::types::{GLenum, GLint, GLsizei, GLuint};
 use crate::passes::events::PassEventTrait;
 use log::debug;
 use dawn_assets::AssetCastable;
-use dawn_assets::raw::{PixelDataType, PixelFormat, TextureAssetRaw, TextureFilter, TextureType, TextureWrap};
+use dawn_assets::ir::texture::{IRPixelDataType, IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap};
 
 #[derive(Debug)]
 pub struct Texture {
@@ -13,27 +13,27 @@ pub struct Texture {
 
 impl AssetCastable for Texture {}
 
-fn tex_type_to_gl(tex_type: &TextureType) -> Result<GLuint, String> {
+fn tex_type_to_gl(tex_type: &IRTextureType) -> Result<GLuint, String> {
     Ok(match tex_type {
-        TextureType::Texture2D { .. } => bindings::TEXTURE_2D,
-        TextureType::TextureCube { .. } => bindings::TEXTURE_CUBE_MAP,
+        IRTextureType::Texture2D { .. } => bindings::TEXTURE_2D,
+        IRTextureType::TextureCube { .. } => bindings::TEXTURE_CUBE_MAP,
         _ => return Err("Unsupported texture type".to_string()),
     })
 }
 
-fn wrap_to_gl(wrap: &TextureWrap) -> Result<GLenum, String> {
+fn wrap_to_gl(wrap: &IRTextureWrap) -> Result<GLenum, String> {
     Ok(match wrap {
-        TextureWrap::ClampToEdge => bindings::CLAMP_TO_EDGE,
-        TextureWrap::MirroredRepeat => bindings::MIRRORED_REPEAT,
-        TextureWrap::Repeat => bindings::REPEAT,
+        IRTextureWrap::ClampToEdge => bindings::CLAMP_TO_EDGE,
+        IRTextureWrap::MirroredRepeat => bindings::MIRRORED_REPEAT,
+        IRTextureWrap::Repeat => bindings::REPEAT,
         _ => return Err("Unsupported texture wrap".to_string()),
     })
 }
 
-fn filter_to_gl(filter: &TextureFilter) -> Result<GLenum, String> {
+fn filter_to_gl(filter: &IRTextureFilter) -> Result<GLenum, String> {
     Ok(match filter {
-        TextureFilter::Nearest => bindings::NEAREST,
-        TextureFilter::Linear => bindings::LINEAR,
+        IRTextureFilter::Nearest => bindings::NEAREST,
+        IRTextureFilter::Linear => bindings::LINEAR,
         // TextureFilter::NearestMipmapNearest => bindings::NEAREST_MIPMAP_NEAREST,
         // TextureFilter::LinearMipmapNearest => bindings::LINEAR_MIPMAP_NEAREST,
         // TextureFilter::NearestMipmapLinear => bindings::NEAREST_MIPMAP_LINEAR,
@@ -42,46 +42,46 @@ fn filter_to_gl(filter: &TextureFilter) -> Result<GLenum, String> {
     })
 }
 
-fn pixel_format_to_gl(format: &PixelFormat) -> Result<GLenum, String> {
+fn pixel_format_to_gl(format: &IRPixelFormat) -> Result<GLenum, String> {
     Ok(match format {
-        PixelFormat::RGBA(_) => bindings::RGBA,
-        PixelFormat::RGB(_) => bindings::RGB,
-        PixelFormat::BGRA(_) => bindings::BGRA,
-        PixelFormat::BGR(_) => bindings::BGR,
-        PixelFormat::SRGB(_) => bindings::SRGB,
-        PixelFormat::R8 => bindings::R8,
-        PixelFormat::R16 => bindings::R16,
-        PixelFormat::R32F => bindings::R32F,
-        PixelFormat::RG8 => bindings::RG8,
-        PixelFormat::RG16 => bindings::RG16,
-        PixelFormat::RG32F => bindings::RG32F,
+        IRPixelFormat::RGBA(_) => bindings::RGBA,
+        IRPixelFormat::RGB(_) => bindings::RGB,
+        IRPixelFormat::BGRA(_) => bindings::BGRA,
+        IRPixelFormat::BGR(_) => bindings::BGR,
+        IRPixelFormat::SRGB(_) => bindings::SRGB,
+        IRPixelFormat::R8 => bindings::R8,
+        IRPixelFormat::R16 => bindings::R16,
+        IRPixelFormat::R32F => bindings::R32F,
+        IRPixelFormat::RG8 => bindings::RG8,
+        IRPixelFormat::RG16 => bindings::RG16,
+        IRPixelFormat::RG32F => bindings::RG32F,
         _ => return Err("Unsupported pixel format".to_string()),
     })
 }
 
-fn pixel_format_to_gl_type(format: &PixelFormat) -> Result<GLenum, String> {
+fn pixel_format_to_gl_type(format: &IRPixelFormat) -> Result<GLenum, String> {
     Ok(match format {
-        PixelFormat::RGBA(PixelDataType::U8) => bindings::UNSIGNED_BYTE,
-        PixelFormat::RGBA(PixelDataType::U16) => bindings::UNSIGNED_SHORT,
-        PixelFormat::RGBA(PixelDataType::F32) => bindings::FLOAT,
-        PixelFormat::RGB(PixelDataType::U8) => bindings::UNSIGNED_BYTE,
-        PixelFormat::RGB(PixelDataType::U16) => bindings::UNSIGNED_SHORT,
-        PixelFormat::RGB(PixelDataType::F32) => bindings::FLOAT,
-        PixelFormat::BGRA(PixelDataType::U8) => bindings::UNSIGNED_BYTE,
-        PixelFormat::BGRA(PixelDataType::U16) => bindings::UNSIGNED_SHORT,
-        PixelFormat::BGRA(PixelDataType::F32) => bindings::FLOAT,
-        PixelFormat::BGR(PixelDataType::U8) => bindings::UNSIGNED_BYTE,
-        PixelFormat::BGR(PixelDataType::U16) => bindings::UNSIGNED_SHORT,
-        PixelFormat::BGR(PixelDataType::F32) => bindings::FLOAT,
-        PixelFormat::SRGB(PixelDataType::U8) => bindings::UNSIGNED_BYTE,
-        PixelFormat::SRGB(PixelDataType::U16) => bindings::UNSIGNED_SHORT,
-        PixelFormat::SRGB(PixelDataType::F32) => bindings::FLOAT,
-        PixelFormat::R8 => bindings::UNSIGNED_BYTE,
-        PixelFormat::R16 => bindings::UNSIGNED_SHORT,
-        PixelFormat::R32F => bindings::FLOAT,
-        PixelFormat::RG8 => bindings::UNSIGNED_BYTE,
-        PixelFormat::RG16 => bindings::UNSIGNED_SHORT,
-        PixelFormat::RG32F => bindings::FLOAT,
+        IRPixelFormat::RGBA(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
+        IRPixelFormat::RGBA(IRPixelDataType::U16) => bindings::UNSIGNED_SHORT,
+        IRPixelFormat::RGBA(IRPixelDataType::F32) => bindings::FLOAT,
+        IRPixelFormat::RGB(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
+        IRPixelFormat::RGB(IRPixelDataType::U16) => bindings::UNSIGNED_SHORT,
+        IRPixelFormat::RGB(IRPixelDataType::F32) => bindings::FLOAT,
+        IRPixelFormat::BGRA(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
+        IRPixelFormat::BGRA(IRPixelDataType::U16) => bindings::UNSIGNED_SHORT,
+        IRPixelFormat::BGRA(IRPixelDataType::F32) => bindings::FLOAT,
+        IRPixelFormat::BGR(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
+        IRPixelFormat::BGR(IRPixelDataType::U16) => bindings::UNSIGNED_SHORT,
+        IRPixelFormat::BGR(IRPixelDataType::F32) => bindings::FLOAT,
+        IRPixelFormat::SRGB(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
+        IRPixelFormat::SRGB(IRPixelDataType::U16) => bindings::UNSIGNED_SHORT,
+        IRPixelFormat::SRGB(IRPixelDataType::F32) => bindings::FLOAT,
+        IRPixelFormat::R8 => bindings::UNSIGNED_BYTE,
+        IRPixelFormat::R16 => bindings::UNSIGNED_SHORT,
+        IRPixelFormat::R32F => bindings::FLOAT,
+        IRPixelFormat::RG8 => bindings::UNSIGNED_BYTE,
+        IRPixelFormat::RG16 => bindings::UNSIGNED_SHORT,
+        IRPixelFormat::RG32F => bindings::FLOAT,
         _ => return Err("Unsupported pixel format".to_string()),
     })
 }
@@ -107,26 +107,26 @@ impl<'a> TextureBinding<'a> {
         Ok(())
     }
 
-    pub fn set_wrap_s(&self, wrap: TextureWrap) -> Result<(), String> {
+    pub fn set_wrap_s(&self, wrap: IRTextureWrap) -> Result<(), String> {
         self.set_param(bindings::TEXTURE_WRAP_S, wrap_to_gl(&wrap)? as GLint)
     }
 
-    pub fn set_wrap_t(&self, wrap: TextureWrap) -> Result<(), String> {
+    pub fn set_wrap_t(&self, wrap: IRTextureWrap) -> Result<(), String> {
         self.set_param(bindings::TEXTURE_WRAP_T, wrap_to_gl(&wrap)? as GLint)
     }
 
-    pub fn set_wrap_r(&self, wrap: TextureWrap) -> Result<(), String> {
+    pub fn set_wrap_r(&self, wrap: IRTextureWrap) -> Result<(), String> {
         self.set_param(bindings::TEXTURE_WRAP_R, wrap_to_gl(&wrap)? as GLint)
     }
 
-    pub fn set_min_filter(&self, filter: TextureFilter) -> Result<(), String> {
+    pub fn set_min_filter(&self, filter: IRTextureFilter) -> Result<(), String> {
         self.set_param(
             bindings::TEXTURE_MIN_FILTER,
             filter_to_gl(&filter)? as GLint,
         )
     }
 
-    pub fn set_mag_filter(&self, filter: TextureFilter) -> Result<(), String> {
+    pub fn set_mag_filter(&self, filter: IRTextureFilter) -> Result<(), String> {
         self.set_param(
             bindings::TEXTURE_MAG_FILTER,
             filter_to_gl(&filter)? as GLint,
@@ -146,7 +146,7 @@ impl<'a> TextureBinding<'a> {
         width: usize,
         height: usize,
         border: bool,
-        pixel_format: PixelFormat,
+        pixel_format: IRPixelFormat,
         data: &[u8],
     ) -> Result<(), String> {
         let format = pixel_format_to_gl(&pixel_format)?;
@@ -178,27 +178,27 @@ impl Drop for TextureBinding<'_> {
 }
 
 impl Texture {
-    pub(crate) fn from_raw<E: PassEventTrait>(raw: &TextureAssetRaw) -> Result<Self, String> {
-        let texture = Self::new(raw.texture_type.clone())?;
+    pub(crate) fn from_ir<E: PassEventTrait>(ir: &IRTexture) -> Result<Self, String> {
+        let texture = Self::new(ir.texture_type.clone())?;
         let binding = texture.bind(0);
 
-        binding.set_wrap_s(raw.wrap_s.clone())?;
-        binding.set_wrap_t(raw.wrap_t.clone())?;
-        binding.set_wrap_r(raw.wrap_r.clone())?;
-        binding.set_min_filter(raw.min_filter.clone())?;
-        binding.set_mag_filter(raw.mag_filter.clone())?;
-        if raw.use_mipmaps {
+        binding.set_wrap_s(ir.wrap_s.clone())?;
+        binding.set_wrap_t(ir.wrap_t.clone())?;
+        binding.set_wrap_r(ir.wrap_r.clone())?;
+        binding.set_min_filter(ir.min_filter.clone())?;
+        binding.set_mag_filter(ir.mag_filter.clone())?;
+        if ir.use_mipmaps {
             binding.generate_mipmap()?;
         }
-        match raw.texture_type {
-            TextureType::Texture2D { width, height } => {
+        match ir.texture_type {
+            IRTextureType::Texture2D { width, height } => {
                 binding.texture_image_2d(
                     0,
                     width as usize,
                     height as usize,
                     false,
-                    raw.pixel_format.clone(),
-                    &raw.data,
+                    ir.pixel_format.clone(),
+                    &ir.data,
                 )?;
             }
             _ => {
@@ -219,7 +219,7 @@ impl Texture {
         self.id
     }
 
-    fn new(texture_type: TextureType) -> Result<Self, String> {
+    fn new(texture_type: IRTextureType) -> Result<Self, String> {
         let mut id: GLuint = 0;
         unsafe {
             bindings::GenTextures(1, &mut id);

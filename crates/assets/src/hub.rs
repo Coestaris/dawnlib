@@ -103,8 +103,8 @@ pub struct AssetHub {
 impl AssetHub {
     pub fn new<R: AssetReader>(mut reader: R) -> Result<Self, String> {
         let mut registry = AssetRegistry::new();
-        for (item_id, (header, raw)) in reader.read()? {
-            registry.push(item_id.clone(), header, raw);
+        for (item_id, (header, ir)) in reader.read()? {
+            registry.push(item_id.clone(), header, ir);
         }
 
         Ok(AssetHub {
@@ -169,9 +169,9 @@ impl AssetHub {
         let factory = self.select_factory(&aid)?;
         let item = self.select_item(&aid)?;
         match &item.state {
-            AssetState::Raw(raw) => {
-                // If the asset is raw, we need to load it
-                let message = InMessage::Load(qid, aid.clone(), item.header.clone(), raw.clone());
+            AssetState::IR(ir) => {
+                // If the asset is ir, we need to load it
+                let message = InMessage::Load(qid, aid.clone(), item.header.clone(), ir.clone());
                 Self::send_message(factory, message)?;
             }
             _ => {
@@ -255,7 +255,7 @@ impl AssetHub {
                     let asset = Asset::new(tid.clone(), rc, ptr.clone());
                     Ok(asset)
                 }
-                AssetState::Freed | AssetState::Raw(_) => Err(GetAssetError::NotLoaded(id.clone())),
+                AssetState::Freed | AssetState::IR(_) => Err(GetAssetError::NotLoaded(id.clone())),
             }
         } else {
             Err(GetAssetError::NotFound(id))

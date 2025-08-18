@@ -14,14 +14,7 @@ use x11::glx::{
     GLXContext, GLXFBConfig,
 };
 use x11::xlib;
-use x11::xlib::{
-    Atom, ButtonPressMask, ButtonReleaseMask, CWColormap, CWEventMask, ClientMessage,
-    CopyFromParent, CurrentTime, Display, ExposureMask, InputOutput, KeyPressMask, KeyReleaseMask,
-    NoEventMask, PointerMotionMask, Visual, XAutoRepeatOff, XAutoRepeatOn, XClearWindow,
-    XCloseDisplay, XCreateColormap, XCreateWindow, XDefaultScreen, XDestroyWindow, XEvent, XFlush,
-    XFree, XFreeColormap, XInternAtom, XMapRaised, XMapWindow, XNextEvent, XOpenDisplay,
-    XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes, XStoreName, XSync, XVisualInfo,
-};
+use x11::xlib::{Atom, ButtonPressMask, ButtonReleaseMask, CWColormap, CWEventMask, ClientMessage, ConfigureNotify, CopyFromParent, CurrentTime, Display, ExposureMask, InputOutput, KeyPressMask, KeyReleaseMask, NoEventMask, PointerMotionMask, StructureNotifyMask, Visual, XAutoRepeatOff, XAutoRepeatOn, XClearWindow, XCloseDisplay, XCreateColormap, XCreateWindow, XDefaultScreen, XDestroyWindow, XEvent, XFlush, XFree, XFreeColormap, XInternAtom, XMapRaised, XMapWindow, XNextEvent, XOpenDisplay, XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes, XStoreName, XSync, XVisualInfo};
 
 mod input;
 
@@ -120,6 +113,18 @@ fn process_events_sync(
             let mouse_button = input::convert_mouse(button);
             events_sender
                 .push(InputEvent::MouseButtonRelease(mouse_button))
+                .unwrap();
+        }
+
+        // If the window is resized, we need to update the size of the window
+        xlib::ConfigureNotify => {
+            let width = unsafe { event.configure.width };
+            let height = unsafe { event.configure.height };
+            events_sender
+                .push(InputEvent::Resize {
+                    width: width as usize,
+                    height: height as usize,
+                })
                 .unwrap();
         }
 
@@ -305,6 +310,7 @@ impl ViewTrait for View {
                     | KeyReleaseMask
                     | ButtonPressMask
                     | ButtonReleaseMask
+                    | StructureNotifyMask
                     | PointerMotionMask,
                 do_not_propagate_mask: 0,
                 override_redirect: 0,

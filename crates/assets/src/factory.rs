@@ -1,4 +1,3 @@
-use crate::raw::AssetRaw;
 use crate::{AssetHeader, AssetID, AssetType};
 use crossbeam_queue::ArrayQueue;
 use log::{error, warn};
@@ -6,6 +5,7 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::Arc;
+use crate::ir::IRAsset;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetQueryID(usize);
@@ -25,7 +25,7 @@ impl AssetQueryID {
 }
 
 pub enum InMessage {
-    Load(AssetQueryID, AssetID, AssetHeader, AssetRaw),
+    Load(AssetQueryID, AssetID, AssetHeader, IRAsset),
     Free(AssetQueryID, AssetID),
 }
 
@@ -104,15 +104,15 @@ impl<T: 'static> BasicFactory<T> {
 
     pub fn process_events<F, P>(&mut self, parse: P, free: F)
     where
-        P: Fn(&AssetHeader, &AssetRaw) -> Result<T, String>,
+        P: Fn(&AssetHeader, &IRAsset) -> Result<T, String>,
         F: Fn(&T),
     {
         if let Some(in_queue) = &self.in_queue {
             while let Some(msg) = in_queue.pop() {
                 match msg {
-                    InMessage::Load(qid, id, header, raw) => match parse(&header, &raw) {
+                    InMessage::Load(qid, id, header, ir) => match parse(&header, &ir) {
                         Ok(parsed) => {
-                            // Move the parsed asset to the Heap and take raw pointer of it.
+                            // Move the parsed asset to the Heap and take ir pointer of it.
                             let ptr = NonNull::new(Box::into_raw(Box::new(parsed))).unwrap();
                             // Store the asset in the storage
                             self.storage.insert(id.clone(), ptr);
