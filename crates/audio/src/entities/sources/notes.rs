@@ -1,4 +1,4 @@
-use crate::assets::MIDIAsset;
+use crate::assets::NotesAsset;
 use crate::entities::bus::Bus;
 use crate::entities::effects::bypass::BypassEffect;
 use crate::entities::effects::fir::FirFilterEffect;
@@ -9,12 +9,12 @@ use crate::entities::sources::multiplexer::MultiplexerSource;
 use crate::entities::sources::waveform::{WaveformSource, WaveformSourceEvent, WaveformType};
 use crate::player::Player;
 use crate::SampleRate;
+use dawn_assets::ir::notes::IRNoteEvent;
 use dawn_assets::TypedAsset;
 use log::warn;
 use std::thread::sleep;
 use std::time::Duration;
 use tinyrand::Rand;
-use dawn_assets::ir::notes::IRNoteEvent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteName {
@@ -104,19 +104,19 @@ struct Voice {
     playing: bool,
 }
 
-pub struct MidiPlayer<const VOICES_COUNT: usize> {
+pub struct NotesPlayer<const VOICES_COUNT: usize> {
     voices: [Voice; VOICES_COUNT],
     // Currently processing event index
     index: usize,
-    midi: TypedAsset<MIDIAsset>,
+    asset: TypedAsset<NotesAsset>,
 }
 
-impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
+impl<const VOICES_COUNT: usize> NotesPlayer<VOICES_COUNT> {
     pub fn new<'a>(
-        midi: TypedAsset<MIDIAsset>,
+        midi: TypedAsset<NotesAsset>,
         sample_rate: SampleRate,
     ) -> (
-        MidiPlayer<VOICES_COUNT>,
+        NotesPlayer<VOICES_COUNT>,
         Bus<
             Multiplexer2Effect<FirFilterEffect<32>, SoftClipEffect>,
             MultiplexerSource<Bus<BypassEffect, WaveformSource>, VOICES_COUNT>,
@@ -148,9 +148,9 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
         let master_effect = Multiplexer2Effect::new(filter, clipper);
 
         (
-            MidiPlayer {
+            NotesPlayer {
                 voices,
-                midi,
+                asset: midi,
                 index: 0,
             },
             Bus::new(master_effect, source, None, None),
@@ -206,7 +206,7 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
 
     pub fn play(&mut self, player: &Player) {
         // Using indirection to not borrow self mutably
-        let r = self.midi.clone();
+        let r = self.asset.clone();
         let r = r.cast();
         let events = &r.0.events;
 

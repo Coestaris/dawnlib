@@ -1,14 +1,14 @@
 use crate::SampleRate;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
+use dawn_assets::ir::audio::IRAudio;
+use dawn_assets::ir::notes::IRNotes;
+use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetCastable, AssetType};
 use dawn_ecs::Tick;
 use evenio::component::Component;
 use evenio::event::Receiver;
 use evenio::fetch::Single;
 use evenio::world::World;
-use dawn_assets::ir::IRAsset;
-use dawn_assets::ir::audio::IRAudio;
-use dawn_assets::ir::notes::IRNotes;
 
 #[derive(Debug)]
 pub struct AudioAsset(pub IRAudio);
@@ -60,24 +60,24 @@ impl AudioAssetFactory {
     }
 }
 
-pub struct MIDIAsset(pub IRNotes);
+pub struct NotesAsset(pub IRNotes);
 
-impl AssetCastable for MIDIAsset {}
+impl AssetCastable for NotesAsset {}
 
 #[derive(Component)]
-pub struct MIDIAssetFactory {
-    basic_factory: BasicFactory<MIDIAsset>,
+pub struct NotesAssetFactory {
+    basic_factory: BasicFactory<NotesAsset>,
 }
 
-impl MIDIAssetFactory {
+impl NotesAssetFactory {
     pub fn new() -> Self {
-        MIDIAssetFactory {
+        NotesAssetFactory {
             basic_factory: BasicFactory::new(),
         }
     }
 
     pub fn bind(&mut self, binding: FactoryBinding) {
-        assert_eq!(binding.asset_type(), AssetType::MIDI);
+        assert_eq!(binding.asset_type(), AssetType::Notes);
         self.basic_factory.bind(binding);
     }
 
@@ -85,7 +85,7 @@ impl MIDIAssetFactory {
         self.basic_factory.process_events(
             |_, ir| {
                 if let IRAsset::Notes(data) = ir {
-                    Ok(MIDIAsset(data.clone()))
+                    Ok(NotesAsset(data.clone()))
                 } else {
                     Err("Expected shader metadata".to_string())
                 }
@@ -97,7 +97,7 @@ impl MIDIAssetFactory {
     }
 
     pub fn attach_to_ecs(&mut self, world: &mut World) {
-        fn handler(_: Receiver<Tick>, mut factory: Single<&mut MIDIAssetFactory>) {
+        fn handler(_: Receiver<Tick>, mut factory: Single<&mut NotesAssetFactory>) {
             factory.process_events();
         }
 

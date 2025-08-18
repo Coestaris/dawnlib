@@ -1,7 +1,7 @@
-use dawn_assets::AssetHeader;
-use serde::Deserialize;
 use dawn_assets::ir::shader::IRShaderSourceType;
 use dawn_assets::ir::texture::{IRPixelFormat, IRTextureFilter, IRTextureType, IRTextureWrap};
+use dawn_assets::AssetHeader;
+use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct UserShaderAsset {
@@ -39,10 +39,16 @@ pub(crate) struct UserAudioAsset {
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct UserMeshAsset {
+    pub file: String,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum UserAssetProperties {
     Shader(UserShaderAsset),
     Texture(UserTextureAsset),
     Audio(UserAudioAsset),
+    Mesh(UserMeshAsset),
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]

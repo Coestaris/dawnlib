@@ -1,5 +1,5 @@
 pub mod actor;
-pub mod midi;
+pub mod notes;
 pub mod multiplexer;
 pub mod waveform;
 #[cfg(test)]
