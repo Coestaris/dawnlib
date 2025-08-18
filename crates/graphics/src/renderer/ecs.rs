@@ -1,6 +1,6 @@
 use crate::input::InputEvent;
 use crate::passes::events::{PassEventTrait, RenderPassEvent};
-use crate::renderable::{Material, Position, Renderable, RenderableMesh, Rotation, Scale};
+use crate::renderable::{Position, Renderable, RenderableMesh, Rotation, Scale};
 use crate::renderer::monitor::RendererMonitoring;
 use crate::renderer::Renderer;
 use evenio::component::Component;
@@ -114,7 +114,6 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         position: Option<&'a Position>,
         rotation: Option<&'a Rotation>,
         scale: Option<&'a Scale>,
-        material: Option<&'a Material>,
     }
 
     // Collect renderables from the ECS and send them to the renderer thread
@@ -130,11 +129,10 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         let mut renderables = Vec::new();
         for query in fetcher.iter() {
             // Collect the renderable data from the query
-            let mesh_id = query.mesh.mesh_id;
+            let mesh_asset = query.mesh.asset.clone();
             let position = query.position.map_or(Vec3::ZERO, |p| p.0);
             let rotation = query.rotation.map_or(Vec3::ZERO, |r| r.0);
             let scale = query.scale.map_or(Vec3::ONE, |s| s.0);
-            let material = query.material.map_or(Material::default(), |m| m.clone());
 
             // Create a new Renderable instance
             let renderable = Renderable {
@@ -143,8 +141,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
                     glam::Quat::from_euler(glam::EulerRot::XYZ, rotation.x, rotation.y, rotation.z),
                     position,
                 ),
-                mesh_id,
-                material,
+                mesh: mesh_asset,
             };
 
             // Push the renderable to the vector

@@ -5,16 +5,15 @@ use crate::writer::user::{
 };
 use crate::{ChecksumAlgorithm, WriterError};
 use dawn_assets::ir::audio::IRAudio;
-use dawn_assets::ir::mesh::{IRMesh, IRVertex};
+use dawn_assets::ir::mesh::{IRMesh, IRMeshBounds, IRPrimitive, IRVertex};
 use dawn_assets::ir::shader::IRShader;
 use dawn_assets::ir::texture::{IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
-use obj::Obj;
+use easy_gltf;
+use easy_gltf::model::Mode;
+use glam::Vec3;
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::BufReader;
-use std::iter::zip;
 use std::path::{Path, PathBuf};
 
 fn checksum<T>(obj: &T, algorithm: ChecksumAlgorithm) -> Result<AssetChecksum, WriterError> {
@@ -142,32 +141,60 @@ pub fn user_mesh_to_ir(asset_path: &Path, user: &UserMeshAsset) -> Result<IRMesh
     let file = PathBuf::from(user.file.clone());
     let file = parent.join(file);
 
-    let data: Obj = Obj::load(&file)
+    let scenes = easy_gltf::load(&file)
         .map_err(|e| format!("Failed to load mesh file '{}': {}", file.display(), e))?;
 
     let mut vertices = Vec::new();
-    for ((pos, tex), normal) in zip(zip(data.data.position, data.data.texture), data.data.normal) {
-        vertices.push(IRVertex {
-            position: pos,
-            normal,
-            tangent: [0.0; 3],
-            bitangent: [0.0; 3],
-            tex_coord: tex,
-            bone_indices: [0; 4],
-            bone_weights: [0.0; 4],
-        });
-    }
-
     let mut indices = Vec::new();
-    for object in data.data.objects {
-        for group in object.groups {
-            for poly in group.polys {
-                // assert_eq!(poly.0.len(), 3); // Only triangles supported for now
-                for index in poly.0 {
-                    // assert!(index.1.is_none()); // No texture indices supported for now
-                    // assert!(index.2.is_none()); // No normal indices supported for now
-                    indices.push(index.0 as u32);
+    let mut primitives_count = 0;
+    let mut primitive_type = None;
+    let mut min = Vec3::splat(f32::MAX);
+    let mut max = Vec3::splat(f32::MIN);
+
+    for scene in &scenes {
+        for model in &scene.models {
+            let new_type = match model.mode() {
+                Mode::Points => {
+                    primitives_count += model.indices().unwrap().len();
+                    IRPrimitive::Points
                 }
+                Mode::Lines => {
+                    primitives_count += model.indices().unwrap().len() / 2;
+                    IRPrimitive::Lines
+                }
+                Mode::Triangles => {
+                    primitives_count += model.indices().unwrap().len() / 3;
+                    IRPrimitive::Triangles
+                }
+                _ => {
+                    unimplemented!()
+                }
+            };
+            if let Some(primitive_type) = primitive_type.take() {
+                if primitive_type != new_type {
+                    return Err(format!(
+                        "Inconsistent primitive types in mesh: {:?} vs {:?}",
+                        primitive_type, new_type
+                    ));
+                }
+            } else {
+                primitive_type = Some(new_type);
+            }
+
+            for vertex in model.vertices() {
+                let position = vertex.position.as_ref();
+                let vec = Vec3::from(*position);
+                min = min.min(vec);
+                max = max.max(vec);
+
+                vertices.push(IRVertex {
+                    position: *position,
+                    normal: *vertex.normal.as_ref(),
+                    tex_coord: *vertex.tex_coords.as_ref(),
+                });
+            }
+            for index in model.indices().unwrap() {
+                indices.push(*index);
             }
         }
     }
@@ -176,5 +203,11 @@ pub fn user_mesh_to_ir(asset_path: &Path, user: &UserMeshAsset) -> Result<IRMesh
         vertices,
         indices,
         material: AssetID::default(),
+        bounds: IRMeshBounds {
+            min: min.to_array(),
+            max: max.to_array(),
+        },
+        primitive: primitive_type.unwrap_or(IRPrimitive::Points),
+        primitives_count,
     })
 }

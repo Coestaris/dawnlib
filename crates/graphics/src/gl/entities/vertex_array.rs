@@ -1,39 +1,10 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::{GLint, GLsizei, GLuint};
+use dawn_assets::ir::mesh::{IRMeshLayout, IRMeshLayoutSampleType};
 use log::debug;
 
 pub struct VertexArray {
     id: GLuint,
-}
-
-type VertexAttributeId = GLuint;
-
-pub enum VertexAttributeFormat {
-    Float32,
-}
-
-impl VertexAttributeFormat {
-    #[inline(always)]
-    fn gl_type(&self) -> GLuint {
-        match self {
-            VertexAttributeFormat::Float32 => bindings::FLOAT,
-        }
-    }
-
-    #[inline(always)]
-    fn size(&self) -> usize {
-        match self {
-            VertexAttributeFormat::Float32 => 4,
-        }
-    }
-}
-
-pub struct VertexAttribute {
-    pub id: VertexAttributeId,
-    pub sample_size: usize,
-    pub format: VertexAttributeFormat,
-    pub stride_bytes: usize,
-    pub offset_bytes: usize,
 }
 
 pub struct VertexArrayBinding<'a> {
@@ -74,13 +45,17 @@ impl<'a> VertexArrayBinding<'a> {
         Self { vertex_array }
     }
 
-    pub fn setup_attribute(&self, attribute: VertexAttribute) -> Result<(), String> {
+    pub fn setup_attribute(&self, index: usize, attribute: &IRMeshLayout) -> Result<(), String> {
+        let gl_format = match attribute.sample_type {
+            IRMeshLayoutSampleType::Float => bindings::FLOAT,
+            IRMeshLayoutSampleType::U32 => bindings::UNSIGNED_INT,
+        };
         unsafe {
-            bindings::EnableVertexAttribArray(attribute.id);
+            bindings::EnableVertexAttribArray(index as GLuint);
             bindings::VertexAttribPointer(
-                attribute.id,
-                attribute.sample_size as GLint,
-                attribute.format.gl_type(),
+                index as GLuint,
+                attribute.samples as GLint,
+                gl_format,
                 bindings::FALSE,
                 attribute.stride_bytes as GLsizei,
                 attribute.offset_bytes as *const _,
@@ -132,7 +107,7 @@ impl VertexArray {
     }
 
     #[inline(always)]
-    fn id(&self) -> GLuint {
+    pub(crate) fn id(&self) -> GLuint {
         self.id
     }
 }

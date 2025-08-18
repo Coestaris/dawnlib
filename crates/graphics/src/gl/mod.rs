@@ -4,7 +4,7 @@ mod debug;
 pub mod entities;
 mod probe;
 
-use crate::gl::assets::{ShaderAssetFactory, TextureAssetFactory};
+use crate::gl::assets::{MeshAssetFactory, ShaderAssetFactory, TextureAssetFactory};
 use crate::gl::debug::{Debugger, MessageType};
 use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
@@ -22,6 +22,7 @@ pub struct GLRenderer<E: PassEventTrait> {
     // Factories for texture and shader assets
     texture_factory: Option<TextureAssetFactory>,
     shader_factory: Option<ShaderAssetFactory>,
+    mesh_factory: Option<MeshAssetFactory>,
 }
 
 pub struct GLRendererConfig {
@@ -29,6 +30,7 @@ pub struct GLRendererConfig {
     pub vsync: bool,
     pub texture_factory_binding: Option<FactoryBinding>,
     pub shader_factory_binding: Option<FactoryBinding>,
+    pub mesh_factory_binding: Option<FactoryBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +131,13 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         } else {
             None
         };
+        let mesh_factory = if let Some(binding) = cfg.mesh_factory_binding {
+            let mut factory = MeshAssetFactory::new();
+            factory.bind(binding);
+            Some(factory)
+        } else {
+            None
+        };
 
         let debugger = Debugger::new(|source, rtype, severity, message| match rtype {
             MessageType::Error => {
@@ -148,6 +157,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             view_handle,
             texture_factory,
             shader_factory,
+            mesh_factory,
         })
     }
 
@@ -158,6 +168,9 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             factory.process_events::<E>();
         }
         if let Some(factory) = &mut self.shader_factory {
+            factory.process_events::<E>();
+        }
+        if let Some(factory) = &mut self.mesh_factory {
             factory.process_events::<E>();
         }
 

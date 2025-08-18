@@ -33,7 +33,8 @@ impl<'a> ShaderProgramBind<'a> {
 impl Drop for ShaderProgramBind<'_> {
     fn drop(&mut self) {
         unsafe {
-            bindings::UseProgram(0);
+            // TODO: ???
+           // bindings::UseProgram(0);
         }
     }
 }

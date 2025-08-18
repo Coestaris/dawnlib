@@ -1,9 +1,10 @@
-use dawn_assets::AssetType;
-use dawn_assets::factory::{BasicFactory, FactoryBinding};
-use dawn_assets::ir::IRAsset;
+use crate::gl::entities::mesh::Mesh;
 use crate::gl::entities::shader_program::ShaderProgram;
 use crate::gl::entities::texture::Texture;
 use crate::passes::events::PassEventTrait;
+use dawn_assets::factory::{BasicFactory, FactoryBinding};
+use dawn_assets::ir::IRAsset;
+use dawn_assets::AssetType;
 
 pub(crate) struct ShaderAssetFactory {
     basic_factory: BasicFactory<ShaderProgram>,
@@ -64,6 +65,38 @@ impl TextureAssetFactory {
             },
             |_| {
                 // Free will be handled in the Drop implementation of Texture
+            },
+        );
+    }
+}
+
+pub(crate) struct MeshAssetFactory {
+    basic_factory: BasicFactory<Mesh>,
+}
+
+impl MeshAssetFactory {
+    pub fn new() -> Self {
+        MeshAssetFactory {
+            basic_factory: BasicFactory::new(),
+        }
+    }
+
+    pub fn bind(&mut self, binding: FactoryBinding) {
+        assert_eq!(binding.asset_type(), AssetType::Mesh);
+        self.basic_factory.bind(binding);
+    }
+
+    pub fn process_events<E: PassEventTrait>(&mut self) {
+        self.basic_factory.process_events(
+            |_, ir| {
+                if let IRAsset::Mesh(mesh) = ir {
+                    Mesh::from_ir(mesh)
+                } else {
+                    Err("Expected mesh metadata".to_string())
+                }
+            },
+            |_| {
+                // Free will be handled in the Drop implementation of Mesh
             },
         );
     }
