@@ -7,7 +7,7 @@ use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use tar::Archive;
 use dawn_assets::AssetHeader;
-use dawn_assets::raw::AssetRaw;
+use dawn_assets::ir::IRAsset;
 
 #[derive(Debug)]
 pub enum ReadError {
@@ -28,13 +28,13 @@ impl std::fmt::Display for ReadError {
     }
 }
 
-fn read_internal<R>(reader: R) -> Result<(Manifest, Vec<(AssetHeader, AssetRaw)>), ReadError>
+fn read_internal<R>(reader: R) -> Result<(Manifest, Vec<(AssetHeader, IRAsset)>), ReadError>
 where
     R: Read,
 {
     let mut archive = Archive::new(reader);
 
-    let mut assets: Vec<(AssetHeader, AssetRaw)> = Vec::new();
+    let mut assets: Vec<(AssetHeader, IRAsset)> = Vec::new();
     let mut manifest: Option<Manifest> = None;
     for entry in archive.entries().map_err(ReadError::ReadTarError)? {
         let mut entry = entry.map_err(ReadError::ReadTarError)?;
@@ -60,7 +60,7 @@ where
         }
 
         let asset = PackedAsset::deserialize(&contents).map_err(ReadError::DecodeError)?;
-        assets.push((asset.header, asset.raw));
+        assets.push((asset.header, asset.ir));
     }
 
     if manifest.is_none() {
@@ -74,7 +74,7 @@ where
 
 pub fn read_from_file_compressed(
     path: &Path,
-) -> Result<(Manifest, Vec<(AssetHeader, AssetRaw)>), ReadError> {
+) -> Result<(Manifest, Vec<(AssetHeader, IRAsset)>), ReadError> {
     let file = File::open(path).unwrap();
     let buf_reader = BufReader::new(file);
     let decoder = GzDecoder::new(buf_reader);
@@ -84,14 +84,14 @@ pub fn read_from_file_compressed(
 
 pub fn read_from_file_uncompressed(
     path: &Path,
-) -> Result<(Manifest, Vec<(AssetHeader, AssetRaw)>), ReadError> {
+) -> Result<(Manifest, Vec<(AssetHeader, IRAsset)>), ReadError> {
     let file = File::open(path).unwrap();
     let buf_reader = BufReader::new(file);
 
     read_internal(buf_reader)
 }
 
-pub fn read(path: PathBuf) -> Result<(Manifest, Vec<(AssetHeader, AssetRaw)>), ReadError> {
+pub fn read(path: PathBuf) -> Result<(Manifest, Vec<(AssetHeader, IRAsset)>), ReadError> {
     match read_from_file_compressed(path.as_path()) {
         Err(ReadError::ReadTarError(e)) => {
             // Try to read as non-compressed tar

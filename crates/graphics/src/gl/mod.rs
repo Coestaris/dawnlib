@@ -9,15 +9,15 @@ use crate::gl::debug::{Debugger, MessageType};
 use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
 use crate::view::{ViewError, ViewHandle};
+use dawn_assets::factory::FactoryBinding;
 use log::{debug, error, info, warn};
 use std::fmt::{Display, Formatter};
-use dawn_assets::factory::FactoryBinding;
 
 pub struct GLRenderer<E: PassEventTrait> {
     _marker: std::marker::PhantomData<E>,
 
     view_handle: ViewHandle,
-    debugger: Debugger,
+    _debugger: Debugger,
 
     // Factories for texture and shader assets
     texture_factory: Option<TextureAssetFactory>,
@@ -130,24 +130,24 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             None
         };
 
+        let debugger = Debugger::new(|source, rtype, severity, message| match rtype {
+            MessageType::Error => {
+                error!("OpenGL: {}: {}: {}", source, severity, message);
+            }
+            MessageType::DeprecatedBehavior | MessageType::UndefinedBehavior => {
+                warn!("OpenGL: {}: {}: {}", source, severity, message);
+            }
+            _ => {
+                info!("OpenGL: {}: {}: {}", source, severity, message);
+            }
+        });
+
         Ok(GLRenderer::<E> {
             _marker: Default::default(),
+            _debugger: debugger,
             view_handle,
             texture_factory,
             shader_factory,
-            debugger: unsafe {
-                Debugger::new(|source, rtype, severity, message| match rtype {
-                    MessageType::Error => {
-                        error!("OpenGL: {}: {}: {}", source, severity, message);
-                    }
-                    MessageType::DeprecatedBehavior | MessageType::UndefinedBehavior => {
-                        warn!("OpenGL: {}: {}: {}", source, severity, message);
-                    }
-                    _ => {
-                        info!("OpenGL: {}: {}: {}", source, severity, message);
-                    }
-                })
-            },
         })
     }
 

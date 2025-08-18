@@ -137,7 +137,7 @@ impl Drop for Debugger {
 }
 
 impl Debugger {
-    pub(crate) unsafe fn new<F>(callback: F) -> Self
+    pub(crate) fn new<F>(callback: F) -> Self
     where
         F: Fn(MessageSource, MessageType, MessageSeverity, &str) + Send + Sync + 'static,
     {
@@ -177,18 +177,20 @@ impl Debugger {
         }
 
         // Enable OpenGL debug output
-        bindings::Enable(bindings::DEBUG_OUTPUT);
-        bindings::Enable(bindings::DEBUG_OUTPUT_SYNCHRONOUS);
-        // Pass boxed function as user ctx
-        bindings::DebugMessageCallback(Some(dbg_proc), holder.cast());
-        bindings::DebugMessageControl(
-            bindings::DONT_CARE, // All sources
-            bindings::DONT_CARE, // All types
-            bindings::DONT_CARE, // All severities
-            0,
-            std::ptr::null(),
-            GLboolean::from(true),
-        );
+        unsafe {
+            bindings::Enable(bindings::DEBUG_OUTPUT);
+            bindings::Enable(bindings::DEBUG_OUTPUT_SYNCHRONOUS);
+            // Pass boxed function as user ctx
+            bindings::DebugMessageCallback(Some(dbg_proc), holder.cast());
+            bindings::DebugMessageControl(
+                bindings::DONT_CARE, // All sources
+                bindings::DONT_CARE, // All types
+                bindings::DONT_CARE, // All severities
+                0,
+                std::ptr::null(),
+                GLboolean::from(true),
+            );
+        }
 
         Debugger { holder }
     }

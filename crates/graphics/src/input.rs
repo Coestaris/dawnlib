@@ -140,5 +140,5 @@ pub enum InputEvent {
     MouseScroll { delta_x: f32, delta_y: f32 },
     MouseButtonPress(MouseButton),
     MouseButtonRelease(MouseButton),
-    Resize { width: u32, height: u32 },
+    Resize { width: usize, height: usize },
 }

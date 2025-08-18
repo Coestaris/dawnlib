@@ -1,19 +1,19 @@
-mod raw;
-mod user;
+mod ir;
 mod pix;
+mod user;
 
 use crate::manifest::Manifest;
-use crate::writer::raw::user_asset_to_raw;
+use crate::writer::ir::user_to_ir;
 use crate::writer::user::UserAsset;
 use crate::{ChecksumAlgorithm, Compression, PackedAsset, ReadMode, WriteOptions};
+use dawn_assets::ir::IRAsset;
+use dawn_assets::{AssetHeader, AssetID};
 use flate2::write::GzEncoder;
 use log::info;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use tar::Builder;
-use dawn_assets::{AssetHeader, AssetID};
-use dawn_assets::raw::AssetRaw;
 
 #[derive(Debug)]
 pub enum WriterError {
@@ -142,23 +142,23 @@ fn collect_user_assets(
     Ok(user_assets)
 }
 
-fn user_assets_to_raws(
+fn user_assets_to_irs(
     user_asses: Vec<(UserAsset, PathBuf)>,
     checksum_algorithm: ChecksumAlgorithm,
-) -> Result<Vec<(AssetHeader, AssetRaw, PathBuf)>, WriterError> {
+) -> Result<Vec<(AssetHeader, IRAsset, PathBuf)>, WriterError> {
     let mut result = Vec::new();
     for (asset, path) in user_asses {
         info!("Processing asset: {}", asset.header.id);
-        let (header, raw) = user_asset_to_raw(path.as_path(), &asset, checksum_algorithm)
+        let (header, ir) = user_to_ir(path.as_path(), &asset, checksum_algorithm)
             .map_err(|e| WriterError::ValidationFailed(e))?;
 
-        result.push((header, raw, path.clone()));
+        result.push((header, ir, path.clone()));
     }
     Ok(result)
 }
 
-fn raws_to_binary(
-    raws: Vec<(AssetHeader, AssetRaw, PathBuf)>,
+fn irs_to_binaries(
+    irs: Vec<(AssetHeader, IRAsset, PathBuf)>,
     manifest: &Manifest,
 ) -> Result<Vec<(Vec<u8>, PathBuf)>, WriterError> {
     let mut binary = Vec::new();
@@ -169,9 +169,9 @@ fn raws_to_binary(
         .map_err(WriterError::SerializationError)?;
     binary.push((serialized, PathBuf::from(Manifest::location())));
 
-    // Serialize each raw asset
-    for (header, raw, path) in raws {
-        let packed_asset = PackedAsset::new(header, raw);
+    // Serialize each IR asset
+    for (header, ir, path) in irs {
+        let packed_asset = PackedAsset::new(header, ir);
         let serialized = packed_asset
             .serialize()
             .map_err(WriterError::SerializationError)?;
@@ -181,10 +181,10 @@ fn raws_to_binary(
     Ok(binary)
 }
 
-fn check_dependencies(raws: &[(AssetHeader, AssetRaw, PathBuf)]) -> Result<(), WriterError> {
-    for (header, _, _) in raws {
+fn check_dependencies(irs: &[(AssetHeader, IRAsset, PathBuf)]) -> Result<(), WriterError> {
+    for (header, _, _) in irs {
         for dep in &header.dependencies {
-            if !raws.iter().any(|(h, _, _)| &h.id == dep) {
+            if !irs.iter().any(|(h, _, _)| &h.id == dep) {
                 return Err(WriterError::DependenciesMissing(
                     header.id.clone(),
                     dep.clone(),
@@ -195,17 +195,17 @@ fn check_dependencies(raws: &[(AssetHeader, AssetRaw, PathBuf)]) -> Result<(), W
     Ok(())
 }
 
-fn add_binaries<W>(tar: &mut Builder<W>, raws: &[(Vec<u8>, PathBuf)]) -> Result<(), WriterError>
+fn add_binaries<W>(tar: &mut Builder<W>, binaries: &[(Vec<u8>, PathBuf)]) -> Result<(), WriterError>
 where
     W: std::io::Write,
 {
-    for (raw, path) in raws {
+    for (binary, path) in binaries {
         let normalized_name = normalize_name(path);
         let mut header = tar::Header::new_gnu();
         header
             .set_path(normalized_name)
             .map_err(WriterError::TarError)?;
-        header.set_size(raw.len() as u64);
+        header.set_size(binary.len() as u64);
         header.set_mode(0o644); // Set file mode to 644
         header.set_uid(0); // Set user ID to 0 (root)
         header.set_gid(0); // Set group ID to 0 (root)
@@ -217,7 +217,7 @@ where
         );
         header.set_cksum();
 
-        tar.append(&header, raw.as_slice())
+        tar.append(&header, binary.as_slice())
             .map_err(WriterError::TarError)?;
     }
     Ok(())
@@ -234,10 +234,10 @@ pub fn write_from_directory(
     let input_files =
         collect_files(input_dir, options.read_mode).map_err(WriterError::CollectingFilesFailed)?;
     let user_assets = collect_user_assets(&input_files, options.clone())?;
-    let raws = user_assets_to_raws(user_assets, options.checksum_algorithm)?;
-    check_dependencies(&raws)?;
-    let manifest = Manifest::new(&options, raws.iter().map(|(h, _, _)| h.clone()).collect());
-    let binaries = raws_to_binary(raws, &manifest)?;
+    let irs = user_assets_to_irs(user_assets, options.checksum_algorithm)?;
+    check_dependencies(&irs)?;
+    let manifest = Manifest::new(&options, irs.iter().map(|(h, _, _)| h.clone()).collect());
+    let binaries = irs_to_binaries(irs, &manifest)?;
 
     info!(
         "Writing {} files to {}",

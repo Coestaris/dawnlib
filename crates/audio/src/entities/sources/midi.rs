@@ -9,12 +9,12 @@ use crate::entities::sources::multiplexer::MultiplexerSource;
 use crate::entities::sources::waveform::{WaveformSource, WaveformSourceEvent, WaveformType};
 use crate::player::Player;
 use crate::SampleRate;
-use dawn_assets::raw::MIDIEvent;
 use dawn_assets::TypedAsset;
 use log::warn;
 use std::thread::sleep;
 use std::time::Duration;
 use tinyrand::Rand;
+use dawn_assets::ir::notes::IRNoteEvent;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoteName {
@@ -212,17 +212,17 @@ impl<const VOICES_COUNT: usize> MidiPlayer<VOICES_COUNT> {
 
         while self.index < events.len() {
             match &events[self.index] {
-                MIDIEvent::NoteOn {
+                IRNoteEvent::NoteOn {
                     channel,
                     note,
                     velocity,
                 } => {
                     self.play_note(player, *note);
                 }
-                MIDIEvent::NoteOff { channel, note } => {
+                IRNoteEvent::NoteOff { channel, note } => {
                     self.stop_note(player, *note);
                 }
-                MIDIEvent::Idle { ms } => {
+                IRNoteEvent::Idle { ms } => {
                     sleep(Duration::from_micros((*ms * 1000.0) as u64));
                 }
                 _ => {}

@@ -2,7 +2,7 @@ mod manifest;
 mod reader;
 mod writer;
 
-use dawn_assets::raw::AssetRaw;
+use dawn_assets::ir::IRAsset;
 use dawn_assets::AssetHeader;
 pub use manifest::Manifest;
 pub use reader::read;
@@ -62,12 +62,12 @@ mod asset_serialize {
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct PackedAsset {
     pub header: AssetHeader,
-    pub raw: AssetRaw,
+    pub ir: IRAsset,
 }
 
 impl PackedAsset {
-    pub fn new(header: AssetHeader, raw: AssetRaw) -> Self {
-        Self { header, raw }
+    pub fn new(header: AssetHeader, ir: IRAsset) -> Self {
+        Self { header, ir }
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>, String> {

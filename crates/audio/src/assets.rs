@@ -1,15 +1,17 @@
 use crate::SampleRate;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
-use dawn_assets::raw::{AssetRaw, AudioAssetRaw, MIDIAssetRaw};
 use dawn_assets::{AssetCastable, AssetType};
 use dawn_ecs::Tick;
 use evenio::component::Component;
 use evenio::event::Receiver;
 use evenio::fetch::Single;
 use evenio::world::World;
+use dawn_assets::ir::IRAsset;
+use dawn_assets::ir::audio::IRAudio;
+use dawn_assets::ir::notes::IRNotes;
 
 #[derive(Debug)]
-pub struct AudioAsset(pub AudioAssetRaw);
+pub struct AudioAsset(pub IRAudio);
 
 impl AssetCastable for AudioAsset {}
 
@@ -34,10 +36,10 @@ impl AudioAssetFactory {
 
     pub fn process_events(&mut self) {
         self.basic_factory.process_events(
-            |_, raw| {
-                if let AssetRaw::Audio(data) = raw {
+            |_, ir| {
+                if let IRAsset::Audio(data) = ir {
                     // TODO: Resample the audio data to the desired sample rate
-                    // For now, we just return the raw data as is.
+                    // For now, we just return the ir data as is.
                     Ok(AudioAsset(data.clone()))
                 } else {
                     Err("Expected audio metadata".to_string())
@@ -58,7 +60,7 @@ impl AudioAssetFactory {
     }
 }
 
-pub struct MIDIAsset(pub MIDIAssetRaw);
+pub struct MIDIAsset(pub IRNotes);
 
 impl AssetCastable for MIDIAsset {}
 
@@ -81,8 +83,8 @@ impl MIDIAssetFactory {
 
     pub fn process_events(&mut self) {
         self.basic_factory.process_events(
-            |_, raw| {
-                if let AssetRaw::MIDI(data) = raw {
+            |_, ir| {
+                if let IRAsset::Notes(data) = ir {
                     Ok(MIDIAsset(data.clone()))
                 } else {
                     Err("Expected shader metadata".to_string())

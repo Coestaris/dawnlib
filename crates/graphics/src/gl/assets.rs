@@ -1,6 +1,6 @@
 use dawn_assets::AssetType;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
-use dawn_assets::raw::AssetRaw;
+use dawn_assets::ir::IRAsset;
 use crate::gl::entities::shader_program::ShaderProgram;
 use crate::gl::entities::texture::Texture;
 use crate::passes::events::PassEventTrait;
@@ -23,9 +23,9 @@ impl ShaderAssetFactory {
 
     pub fn process_events<E: PassEventTrait>(&mut self) {
         self.basic_factory.process_events(
-            |_, raw| {
-                if let AssetRaw::Shader(shader_raw) = raw {
-                    ShaderProgram::from_raw::<E>(shader_raw)
+            |_, ir| {
+                if let IRAsset::Shader(shader) = ir {
+                    ShaderProgram::from_ir::<E>(shader)
                 } else {
                     Err("Expected shader metadata".to_string())
                 }
@@ -55,9 +55,9 @@ impl TextureAssetFactory {
 
     pub fn process_events<E: PassEventTrait>(&mut self) {
         self.basic_factory.process_events(
-            |_, raw| {
-                if let AssetRaw::Texture(texture_raw) = raw {
-                    Texture::from_raw::<E>(texture_raw)
+            |_, ir| {
+                if let IRAsset::Texture(texture) = ir {
+                    Texture::from_ir::<E>(texture)
                 } else {
                     Err("Expected texture metadata".to_string())
                 }

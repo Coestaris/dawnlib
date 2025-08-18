@@ -2,9 +2,9 @@ use crate::gl::bindings;
 use crate::gl::bindings::types::GLuint;
 use crate::gl::entities::shader::Shader;
 use crate::passes::events::PassEventTrait;
-use log::debug;
+use dawn_assets::ir::shader::IRShader;
 use dawn_assets::AssetCastable;
-use dawn_assets::raw::ShaderAssetRaw;
+use log::debug;
 
 #[derive(Debug)]
 // RAII wrapper for OpenGL shader program
@@ -89,14 +89,12 @@ mod targets {
 pub use targets::*;
 
 impl ShaderProgram {
-    pub(crate) fn from_raw<E: PassEventTrait>(
-        raw: &ShaderAssetRaw,
-    ) -> Result<ShaderProgram, String> {
+    pub(crate) fn from_ir<E: PassEventTrait>(ir: &IRShader) -> Result<ShaderProgram, String> {
         // TODO: Cache the compilation result
         // TODO: Try load SPIRV instead of compiling from source
         let program = ShaderProgram::new().ok_or("Failed to create shader program")?;
 
-        for (source_type, source) in &raw.sources {
+        for (source_type, source) in &ir.sources {
             let shader = Shader::new(*source_type)?;
             let source = String::from_utf8(source.clone())
                 .map_err(|e| format!("Failed to convert shader source to UTF-8: {}", e))?;

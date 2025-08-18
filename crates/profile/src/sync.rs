@@ -1,5 +1,5 @@
-use std::time::{Duration, Instant};
 use crate::MonitorSample;
+use std::time::{Duration, Instant};
 
 /// Allows measuring time of some operation
 pub struct Stopwatch {
@@ -71,8 +71,8 @@ impl Stopwatch {
     /// When the returned `StopwatchGuard` is dropped (goes out of scope), it automatically stops
     /// the stopwatch or performs any necessary cleanup related to the timing.
     #[inline(always)]
-    pub fn scoped(&mut self) -> StopwatchGuard {
-        StopwatchGuard { stopwatch: self }
+    pub fn scoped(&mut self) -> StopwatchGuard<'_> {
+        StopwatchGuard::new(self)
     }
 }
 
