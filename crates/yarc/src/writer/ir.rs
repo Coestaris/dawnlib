@@ -1,14 +1,20 @@
 use crate::writer::pix::repack;
 use crate::writer::user::{
-    UserAsset, UserAssetProperties, UserAudioAsset, UserShaderAsset, UserTextureAsset,
+    UserAsset, UserAssetProperties, UserAudioAsset, UserMeshAsset, UserShaderAsset,
+    UserTextureAsset,
 };
 use crate::{ChecksumAlgorithm, WriterError};
 use dawn_assets::ir::audio::IRAudio;
+use dawn_assets::ir::mesh::{IRMesh, IRVertex};
 use dawn_assets::ir::shader::IRShader;
 use dawn_assets::ir::texture::{IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
-use dawn_assets::{AssetChecksum, AssetHeader};
+use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
+use obj::Obj;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::BufReader;
+use std::iter::zip;
 use std::path::{Path, PathBuf};
 
 fn checksum<T>(obj: &T, algorithm: ChecksumAlgorithm) -> Result<AssetChecksum, WriterError> {
@@ -59,6 +65,7 @@ pub fn user_to_ir(
             IRAsset::Texture(user_texture_to_ir(asset_path, texture)?)
         }
         UserAssetProperties::Audio(audio) => IRAsset::Audio(user_audio_to_ir(asset_path, audio)?),
+        UserAssetProperties::Mesh(mesh) => IRAsset::Mesh(user_mesh_to_ir(asset_path, mesh)?),
     };
 
     Ok((with_checksum(&ir, algorithm, &user.header)?, ir))
@@ -127,4 +134,47 @@ pub fn user_texture_to_ir(asset_path: &Path, user: &UserTextureAsset) -> Result<
 
 pub fn user_audio_to_ir(asset_path: &Path, user: &UserAudioAsset) -> Result<IRAudio, String> {
     todo!()
+}
+
+pub fn user_mesh_to_ir(asset_path: &Path, user: &UserMeshAsset) -> Result<IRMesh, String> {
+    // Try to find the file in the same directory as the shader
+    let parent = asset_path.parent().unwrap();
+    let file = PathBuf::from(user.file.clone());
+    let file = parent.join(file);
+
+    let data: Obj = Obj::load(&file)
+        .map_err(|e| format!("Failed to load mesh file '{}': {}", file.display(), e))?;
+
+    let mut vertices = Vec::new();
+    for ((pos, tex), normal) in zip(zip(data.data.position, data.data.texture), data.data.normal) {
+        vertices.push(IRVertex {
+            position: pos,
+            normal,
+            tangent: [0.0; 3],
+            bitangent: [0.0; 3],
+            tex_coord: tex,
+            bone_indices: [0; 4],
+            bone_weights: [0.0; 4],
+        });
+    }
+
+    let mut indices = Vec::new();
+    for object in data.data.objects {
+        for group in object.groups {
+            for poly in group.polys {
+                // assert_eq!(poly.0.len(), 3); // Only triangles supported for now
+                for index in poly.0 {
+                    // assert!(index.1.is_none()); // No texture indices supported for now
+                    // assert!(index.2.is_none()); // No normal indices supported for now
+                    indices.push(index.0 as u32);
+                }
+            }
+        }
+    }
+
+    Ok(IRMesh {
+        vertices,
+        indices,
+        material: AssetID::default(),
+    })
 }
