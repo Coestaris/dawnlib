@@ -4,9 +4,10 @@ use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver};
 use evenio::fetch::Single;
 use evenio::world::World;
-use std::time::{Duration, Instant};
-use log::{info, warn};
 use glam::*;
+use log::{info, warn};
+use std::time::{Duration, Instant};
+use evenio::handler::IntoHandler;
 
 /// Event sent every tick in the main loop (usually 60 times per second).
 /// Can be used to update game logic, render frames, etc.
@@ -143,7 +144,7 @@ where
     // Insert a private data component to track the stopped state
     let entity = world.spawn();
     world.insert(entity, PrivateData { stopped: false });
-    world.add_handler(stop_event_loop_handler);
+    world.add_handler(stop_event_loop_handler.low());
 
     let mut prev_tick = std::time::Instant::now();
     let loop_start = std::time::Instant::now();
