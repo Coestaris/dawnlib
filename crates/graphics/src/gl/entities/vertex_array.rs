@@ -1,38 +1,26 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::{GLint, GLsizei, GLuint};
-use dawn_assets::ir::mesh::{IRMeshLayout, IRMeshLayoutSampleType};
+use dawn_assets::ir::mesh::{IRMeshLayout, IRMeshLayoutSampleType, IRPrimitive};
 use log::debug;
 
 pub struct VertexArray {
     id: GLuint,
+    draw_mode: GLuint,
 }
 
 pub struct VertexArrayBinding<'a> {
     vertex_array: &'a VertexArray,
 }
 
-pub enum DrawElementsMode {
-    Points,
-    Lines,
-    LineStrip,
-    LineLoop,
-    Triangles,
-    TriangleStrip,
-    TriangleFan,
-}
-
-impl DrawElementsMode {
-    #[inline(always)]
-    fn gl_type(&self) -> GLuint {
-        match self {
-            DrawElementsMode::Points => bindings::POINTS,
-            DrawElementsMode::Lines => bindings::LINES,
-            DrawElementsMode::LineStrip => bindings::LINE_STRIP,
-            DrawElementsMode::LineLoop => bindings::LINE_LOOP,
-            DrawElementsMode::Triangles => bindings::TRIANGLES,
-            DrawElementsMode::TriangleStrip => bindings::TRIANGLE_STRIP,
-            DrawElementsMode::TriangleFan => bindings::TRIANGLE_FAN,
-        }
+fn primitive_gl_type(primitive: IRPrimitive) -> GLuint {
+    match primitive {
+        IRPrimitive::Points => bindings::POINTS,
+        IRPrimitive::Lines => bindings::LINES,
+        IRPrimitive::LineStrip => bindings::LINE_STRIP,
+        IRPrimitive::LineLoop => bindings::LINE_LOOP,
+        IRPrimitive::Triangles => bindings::TRIANGLES,
+        IRPrimitive::TriangleStrip => bindings::TRIANGLE_STRIP,
+        IRPrimitive::TriangleFan => bindings::TRIANGLE_FAN,
     }
 }
 
@@ -65,10 +53,10 @@ impl<'a> VertexArrayBinding<'a> {
         Ok(())
     }
 
-    pub fn draw_elements(&self, count: usize, mode: DrawElementsMode) {
+    pub fn draw_elements(&self, count: usize) {
         unsafe {
             bindings::DrawElements(
-                mode.gl_type(),
+                self.vertex_array.draw_mode,
                 count as GLsizei,
                 bindings::UNSIGNED_INT,
                 std::ptr::null(),
@@ -87,7 +75,7 @@ impl<'a> Drop for VertexArrayBinding<'a> {
 }
 
 impl VertexArray {
-    pub fn new() -> Result<Self, String> {
+    pub fn new(primitive: IRPrimitive) -> Result<Self, String> {
         let mut id: GLuint = 0;
         unsafe {
             bindings::GenVertexArrays(1, &mut id);
@@ -97,7 +85,10 @@ impl VertexArray {
         }
 
         debug!("Allocated VBO ID: {}", id);
-        Ok(VertexArray { id })
+        Ok(VertexArray {
+            id,
+            draw_mode: primitive_gl_type(primitive),
+        })
     }
 
     #[inline(always)]

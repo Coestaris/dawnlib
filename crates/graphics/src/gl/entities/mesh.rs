@@ -12,7 +12,6 @@ pub struct Mesh {
     pub vao: VertexArray,
     pub vbo: ArrayBuffer,
     pub ebo: ElementArrayBuffer,
-    pub draw_mode: GLuint,
     pub count: usize,
     pub min: Vec3,
     pub max: Vec3,
@@ -20,19 +19,10 @@ pub struct Mesh {
 
 impl AssetCastable for Mesh {}
 
-fn mode_to_gl_draw_mode(mode: IRPrimitive) -> GLuint {
-    match mode {
-        IRPrimitive::Points => bindings::POINTS,
-        IRPrimitive::Lines => bindings::LINES,
-        IRPrimitive::Triangles => bindings::TRIANGLES,
-        _ => unimplemented!(),
-    }
-}
-
 impl Mesh {
     pub fn from_ir(ir: &IRMesh) -> Result<Self, String> {
-        let mut vao =
-            VertexArray::new().map_err(|e| format!("Failed to create VertexArray: {}", e))?;
+        let vao = VertexArray::new(ir.primitive.clone())
+            .map_err(|e| format!("Failed to create VertexArray: {}", e))?;
         let mut vbo =
             ArrayBuffer::new().map_err(|e| format!("Failed to create ArrayBuffer: {}", e))?;
         let mut ebo = ElementArrayBuffer::new()
@@ -63,7 +53,6 @@ impl Mesh {
             vao,
             vbo,
             ebo,
-            draw_mode: mode_to_gl_draw_mode(ir.primitive.clone()),
             count: ir.primitives_count,
             min: ir.bounds.min(),
             max: ir.bounds.max(),
@@ -73,16 +62,7 @@ impl Mesh {
     #[inline(always)]
     pub fn draw(&self) -> PassExecuteResult {
         let binding = self.vao.bind();
-        unsafe {
-            bindings::DrawElements(
-                self.draw_mode,
-                self.count as i32,
-                bindings::UNSIGNED_INT,
-                std::ptr::null(),
-            );
-        }
-
-        drop(binding);
+        binding.draw_elements(self.count);
         PassExecuteResult::ok(1, self.count)
     }
 }
