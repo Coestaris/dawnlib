@@ -15,6 +15,21 @@ use std::io::Read;
 use std::path::PathBuf;
 use tar::Builder;
 
+pub(crate) struct UserAssetFile {
+    asset: UserAsset,
+    path: PathBuf,
+}
+
+pub(crate) struct UserIRAsset {
+    header: AssetHeader,
+    ir: IRAsset,
+}
+
+pub(crate) struct AssetBinary {
+    raw: Vec<u8>,
+    name: String,
+}
+
 #[derive(Debug)]
 pub enum WriterError {
     CollectingFilesFailed(std::io::Error),
@@ -90,27 +105,10 @@ fn collect_files<P: AsRef<std::path::Path>>(
     Ok(files)
 }
 
-/// Normalize the file name by removing the extension, converting to lowercase,
-/// replacing whitespace with underscores, and removing special characters.
-fn normalize_name<P: AsRef<std::path::Path>>(path: P) -> String {
-    // Get rid of the extension and normalize the name
-    let name = path
-        .as_ref()
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown")
-        .to_lowercase();
-
-    // Replace whitespace with underscores and remove special characters
-    name.replace('.', "_")
-        .replace(' ', "_")
-        .replace(|c: char| !c.is_alphanumeric() && c != '_', "")
-}
-
 fn collect_user_assets(
     files: &[PathBuf],
     options: WriteOptions,
-) -> Result<Vec<(UserAsset, PathBuf)>, WriterError> {
+) -> Result<Vec<UserAssetFile>, WriterError> {
     // Find all toml files
     let mut toml_files = Vec::new();
     for file in files {
@@ -130,7 +128,10 @@ fn collect_user_assets(
         // Parse the metadata
         match toml::from_str::<UserAsset>(&content) {
             Ok(asset) => {
-                user_assets.push((asset, toml_file.clone()));
+                user_assets.push(UserAssetFile {
+                    asset,
+                    path: toml_file.clone(),
+                });
             }
 
             Err(e) => {
@@ -143,50 +144,55 @@ fn collect_user_assets(
 }
 
 fn user_assets_to_irs(
-    user_asses: Vec<(UserAsset, PathBuf)>,
+    files: Vec<UserAssetFile>,
     checksum_algorithm: ChecksumAlgorithm,
-) -> Result<Vec<(AssetHeader, IRAsset, PathBuf)>, WriterError> {
+) -> Result<Vec<UserIRAsset>, WriterError> {
     let mut result = Vec::new();
-    for (asset, path) in user_asses {
-        info!("Processing asset: {}", asset.header.id);
-        let (header, ir) = user_to_ir(path.as_path(), &asset, checksum_algorithm)
-            .map_err(|e| WriterError::ValidationFailed(e))?;
-
-        result.push((header, ir, path.clone()));
+    for file in files {
+        result.extend(
+            user_to_ir(file, checksum_algorithm).map_err(|e| WriterError::ValidationFailed(e))?,
+        );
     }
     Ok(result)
 }
 
 fn irs_to_binaries(
-    irs: Vec<(AssetHeader, IRAsset, PathBuf)>,
+    irs: Vec<UserIRAsset>,
     manifest: &Manifest,
-) -> Result<Vec<(Vec<u8>, PathBuf)>, WriterError> {
+) -> Result<Vec<AssetBinary>, WriterError> {
     let mut binary = Vec::new();
 
     // Serialize the manifest
     let serialized = manifest
         .serialize()
         .map_err(WriterError::SerializationError)?;
-    binary.push((serialized, PathBuf::from(Manifest::location())));
+    binary.push(AssetBinary {
+        raw: serialized,
+        name: Manifest::location().to_string(),
+    });
 
     // Serialize each IR asset
-    for (header, ir, path) in irs {
-        let packed_asset = PackedAsset::new(header, ir);
+    for ir in irs {
+        let name = ir.header.id.to_string();
+        let packed_asset = PackedAsset::new(ir.header, ir.ir);
         let serialized = packed_asset
             .serialize()
             .map_err(WriterError::SerializationError)?;
-        binary.push((serialized, path));
+        binary.push(AssetBinary {
+            raw: serialized,
+            name,
+        });
     }
 
     Ok(binary)
 }
 
-fn check_dependencies(irs: &[(AssetHeader, IRAsset, PathBuf)]) -> Result<(), WriterError> {
-    for (header, _, _) in irs {
-        for dep in &header.dependencies {
-            if !irs.iter().any(|(h, _, _)| &h.id == dep) {
+fn check_dependencies(irs: &[UserIRAsset]) -> Result<(), WriterError> {
+    for ir in irs {
+        for dep in &ir.header.dependencies {
+            if !irs.iter().any(|i| i.header.id == *dep) {
                 return Err(WriterError::DependenciesMissing(
-                    header.id.clone(),
+                    ir.header.id.clone(),
                     dep.clone(),
                 ));
             }
@@ -195,17 +201,16 @@ fn check_dependencies(irs: &[(AssetHeader, IRAsset, PathBuf)]) -> Result<(), Wri
     Ok(())
 }
 
-fn add_binaries<W>(tar: &mut Builder<W>, binaries: &[(Vec<u8>, PathBuf)]) -> Result<(), WriterError>
+fn add_binaries<W>(tar: &mut Builder<W>, binaries: &[AssetBinary]) -> Result<(), WriterError>
 where
     W: std::io::Write,
 {
-    for (binary, path) in binaries {
-        let normalized_name = normalize_name(path);
+    for binary in binaries {
         let mut header = tar::Header::new_gnu();
         header
-            .set_path(normalized_name)
+            .set_path(binary.name.as_str())
             .map_err(WriterError::TarError)?;
-        header.set_size(binary.len() as u64);
+        header.set_size(binary.raw.len() as u64);
         header.set_mode(0o644); // Set file mode to 644
         header.set_uid(0); // Set user ID to 0 (root)
         header.set_gid(0); // Set group ID to 0 (root)
@@ -217,7 +222,7 @@ where
         );
         header.set_cksum();
 
-        tar.append(&header, binary.as_slice())
+        tar.append(&header, binary.raw.as_slice())
             .map_err(WriterError::TarError)?;
     }
     Ok(())
@@ -236,7 +241,7 @@ pub fn write_from_directory(
     let user_assets = collect_user_assets(&input_files, options.clone())?;
     let irs = user_assets_to_irs(user_assets, options.checksum_algorithm)?;
     check_dependencies(&irs)?;
-    let manifest = Manifest::new(&options, irs.iter().map(|(h, _, _)| h.clone()).collect());
+    let manifest = Manifest::new(&options, irs.iter().map(|h| h.header.clone()).collect());
     let binaries = irs_to_binaries(irs, &manifest)?;
 
     info!(
@@ -263,5 +268,49 @@ pub fn write_from_directory(
             enc.finish().map_err(WriterError::IoError)?;
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{write_from_directory, ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
+    use std::path::PathBuf;
+
+    #[test]
+    fn test() {
+        // Setup basic logging
+        struct Logger;
+        impl log::Log for Logger {
+            fn enabled(&self, metadata: &log::Metadata) -> bool {
+                metadata.level() <= log::Level::Debug
+            }
+
+            fn log(&self, record: &log::Record) {
+                println!("{}: {}", record.level(), record.args());
+            }
+
+            fn flush(&self) {}
+        }
+
+        log::set_logger(&Logger).unwrap();
+        log::set_max_level(log::LevelFilter::Debug);
+
+        // TODO: Do not commit me :(
+        let current_dir = "/home/taris/work/dawn/assets";
+        let target_dir = "/tmp/test.tar.gz";
+        write_from_directory(
+            current_dir.into(),
+            WriteOptions {
+                compression: Compression::Gzip,
+                read_mode: ReadMode::Recursive,
+                checksum_algorithm: ChecksumAlgorithm::Md5,
+                author: Some("Coestaris <vk_vm@ukr.net>".to_string()),
+                description: Some("Test assets".to_string()),
+                version: Some("0.1.0".to_string()),
+                license: Some("MIT".to_string()),
+            },
+            target_dir.into(),
+        )
+        .unwrap();
     }
 }

@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 pub mod factory;
 pub mod hub;
+pub mod ir;
 pub mod reader;
 pub(crate) mod registry;
-pub mod ir;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetChecksum([u8; 16]);
@@ -33,13 +33,12 @@ impl Default for AssetChecksum {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AssetHeader {
     pub id: AssetID,
-    #[serde(default)]
-    pub tags: Vec<String>,
     pub asset_type: AssetType,
-    #[serde(default)]
     pub checksum: AssetChecksum,
-    #[serde(default)]
     pub dependencies: Vec<AssetID>,
+    pub tags: Vec<String>,
+    pub author: Option<String>,
+    pub license: Option<String>,
 }
 
 impl Default for AssetHeader {
@@ -50,6 +49,8 @@ impl Default for AssetHeader {
             asset_type: AssetType::Unknown,
             checksum: AssetChecksum::default(),
             dependencies: vec![],
+            license: None,
+            author: None,
         }
     }
 }
@@ -62,7 +63,7 @@ pub enum AssetType {
     Audio,
     Notes,
     Material,
-    Mesh
+    Mesh,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]

@@ -51,15 +51,15 @@ mod asset_serialize {
     }
 
     pub fn serialize(asset: &PackedAsset) -> Result<Vec<u8>, String> {
-        toml::to_string(asset)
-            .map_err(|e| format!("Failed to serialize PackedAsset: {}", e))
-            .and_then(|s| Ok(s.into_bytes()))
-        // rmp_serde::to_vec(asset).map_err(|e| format!("Failed to serialize AssetRaw: {}", e))
+        // toml::to_string(asset)
+        //     .map_err(|e| format!("Failed to serialize PackedAsset: {}", e))
+        //     .and_then(|s| Ok(s.into_bytes()))
+        rmp_serde::to_vec(asset).map_err(|e| format!("Failed to serialize AssetRaw: {}", e))
     }
 
     pub fn deserialize(bytes: &[u8]) -> Result<PackedAsset, String> {
-        toml::from_slice(bytes).map_err(|e| format!("Failed to deserialize PackedAsset: {}", e))
-        // rmp_serde::from_slice(bytes).map_err(|e| format!("Failed to deserialize AssetRaw: {}", e))
+        // toml::from_slice(bytes).map_err(|e| format!("Failed to deserialize PackedAsset: {}", e))
+        rmp_serde::from_slice(bytes).map_err(|e| format!("Failed to deserialize AssetRaw: {}", e))
     }
 }
 
