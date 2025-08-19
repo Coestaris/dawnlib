@@ -3,16 +3,16 @@ use crate::passes::events::{PassEventTrait, RenderPassEvent};
 use crate::renderable::{Position, Renderable, RenderableMesh, Rotation, Scale};
 use crate::renderer::monitor::RendererMonitoring;
 use crate::renderer::Renderer;
+use dawn_ecs::{StopEventLoop, Tick};
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::fetch::{Fetcher, Single};
 use evenio::query::Query;
 use evenio::world::World;
-use glam::Vec3;
+use glam::{Mat4, Quat, Vec3};
 use log::info;
 use std::ptr::NonNull;
 use std::sync::atomic::Ordering;
-use dawn_ecs::{StopEventLoop, Tick};
 
 pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World) {
     #[derive(Component)]
@@ -129,18 +129,14 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         let mut renderables = Vec::new();
         for query in fetcher.iter() {
             // Collect the renderable data from the query
-            let mesh_asset = query.mesh.asset.clone();
+            let mesh_asset = query.mesh.0.clone();
             let position = query.position.map_or(Vec3::ZERO, |p| p.0);
-            let rotation = query.rotation.map_or(Vec3::ZERO, |r| r.0);
+            let rotation = query.rotation.map_or(Quat::IDENTITY, |r| r.0);
             let scale = query.scale.map_or(Vec3::ONE, |s| s.0);
 
             // Create a new Renderable instance
             let renderable = Renderable {
-                model: glam::Mat4::from_scale_rotation_translation(
-                    scale,
-                    glam::Quat::from_euler(glam::EulerRot::XYZ, rotation.x, rotation.y, rotation.z),
-                    position,
-                ),
+                model: Mat4::from_scale_rotation_translation(scale, rotation, position),
                 mesh: mesh_asset,
             };
 

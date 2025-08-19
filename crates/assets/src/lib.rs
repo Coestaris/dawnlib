@@ -128,7 +128,7 @@ impl Clone for Asset {
 impl Asset {
     pub fn new(tid: TypeId, rc: Arc<AtomicUsize>, ptr: NonNull<()>) -> Asset {
         // Increment the reference count
-        rc.fetch_add(1, Ordering::SeqCst);
+        // rc.fetch_add(1, Ordering::SeqCst);
 
         Asset { tid, rc, ptr }
     }
@@ -150,8 +150,9 @@ impl Asset {
 impl Drop for Asset {
     fn drop(&mut self) {
         // Decrement the reference count
-        let rc = self.rc.fetch_sub(1, Ordering::Release);
-        debug!("Asset of {:?} is dropped. rc: {}", self.tid, rc);
+        // let rc = self.rc.fetch_sub(1, Ordering::Release);
+        // TODO: Implement better reference counting
+        // debug!("Asset of {:?} is dropped. rc: {}", self.tid, rc);
     }
 }
 
