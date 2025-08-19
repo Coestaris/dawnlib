@@ -115,6 +115,7 @@ pub(crate) fn convert_key(display: *mut Display, keycode: c_uint, keystate: c_ui
         x11::keysym::XK_Break => KeyCode::Break,
         x11::keysym::XK_Mode_switch => KeyCode::ModeSwitch,
         x11::keysym::XK_Num_Lock => KeyCode::NumLock,
+        x11::keysym::XK_ISO_Next_Group => KeyCode::ShiftL,
         x11::keysym::XK_Shift_L => KeyCode::ShiftL,
         x11::keysym::XK_Shift_R => KeyCode::ShiftR,
         x11::keysym::XK_Control_L => KeyCode::ControlL,
@@ -235,7 +236,7 @@ pub(crate) fn convert_key(display: *mut Display, keycode: c_uint, keystate: c_ui
         x11::keysym::XK_KP_8 => KeyCode::KPDigit(8),
         x11::keysym::XK_KP_9 => KeyCode::KPDigit(9),
 
-        _ => KeyCode::Unknown(keycode as u32, keystate as u32),
+        _ => KeyCode::Unknown(keycode as u32, keysym as u32),
     }
 }
 
