@@ -12,7 +12,8 @@ pub struct Mesh {
     pub vao: VertexArray,
     pub vbo: ArrayBuffer,
     pub ebo: ElementArrayBuffer,
-    pub count: usize,
+    pub indices_count: usize,
+    pub primitives_count: usize,
     pub min: Vec3,
     pub max: Vec3,
 }
@@ -53,7 +54,8 @@ impl Mesh {
             vao,
             vbo,
             ebo,
-            count: ir.primitives_count,
+            indices_count: ir.indices.len(),
+            primitives_count: ir.primitives_count,
             min: ir.bounds.min(),
             max: ir.bounds.max(),
         })
@@ -62,7 +64,7 @@ impl Mesh {
     #[inline(always)]
     pub fn draw(&self) -> PassExecuteResult {
         let binding = self.vao.bind();
-        binding.draw_elements(self.count);
-        PassExecuteResult::ok(1, self.count)
+        binding.draw_elements(self.indices_count);
+        PassExecuteResult::ok(1, self.primitives_count)
     }
 }
