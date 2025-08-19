@@ -3,15 +3,16 @@ use crate::reader::AssetReader;
 use crate::registry::{AssetContainer, AssetRegistry, AssetState, QueriesRegistry};
 use crate::{Asset, AssetCastable, AssetID, AssetType, TypedAsset};
 use crossbeam_queue::ArrayQueue;
+use dawn_ecs::Tick;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver, Sender};
 use evenio::fetch::Single;
+use evenio::handler::IntoHandler;
 use evenio::prelude::World;
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use dawn_ecs::Tick;
 
 /// Capacity of the queue for messages sent to the asset factory.
 const IN_QUEUE_CAPACITY: usize = 100;
@@ -331,6 +332,6 @@ impl AssetHub {
             }
         }
 
-        world.add_handler(tick_handler);
+        world.add_handler(tick_handler.low());
     }
 }

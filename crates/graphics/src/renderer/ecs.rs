@@ -7,6 +7,7 @@ use dawn_ecs::{StopEventLoop, Tick};
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::fetch::{Fetcher, Single};
+use evenio::handler::IntoHandler;
 use evenio::query::Query;
 use evenio::world::World;
 use glam::{Mat4, Quat, Vec3};
@@ -119,14 +120,17 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
     // Collect renderables from the ECS and send them to the renderer thread
     // This function will be called every tick to collect the renderables
     // and send them to the renderer thread.
-    fn collect_renderables<E: PassEventTrait>(
+    fn sync_renderables<E: PassEventTrait>(
         _: Receiver<Tick>,
         mut renderer: Single<&mut Boxed>,
         fetcher: Fetcher<Query>,
     ) {
-        // TODO: Do not allocate a new vector every time, instead use a static one!
         let renderer = renderer.cast_mut::<E>();
-        let mut renderables = Vec::new();
+
+        // Update the renderables buffer in-place
+        let renderables = renderer.renderables_buffer_input.input_buffer_mut();
+        renderables.clear();
+
         for query in fetcher.iter() {
             // Collect the renderable data from the query
             let mesh_asset = query.mesh.0.clone();
@@ -134,23 +138,20 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
             let rotation = query.rotation.map_or(Quat::IDENTITY, |r| r.0);
             let scale = query.scale.map_or(Vec3::ONE, |s| s.0);
 
-            // Create a new Renderable instance
-            let renderable = Renderable {
+            // Push the renderable to the vector
+            renderables.push(Renderable {
                 model: Mat4::from_scale_rotation_translation(scale, rotation, position),
                 mesh: mesh_asset,
-            };
-
-            // Push the renderable to the vector
-            renderables.push(renderable);
+            });
         }
 
         // Send the collected renderables to the renderer thread
-        renderer.renderables_buffer_input.write(renderables);
+        renderer.renderables_buffer_input.publish();
     }
 
-    world.add_handler(monitoring_handler::<E>);
-    world.add_handler(inputs_handler::<E>);
-    world.add_handler(view_closed_handler::<E>);
-    world.add_handler(collect_renderables::<E>);
-    world.add_handler(render_pass_event_handler::<E>);
+    world.add_handler(monitoring_handler::<E>.low());
+    world.add_handler(inputs_handler::<E>.high());
+    world.add_handler(view_closed_handler::<E>.low());
+    world.add_handler(sync_renderables::<E>.low());
+    world.add_handler(render_pass_event_handler::<E>.high());
 }
