@@ -6,7 +6,7 @@ use crate::writer::ir::{normalize_name, PartialIR};
 use crate::writer::user::{UserAssetHeader, UserMaterialAsset};
 use crate::writer::UserAssetFile;
 use dawn_assets::ir::material::{Emissive, IRMaterial};
-use dawn_assets::ir::texture::{IRPixelFormat, IRTextureFilter, IRTextureWrap};
+use dawn_assets::ir::texture::{IRTextureFilter, IRTextureWrap};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use image::{DynamicImage, GrayImage, RgbaImage};
@@ -119,6 +119,8 @@ pub fn convert_material(
     user: &UserMaterialAsset,
 ) -> Result<Vec<PartialIR>, String> {
     debug!("Converting material: {:?}", file);
+
+    todo!();
 
     // TODO: Read iamges from disk
     convert_material_from_memory(
