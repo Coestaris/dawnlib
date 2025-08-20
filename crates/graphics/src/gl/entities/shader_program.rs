@@ -90,7 +90,7 @@ mod targets {
 pub use targets::*;
 
 impl ShaderProgram {
-    pub(crate) fn from_ir<E: PassEventTrait>(ir: &IRShader) -> Result<ShaderProgram, String> {
+    pub(crate) fn from_ir<E: PassEventTrait>(ir: IRShader) -> Result<ShaderProgram, String> {
         // TODO: Cache the compilation result
         // TODO: Try load SPIRV instead of compiling from source
         let program = ShaderProgram::new().ok_or("Failed to create shader program")?;

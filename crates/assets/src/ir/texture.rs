@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -95,7 +96,7 @@ pub enum IRTextureFilter {
 
 impl Default for IRTextureFilter {
     fn default() -> Self {
-        IRTextureFilter::Nearest
+        IRTextureFilter::Linear
     }
 }
 
@@ -114,7 +115,7 @@ impl Default for IRTextureWrap {
 }
 
 /// Internal representation of texture data
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct IRTexture {
     // Texture data is stored as an interleaved byte array,
     // in GPU-friendly format
@@ -127,6 +128,22 @@ pub struct IRTexture {
     pub wrap_s: IRTextureWrap,
     pub wrap_t: IRTextureWrap,
     pub wrap_r: IRTextureWrap,
+}
+
+impl Debug for IRTexture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IRTexture")
+            .field("data_length", &self.data.len())
+            .field("texture_type", &self.texture_type)
+            .field("pixel_format", &self.pixel_format)
+            .field("use_mipmaps", &self.use_mipmaps)
+            .field("min_filter", &self.min_filter)
+            .field("mag_filter", &self.mag_filter)
+            .field("wrap_s", &self.wrap_s)
+            .field("wrap_t", &self.wrap_t)
+            .field("wrap_r", &self.wrap_r)
+            .finish()
+    }
 }
 
 impl Default for IRTexture {

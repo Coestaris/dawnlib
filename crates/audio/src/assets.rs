@@ -36,11 +36,11 @@ impl AudioAssetFactory {
 
     pub fn process_events(&mut self) {
         self.basic_factory.process_events(
-            |_, ir| {
-                if let IRAsset::Audio(data) = ir {
+            |message| {
+                if let IRAsset::Audio(data) = message.ir {
                     // TODO: Resample the audio data to the desired sample rate
                     // For now, we just return the ir data as is.
-                    Ok(AudioAsset(data.clone()))
+                    Ok(AudioAsset(data))
                 } else {
                     Err("Expected audio metadata".to_string())
                 }
@@ -83,9 +83,9 @@ impl NotesAssetFactory {
 
     pub fn process_events(&mut self) {
         self.basic_factory.process_events(
-            |_, ir| {
-                if let IRAsset::Notes(data) = ir {
-                    Ok(NotesAsset(data.clone()))
+            |message| {
+                if let IRAsset::Notes(data) = message.ir {
+                    Ok(NotesAsset(data))
                 } else {
                     Err("Expected shader metadata".to_string())
                 }

@@ -5,6 +5,7 @@ pub mod shader;
 pub mod texture;
 pub mod material;
 
+use std::fmt::Debug;
 use crate::ir::audio::IRAudio;
 use crate::ir::mesh::IRMesh;
 use crate::ir::notes::IRNotes;
@@ -13,7 +14,7 @@ use crate::ir::texture::IRTexture;
 use crate::ir::material::IRMaterial;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum IRAsset {
     Unknown,
     Shader(IRShader),
