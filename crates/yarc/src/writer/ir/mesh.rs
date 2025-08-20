@@ -1,6 +1,6 @@
 use crate::writer::ir::material::{convert_material_from_memory, UserMaterialAssetInner};
 use crate::writer::ir::{normalize_name, PartialIR};
-use crate::writer::user::{UserAssetHeader, UserAssetProperties, UserMaterialAsset, UserMeshAsset};
+use crate::writer::user::{UserAssetHeader, UserMaterialAsset, UserMeshAsset};
 use crate::writer::UserAssetFile;
 use dawn_assets::ir::mesh::{IRMesh, IRMeshBounds, IRPrimitive, IRVertex};
 use dawn_assets::ir::IRAsset;

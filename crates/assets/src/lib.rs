@@ -1,9 +1,7 @@
-use log::debug;
 use serde::{Deserialize, Serialize};
 use std::any::TypeId;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub mod factory;
@@ -11,6 +9,7 @@ pub mod hub;
 pub mod ir;
 pub mod reader;
 pub(crate) mod registry;
+mod pool;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetChecksum([u8; 16]);
@@ -110,58 +109,40 @@ impl Default for AssetType {
 
 pub trait AssetCastable: 'static {}
 
-#[derive(Debug)]
-pub struct Asset {
+#[derive(Debug, Clone)]
+struct AssetInner {
     tid: TypeId,
-    rc: Arc<AtomicUsize>,
     ptr: NonNull<()>,
 }
 
-impl Clone for Asset {
-    fn clone(&self) -> Self {
-        // Increment the reference count
-        self.rc.fetch_add(1, Ordering::SeqCst);
-        Asset {
-            tid: self.tid,
-            rc: Arc::clone(&self.rc),
-            ptr: self.ptr,
-        }
-    }
-}
+#[derive(Debug, Clone)]
+pub struct Asset(Arc<AssetInner>);
+
+unsafe impl Send for Asset {}
+unsafe impl Sync for Asset {}
 
 impl Asset {
-    pub fn new(tid: TypeId, rc: Arc<AtomicUsize>, ptr: NonNull<()>) -> Asset {
-        // Increment the reference count
-        // rc.fetch_add(1, Ordering::SeqCst);
-
-        Asset { tid, rc, ptr }
+    pub fn new(tid: TypeId, ptr: NonNull<()>) -> Asset {
+        Asset(Arc::new(AssetInner { tid, ptr }))
+    }
+    
+    pub(crate) fn get_strong_count(&self) -> usize {
+        Arc::strong_count(&self.0)
     }
 
     pub fn cast<'a, T: AssetCastable>(&self) -> &'a T {
         #[cfg(debug_assertions)]
-        if self.tid != TypeId::of::<T>() {
+        if self.0.tid != TypeId::of::<T>() {
             panic!(
                 "Asset type mismatch: expected {:?}, found {:?}",
                 TypeId::of::<T>(),
-                self.tid
+                self.0.tid
             );
         }
 
-        unsafe { &*self.ptr.as_ptr().cast::<T>() }
+        unsafe { &*self.0.ptr.as_ptr().cast::<T>() }
     }
 }
-
-impl Drop for Asset {
-    fn drop(&mut self) {
-        // Decrement the reference count
-        // let rc = self.rc.fetch_sub(1, Ordering::Release);
-        // TODO: Implement better reference counting
-        // debug!("Asset of {:?} is dropped. rc: {}", self.tid, rc);
-    }
-}
-
-unsafe impl Send for Asset {}
-unsafe impl Sync for Asset {}
 
 #[derive(Debug)]
 pub struct TypedAsset<T: AssetCastable> {
@@ -182,11 +163,11 @@ impl<T: AssetCastable> Clone for TypedAsset<T> {
 impl<T: AssetCastable> TypedAsset<T> {
     pub fn new(asset: Asset) -> TypedAsset<T> {
         #[cfg(debug_assertions)]
-        if asset.tid != TypeId::of::<T>() {
+        if asset.0.tid != TypeId::of::<T>() {
             panic!(
                 "TypedAsset type mismatch: expected {:?}, found {:?}",
                 TypeId::of::<T>(),
-                asset.tid
+                asset.0.tid
             );
         }
 
