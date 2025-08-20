@@ -4,7 +4,9 @@ mod debug;
 pub mod entities;
 mod probe;
 
-use crate::gl::assets::{MeshAssetFactory, ShaderAssetFactory, TextureAssetFactory};
+use crate::gl::assets::{
+    MaterialAssetFactory, MeshAssetFactory, ShaderAssetFactory, TextureAssetFactory,
+};
 use crate::gl::debug::{Debugger, MessageType};
 use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
@@ -23,6 +25,7 @@ pub struct GLRenderer<E: PassEventTrait> {
     texture_factory: Option<TextureAssetFactory>,
     shader_factory: Option<ShaderAssetFactory>,
     mesh_factory: Option<MeshAssetFactory>,
+    material_factory: Option<MaterialAssetFactory>,
 }
 
 pub struct GLRendererConfig {
@@ -31,6 +34,7 @@ pub struct GLRendererConfig {
     pub texture_factory_binding: Option<FactoryBinding>,
     pub shader_factory_binding: Option<FactoryBinding>,
     pub mesh_factory_binding: Option<FactoryBinding>,
+    pub material_factory_binding: Option<FactoryBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -138,6 +142,13 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         } else {
             None
         };
+        let material_factory = if let Some(binding) = cfg.material_factory_binding {
+            let mut factory = MaterialAssetFactory::new();
+            factory.bind(binding);
+            Some(factory)
+        } else {
+            None
+        };
 
         // Setup the debug output for OpenGL.
         let debugger = Debugger::new(|source, rtype, severity, message| match rtype {
@@ -173,6 +184,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             texture_factory,
             shader_factory,
             mesh_factory,
+            material_factory,
         })
     }
 
@@ -186,6 +198,9 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             factory.process_events::<E>();
         }
         if let Some(factory) = &mut self.mesh_factory {
+            factory.process_events::<E>();
+        }
+        if let Some(factory) = &mut self.material_factory {
             factory.process_events::<E>();
         }
 

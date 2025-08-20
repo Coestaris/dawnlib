@@ -1,3 +1,4 @@
+use dawn_assets::ir::material::{Emissive, NormalMap, Occlusion};
 use dawn_assets::ir::shader::IRShaderSourceType;
 use dawn_assets::ir::texture::{IRPixelFormat, IRTextureFilter, IRTextureType, IRTextureWrap};
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID, AssetType};
@@ -52,17 +53,34 @@ pub(crate) struct UserAudioAsset {
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct UserMeshAsset {
     pub file: String,
+    pub gen_material: Option<AssetID>,
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
+pub(crate) struct UserMaterialAsset {
+    pub base_color_factor: [f32; 4],
+    pub base_color_texture: Option<String>,
+    pub metallic_texture: Option<String>,
+    #[serde(default)]
+    pub metallic_factor: f32,
+    pub roughness_texture: Option<String>,
+    #[serde(default)]
+    pub roughness_factor: f32,
+    // pub normal: Option<NormalMap>,
+    // pub occlusion: Option<Occlusion>,
+    // pub emissive: Emissive,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub enum UserAssetProperties {
     Shader(UserShaderAsset),
     Texture(UserTextureAsset),
     Audio(UserAudioAsset),
+    Material(UserMaterialAsset),
     Mesh(UserMeshAsset),
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 pub(crate) struct UserAsset {
     pub header: UserAssetHeader,
     pub properties: UserAssetProperties,

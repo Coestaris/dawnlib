@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 dawn-assets = { path = "../assets" }
+thiserror = "2.0.16"
 tar = "0.4.44"
 flate2 = "1.1.2"
 

@@ -1,3 +1,4 @@
+use crate::gl::entities::material::Material;
 use crate::gl::entities::mesh::Mesh;
 use crate::gl::entities::shader_program::ShaderProgram;
 use crate::gl::entities::texture::Texture;
@@ -93,6 +94,38 @@ impl MeshAssetFactory {
                     Mesh::from_ir(mesh)
                 } else {
                     Err("Expected mesh metadata".to_string())
+                }
+            },
+            |_| {
+                // Free will be handled in the Drop implementation of Mesh
+            },
+        );
+    }
+}
+
+pub(crate) struct MaterialAssetFactory {
+    basic_factory: BasicFactory<Material>,
+}
+
+impl MaterialAssetFactory {
+    pub fn new() -> Self {
+        MaterialAssetFactory {
+            basic_factory: BasicFactory::new(),
+        }
+    }
+
+    pub fn bind(&mut self, binding: FactoryBinding) {
+        assert_eq!(binding.asset_type(), AssetType::Material);
+        self.basic_factory.bind(binding);
+    }
+
+    pub fn process_events<E: PassEventTrait>(&mut self) {
+        self.basic_factory.process_events(
+            |_, ir| {
+                if let IRAsset::Material(material) = ir {
+                    Material::from_ir::<E>(material)
+                } else {
+                    Err("Expected material metadata".to_string())
                 }
             },
             |_| {
