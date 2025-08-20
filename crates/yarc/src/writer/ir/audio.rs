@@ -1,9 +1,13 @@
-use crate::writer::user::{UserAssetHeader, UserAudioAsset};
-use crate::writer::UserAssetFile;
-use dawn_assets::ir::audio::IRAudio;
-use std::path::Path;
+use log::debug;
 use crate::writer::ir::PartialIR;
+use crate::writer::user::UserAudioAsset;
+use crate::writer::UserAssetFile;
 
-pub fn convert_audio(file: &UserAssetFile, user: &UserAudioAsset) -> Result<Vec<PartialIR>, String>  {
+pub fn convert_audio(
+    file: &UserAssetFile,
+    user: &UserAudioAsset,
+) -> Result<Vec<PartialIR>, String> {
+    debug!("Converting audio: {:?}", file);
+    
     todo!()
 }

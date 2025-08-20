@@ -1,5 +1,4 @@
 mod ir;
-mod pix;
 mod user;
 
 use crate::manifest::Manifest;
@@ -14,7 +13,9 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use tar::Builder;
+use thiserror::Error;
 
+#[derive(Debug)]
 pub(crate) struct UserAssetFile {
     asset: UserAsset,
     path: PathBuf,
@@ -30,56 +31,29 @@ pub(crate) struct AssetBinary {
     name: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum WriterError {
-    CollectingFilesFailed(std::io::Error),
-    IoError(std::io::Error),
-    TarError(std::io::Error),
-    ParseMetadataFailed(PathBuf, toml::de::Error),
-    ValidationFailed(String),
-    SerializationError(String),
+    #[error("IO-related error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("Unsupported compression: {0}")]
     UnsupportedChecksumAlgorithm(ChecksumAlgorithm),
+    #[error("Failed to parse metadata: {0}: {1}")]
+    DeserializationError(PathBuf, toml::de::Error),
+    #[error("Failed to serialize: {0}")]
+    SerializationError(String),
+    #[error("Failed to validate metadata: {0}")]
+    ConvertingToIRFailed(String),
+    #[error("Unsupported read mode: {0}")]
     DependenciesMissing(AssetID, AssetID),
+    #[error("Circular dependency detected: {0} -> {1}")]
+    CircleDependency(AssetID, AssetID),
+    #[error("Non-unique ID: {0}")]
+    NonUniqueID(AssetID),
 }
-
-impl std::fmt::Display for WriterError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            WriterError::CollectingFilesFailed(e) => write!(f, "Failed to collect files: {}", e),
-            WriterError::IoError(e) => write!(f, "I/O error: {}", e),
-            WriterError::TarError(e) => write!(f, "Tar error: {}", e),
-            WriterError::ParseMetadataFailed(name, e) => {
-                write!(
-                    f,
-                    "Failed to parse metadata for '{}': {}",
-                    name.to_str().unwrap(),
-                    e
-                )
-            }
-            WriterError::UnsupportedChecksumAlgorithm(a) => {
-                write!(f, "Unsupported checksum algorithm: {:?}", a)
-            }
-            WriterError::ValidationFailed(msg) => {
-                write!(f, "Validation failed: {}", msg)
-            }
-            WriterError::SerializationError(msg) => {
-                write!(f, "Serialization error: {}", msg)
-            }
-            WriterError::DependenciesMissing(id, dep) => {
-                write!(f, "Dependencies missing. {} requires {}", id, dep)
-            }
-        }
-    }
-}
-
-impl std::error::Error for WriterError {}
 
 /// Collect files from the specified path based on the read mode
 /// and return a vector of file paths.
-fn collect_files<P: AsRef<std::path::Path>>(
-    path: P,
-    read_mode: ReadMode,
-) -> Result<Vec<std::path::PathBuf>, std::io::Error> {
+fn collect_files(path: PathBuf, read_mode: ReadMode) -> Result<Vec<PathBuf>, std::io::Error> {
     let mut files = Vec::new();
     match read_mode {
         ReadMode::Flat => {
@@ -120,10 +94,9 @@ fn collect_user_assets(
     // Read toml files
     let mut user_assets = Vec::new();
     for toml_file in &toml_files {
-        let mut file = File::open(toml_file).map_err(WriterError::IoError)?;
+        let mut file = File::open(toml_file)?;
         let mut content = String::new();
-        file.read_to_string(&mut content)
-            .map_err(WriterError::IoError)?;
+        file.read_to_string(&mut content)?;
 
         // Parse the metadata
         match toml::from_str::<UserAsset>(&content) {
@@ -135,7 +108,7 @@ fn collect_user_assets(
             }
 
             Err(e) => {
-                Err(WriterError::ParseMetadataFailed(toml_file.clone(), e))?;
+                Err(WriterError::DeserializationError(toml_file.clone(), e))?;
             }
         }
     }
@@ -150,7 +123,8 @@ fn user_assets_to_irs(
     let mut result = Vec::new();
     for file in files {
         result.extend(
-            user_to_ir(file, checksum_algorithm).map_err(|e| WriterError::ValidationFailed(e))?,
+            user_to_ir(file, checksum_algorithm)
+                .map_err(|e| WriterError::ConvertingToIRFailed(e))?,
         );
     }
     Ok(result)
@@ -173,21 +147,21 @@ fn irs_to_binaries(
 
     // Serialize each IR asset
     for ir in irs {
-        let name = ir.header.id.to_string();
-        let packed_asset = PackedAsset::new(ir.header, ir.ir);
+        let packed_asset = PackedAsset::new(ir.header.clone(), ir.ir);
         let serialized = packed_asset
             .serialize()
             .map_err(WriterError::SerializationError)?;
         binary.push(AssetBinary {
             raw: serialized,
-            name,
+            name: ir.header.id.as_str().to_string(),
         });
     }
 
     Ok(binary)
 }
 
-fn check_dependencies(irs: &[UserIRAsset]) -> Result<(), WriterError> {
+fn sanity_check(irs: &[UserIRAsset]) -> Result<(), WriterError> {
+    // Check that all dependencies are present
     for ir in irs {
         for dep in &ir.header.dependencies {
             if !irs.iter().any(|i| i.header.id == *dep) {
@@ -198,6 +172,26 @@ fn check_dependencies(irs: &[UserIRAsset]) -> Result<(), WriterError> {
             }
         }
     }
+
+    // Check that there's no circular dependencies
+    let mut visited = std::collections::HashSet::new();
+    for ir in irs {
+        if !visited.insert(ir.header.id.clone()) {
+            return Err(WriterError::CircleDependency(
+                ir.header.id.clone(),
+                ir.header.dependencies[0].clone(),
+            ));
+        }
+    }
+
+    // Check that all IDs are unique
+    let mut ids = std::collections::HashSet::new();
+    for ir in irs {
+        if !ids.insert(ir.header.id.clone()) {
+            return Err(WriterError::NonUniqueID(ir.header.id.clone()));
+        }
+    }
+
     Ok(())
 }
 
@@ -207,9 +201,7 @@ where
 {
     for binary in binaries {
         let mut header = tar::Header::new_gnu();
-        header
-            .set_path(binary.name.as_str())
-            .map_err(WriterError::TarError)?;
+        header.set_path(binary.name.as_str())?;
         header.set_size(binary.raw.len() as u64);
         header.set_mode(0o644); // Set file mode to 644
         header.set_uid(0); // Set user ID to 0 (root)
@@ -222,8 +214,7 @@ where
         );
         header.set_cksum();
 
-        tar.append(&header, binary.raw.as_slice())
-            .map_err(WriterError::TarError)?;
+        tar.append(&header, binary.raw.as_slice())?;
     }
     Ok(())
 }
@@ -236,11 +227,10 @@ pub fn write_from_directory(
     options: WriteOptions,
     output: PathBuf,
 ) -> Result<(), WriterError> {
-    let input_files =
-        collect_files(input_dir, options.read_mode).map_err(WriterError::CollectingFilesFailed)?;
+    let input_files = collect_files(input_dir, options.read_mode)?;
     let user_assets = collect_user_assets(&input_files, options.clone())?;
     let irs = user_assets_to_irs(user_assets, options.checksum_algorithm)?;
-    check_dependencies(&irs)?;
+    sanity_check(&irs)?;
     let manifest = Manifest::new(&options, irs.iter().map(|h| h.header.clone()).collect());
     let binaries = irs_to_binaries(irs, &manifest)?;
 
@@ -250,25 +240,26 @@ pub fn write_from_directory(
         output.to_str().unwrap()
     );
 
-    let output_file = File::create(&output).map_err(WriterError::IoError)?;
+    let output_file = File::create(&output)?;
     match options.compression {
         Compression::None => {
             // Create a tar archive
             let mut tar = Builder::new(output_file);
             add_binaries(&mut tar, &binaries)?;
-            tar.finish().map_err(WriterError::TarError)
+            tar.finish()?;
         }
         Compression::Gzip => {
             // Create a gzipped tar archive
             let enc = GzEncoder::new(output_file, flate2::Compression::default());
             let mut tar = Builder::new(enc);
             add_binaries(&mut tar, &binaries)?;
-            tar.finish().map_err(WriterError::TarError)?;
-            let mut enc = tar.into_inner().map_err(WriterError::TarError)?;
-            enc.finish().map_err(WriterError::IoError)?;
-            Ok(())
+            tar.finish()?;
+            let enc = tar.into_inner()?;
+            enc.finish()?;
         }
     }
+
+    Ok(())
 }
 
 #[cfg(test)]

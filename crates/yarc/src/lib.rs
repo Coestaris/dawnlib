@@ -7,6 +7,7 @@ use dawn_assets::AssetHeader;
 pub use manifest::Manifest;
 pub use reader::read;
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 pub use writer::write_from_directory;
 pub use writer::WriterError;
 
@@ -28,6 +29,15 @@ pub enum ChecksumAlgorithm {
     Blake3,
 }
 
+impl Display for ChecksumAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Md5 => write!(f, "MD5"),
+            Self::Blake3 => write!(f, "Blake3"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct WriteOptions {
     pub compression: Compression,
@@ -40,6 +50,29 @@ pub struct WriteOptions {
     pub license: Option<String>,
 }
 
+#[cfg(any())]
+mod asset_serialize {
+    use crate::PackedAsset;
+
+    pub fn get_tool_name() -> String {
+        "toml_parser".to_string() // TODO: Get from Cargo.toml
+    }
+    pub fn get_tool_version() -> String {
+        "0.1.0".to_string() // TODO: Get from Cargo.toml
+    }
+
+    pub fn serialize(asset: &PackedAsset) -> Result<Vec<u8>, String> {
+        toml::to_string(asset)
+            .map_err(|e| format!("Failed to serialize PackedAsset: {}", e))
+            .and_then(|s| Ok(s.into_bytes()))
+    }
+
+    pub fn deserialize(bytes: &[u8]) -> Result<PackedAsset, String> {
+        toml::from_slice(bytes).map_err(|e| format!("Failed to deserialize PackedAsset: {}", e))
+    }
+}
+
+#[cfg(all())]
 mod asset_serialize {
     use crate::PackedAsset;
 
@@ -51,14 +84,10 @@ mod asset_serialize {
     }
 
     pub fn serialize(asset: &PackedAsset) -> Result<Vec<u8>, String> {
-        // toml::to_string(asset)
-        //     .map_err(|e| format!("Failed to serialize PackedAsset: {}", e))
-        //     .and_then(|s| Ok(s.into_bytes()))
         rmp_serde::to_vec(asset).map_err(|e| format!("Failed to serialize AssetRaw: {}", e))
     }
 
     pub fn deserialize(bytes: &[u8]) -> Result<PackedAsset, String> {
-        // toml::from_slice(bytes).map_err(|e| format!("Failed to deserialize PackedAsset: {}", e))
         rmp_serde::from_slice(bytes).map_err(|e| format!("Failed to deserialize AssetRaw: {}", e))
     }
 }
