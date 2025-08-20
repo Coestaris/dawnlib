@@ -21,7 +21,7 @@ pub struct Mesh {
 impl AssetCastable for Mesh {}
 
 impl Mesh {
-    pub fn from_ir(ir: &IRMesh) -> Result<Self, String> {
+    pub fn from_ir(ir: IRMesh) -> Result<Self, String> {
         let vao = VertexArray::new(ir.primitive.clone())
             .map_err(|e| format!("Failed to create VertexArray: {}", e))?;
         let mut vbo =

@@ -172,13 +172,13 @@ impl<'a> TextureBinding<'a> {
 impl Drop for TextureBinding<'_> {
     fn drop(&mut self) {
         unsafe {
-            bindings::BindTexture(self.texture.texture_type, 0);
+            // bindings::BindTexture(self.texture.texture_type, 0);
         }
     }
 }
 
 impl Texture {
-    pub(crate) fn from_ir<E: PassEventTrait>(ir: &IRTexture) -> Result<Self, String> {
+    pub(crate) fn from_ir<E: PassEventTrait>(ir: IRTexture) -> Result<Self, String> {
         let texture = Self::new(ir.texture_type.clone())?;
         let binding = texture.bind(0);
 

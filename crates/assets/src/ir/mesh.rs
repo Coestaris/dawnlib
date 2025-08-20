@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use crate::AssetID;
 use glam::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
@@ -85,7 +86,7 @@ pub enum IRPrimitive {
     TriangleFan,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct IRMesh {
     // All the geometry hierarchy is baked into the single World-Space mesh.
     pub vertices: Vec<IRVertex>,
@@ -113,6 +114,19 @@ impl IRMesh {
                 self.indices.len() * size_of::<u32>(),
             )
         }
+    }
+}
+
+impl Debug for IRMesh {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IRMesh")
+            .field("vertices_count", &self.vertices.len())
+            .field("indices_count", &self.indices.len())
+            .field("material", &self.material)
+            .field("bounds", &self.bounds)
+            .field("primitive", &self.primitive)
+            .field("primitives_count", &self.primitives_count)
+            .finish()
     }
 }
 

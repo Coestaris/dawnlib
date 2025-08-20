@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,10 +25,19 @@ impl Default for IRShaderSourceType {
 }
 
 /// Internal representation of shader data
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct IRShader {
     pub compile_options: Vec<String>,
     pub sources: HashMap<IRShaderSourceType, Vec<u8>>,
+}
+
+impl Debug for IRShader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IRShader")
+            .field("compile_options", &self.compile_options)
+            .field("sources_count", &self.sources.len())
+            .finish()
+    }
 }
 
 impl Default for IRShader {

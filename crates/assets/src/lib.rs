@@ -9,7 +9,7 @@ pub mod hub;
 pub mod ir;
 pub mod reader;
 pub(crate) mod registry;
-mod pool;
+pub mod query;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetChecksum([u8; 16]);
@@ -63,6 +63,20 @@ pub enum AssetType {
     Notes,
     Material,
     Mesh,
+}
+
+impl std::fmt::Display for AssetType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AssetType::Unknown => write!(f, "Unknown"),
+            AssetType::Shader => write!(f, "Shader"),
+            AssetType::Texture => write!(f, "Texture"),
+            AssetType::Audio => write!(f, "Audio"),
+            AssetType::Notes => write!(f, "Notes"),
+            AssetType::Material => write!(f, "Material"),
+            AssetType::Mesh => write!(f, "Mesh"),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -122,7 +136,7 @@ unsafe impl Send for Asset {}
 unsafe impl Sync for Asset {}
 
 impl Asset {
-    pub fn new(tid: TypeId, ptr: NonNull<()>) -> Asset {
+    pub fn new(id: AssetID, tid: TypeId, ptr: NonNull<()>) -> Asset {
         Asset(Arc::new(AssetInner { tid, ptr }))
     }
     

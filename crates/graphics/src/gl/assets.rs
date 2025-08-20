@@ -25,8 +25,8 @@ impl ShaderAssetFactory {
 
     pub fn process_events<E: PassEventTrait>(&mut self) {
         self.basic_factory.process_events(
-            |_, ir| {
-                if let IRAsset::Shader(shader) = ir {
+            |message| {
+                if let IRAsset::Shader(shader) = message.ir {
                     ShaderProgram::from_ir::<E>(shader)
                 } else {
                     Err("Expected shader metadata".to_string())
@@ -57,8 +57,8 @@ impl TextureAssetFactory {
 
     pub fn process_events<E: PassEventTrait>(&mut self) {
         self.basic_factory.process_events(
-            |_, ir| {
-                if let IRAsset::Texture(texture) = ir {
+            |message| {
+                if let IRAsset::Texture(texture) = message.ir {
                     Texture::from_ir::<E>(texture)
                 } else {
                     Err("Expected texture metadata".to_string())
@@ -89,8 +89,8 @@ impl MeshAssetFactory {
 
     pub fn process_events<E: PassEventTrait>(&mut self) {
         self.basic_factory.process_events(
-            |_, ir| {
-                if let IRAsset::Mesh(mesh) = ir {
+            |message| {
+                if let IRAsset::Mesh(mesh) = message.ir {
                     Mesh::from_ir(mesh)
                 } else {
                     Err("Expected mesh metadata".to_string())
@@ -121,9 +121,9 @@ impl MaterialAssetFactory {
 
     pub fn process_events<E: PassEventTrait>(&mut self) {
         self.basic_factory.process_events(
-            |_, ir| {
-                if let IRAsset::Material(material) = ir {
-                    Material::from_ir::<E>(material)
+            |message| {
+                if let IRAsset::Material(material) = message.ir {
+                    Material::from_ir::<E>(material, message.dependencies)
                 } else {
                     Err("Expected material metadata".to_string())
                 }

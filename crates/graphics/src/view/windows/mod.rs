@@ -1,7 +1,7 @@
 mod input;
 
 use crate::gl::ViewHandleOpenGL;
-use crate::input::InputEvent;
+use crate::input::{InputEvent, MouseButton};
 use crate::view::windows::input::{convert_key, convert_mouse_button};
 use crate::view::{TickResult, ViewConfig, ViewTrait};
 use crossbeam_queue::ArrayQueue;
@@ -180,18 +180,18 @@ impl ViewTrait for View {
                     event = InputEvent::KeyRelease(convert_key(VIRTUAL_KEY(msg.wParam.0 as u16)));
                 }
                 WM_LBUTTONDOWN => {
-                    event = InputEvent::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
+                    event = InputEvent::MouseButtonPress(MouseButton::Left);
                 }
                 WM_LBUTTONUP => {
                     event =
-                        InputEvent::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
+                        InputEvent::MouseButtonRelease(MouseButton::Left);
                 }
                 WM_MBUTTONDOWN => {
-                    event = InputEvent::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
+                    event = InputEvent::MouseButtonPress(MouseButton::Middle);
                 }
                 WM_MBUTTONUP => {
                     event =
-                        InputEvent::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
+                        InputEvent::MouseButtonRelease(MouseButton::Middle);
                 }
                 WM_MOUSEMOVE => {
                     let x = (msg.lParam.0 as i32 & 0xFFFF) as f32;
@@ -206,11 +206,11 @@ impl ViewTrait for View {
                     };
                 }
                 WM_RBUTTONDOWN => {
-                    event = InputEvent::MouseButtonPress(convert_mouse_button(msg.wParam.0 as u32));
+                    event = InputEvent::MouseButtonPress(MouseButton::Right);
                 }
                 WM_RBUTTONUP => {
                     event =
-                        InputEvent::MouseButtonRelease(convert_mouse_button(msg.wParam.0 as u32));
+                        InputEvent::MouseButtonRelease(MouseButton::Right);
                 }
                 _ => {
                     return if !closed {
