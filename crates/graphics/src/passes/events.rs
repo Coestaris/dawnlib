@@ -21,8 +21,8 @@ impl<E: PassEventTrait> RenderPassEvent<E> {
     }
 
     #[inline(always)]
-    pub(crate) fn get_event(&self) -> &E {
-        &self.event
+    pub(crate) fn event(self) -> E {
+        self.event
     }
 }
 
@@ -53,7 +53,7 @@ impl RenderPassTargetId {
     }
 }
 
-type EventDispatcher<E> = fn(*mut u8, &E);
+type EventDispatcher<E> = fn(*mut u8, E);
 
 /// Describes a render pass event target.
 /// This struct is used by the dispatcher to address
@@ -92,7 +92,7 @@ impl<E: PassEventTrait> PassEventTarget<E> {
     }
 
     #[inline(always)]
-    pub(crate) fn dispatch(&self, event: &E) {
+    pub(crate) fn dispatch(&self, event: E) {
         (self.dispatcher)(self.ptr, event);
     }
 }

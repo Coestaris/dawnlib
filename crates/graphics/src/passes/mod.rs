@@ -25,7 +25,7 @@ pub trait RenderPass<E: PassEventTrait>: Send + Sync + 'static {
     /// This method is called when an event is received that is relevant
     /// to declared targets.
     #[inline(always)]
-    fn dispatch(&mut self, _event: &E) {
+    fn dispatch(&mut self, _event: E) {
         // The default implementation does nothing.
     }
 
