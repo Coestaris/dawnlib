@@ -1,6 +1,7 @@
 use crate::factory::{AssetQueryID, FactoryBinding, InMessage, OutMessage};
+use crate::pool::QueryPool;
 use crate::reader::AssetReader;
-use crate::registry::{AssetContainer, AssetRegistry, AssetState, QueriesRegistry};
+use crate::registry::{AssetRegistry, AssetState};
 use crate::{Asset, AssetCastable, AssetID, AssetType, TypedAsset};
 use crossbeam_queue::ArrayQueue;
 use dawn_ecs::Tick;
@@ -11,7 +12,6 @@ use evenio::handler::IntoHandler;
 use evenio::prelude::World;
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// Capacity of the queue for messages sent to the asset factory.
@@ -98,21 +98,22 @@ pub struct AssetHub {
     factories: HashMap<AssetType, FactoryBinding>,
     out_queue: Arc<ArrayQueue<OutMessage>>,
     registry: AssetRegistry,
-    queries: QueriesRegistry,
+    queries: QueryPool,
 }
 
 impl AssetHub {
     pub fn new<R: AssetReader>(mut reader: R) -> Result<Self, String> {
         let mut registry = AssetRegistry::new();
         for (item_id, (header, ir)) in reader.read()? {
-            registry.push(item_id.clone(), header, ir);
+            registry.register(item_id.clone(), header);
+            registry.update(item_id.clone(), AssetState::IR(ir))?;
         }
 
         Ok(AssetHub {
             factories: HashMap::new(),
             out_queue: Arc::new(ArrayQueue::new(OUT_QUEUE_CAPACITY)),
             registry,
-            queries: QueriesRegistry::new(),
+            queries: QueryPool::new(),
         })
     }
 
@@ -143,23 +144,15 @@ impl AssetHub {
     }
 
     fn select_factory(&self, id: &AssetID) -> Result<&FactoryBinding, QueryAssetError> {
-        if let Some(item) = self.registry.get(id) {
-            if let Some(factory) = self.factories.get(&item.header.asset_type) {
+        if let Some(header) = self.registry.get_header(id) {
+            if let Some(factory) = self.factories.get(&header.asset_type) {
                 Ok(factory)
             } else {
-                Err(QueryAssetError::FactoryNotFound(
-                    item.header.asset_type.clone(),
-                ))
+                Err(QueryAssetError::FactoryNotFound(header.asset_type.clone()))
             }
         } else {
             Err(QueryAssetError::AssetNotFound(id.clone()))
         }
-    }
-
-    fn select_item(&self, id: &AssetID) -> Result<&AssetContainer, QueryAssetError> {
-        self.registry
-            .get(id)
-            .ok_or_else(|| QueryAssetError::AssetNotFound(id.clone()))
     }
 
     fn query_load_inner(
@@ -168,11 +161,12 @@ impl AssetHub {
         aid: AssetID,
     ) -> Result<AssetQueryID, QueryAssetError> {
         let factory = self.select_factory(&aid)?;
-        let item = self.select_item(&aid)?;
-        match &item.state {
+        let header = self.registry.get_header(&aid).unwrap();
+        let state = self.registry.get_state(&aid).unwrap();
+        match state {
             AssetState::IR(ir) => {
                 // If the asset is ir, we need to load it
-                let message = InMessage::Load(qid, aid.clone(), item.header.clone(), ir.clone());
+                let message = InMessage::Load(qid, aid.clone(), header.clone(), ir.clone());
                 Self::send_message(factory, message)?;
             }
             _ => {
@@ -192,16 +186,17 @@ impl AssetHub {
         aid: AssetID,
     ) -> Result<AssetQueryID, QueryAssetError> {
         let factory = self.select_factory(&aid)?;
-        let item = self.select_item(&aid)?;
-        match &item.state {
+        let header = self.registry.get_header(&aid).unwrap();
+        let state = self.registry.get_state(&aid).unwrap();
+        match state {
             // If the asset is loaded, we can free it
-            AssetState::Loaded(_, _) => {
-                // If the asset is still in use, we cannot free it
-                let rc = item.rc.load(Ordering::SeqCst);
-                if rc > 0 {
+            AssetState::Loaded(asset) => {
+                let rc = asset.get_strong_count();
+                if rc != 1 {
                     return Err(QueryAssetError::StillInUse(aid.clone(), rc));
                 }
 
+                // If the asset is still in use, we cannot free it
                 let message = InMessage::Free(qid, aid.clone());
                 Self::send_message(factory, message)?;
             }
@@ -249,14 +244,10 @@ impl AssetHub {
     /// If the asset is loaded, it returns an `Asset` instance.
     /// If the asset is not found or not loaded, it returns an error.
     pub fn get(&self, id: AssetID) -> Result<Asset, GetAssetError> {
-        if let Some(item) = self.registry.get(&id) {
-            match &item.state {
-                AssetState::Loaded(tid, ptr) => {
-                    let rc = Arc::clone(&item.rc);
-                    let asset = Asset::new(tid.clone(), rc, ptr.clone());
-                    Ok(asset)
-                }
-                AssetState::Freed | AssetState::IR(_) => Err(GetAssetError::NotLoaded(id.clone())),
+        if let Some(state) = self.registry.get_state(&id) {
+            match state {
+                AssetState::Loaded(asset) => Ok(asset.clone()),
+                AssetState::Empty | AssetState::IR(_) => Err(GetAssetError::NotLoaded(id.clone())),
             }
         } else {
             Err(GetAssetError::NotFound(id))
@@ -280,25 +271,22 @@ impl AssetHub {
 
         fn tick_handler(
             _: Receiver<Tick>,
-            mut manager: Single<&mut AssetHub>,
+            mut hub: Single<&mut AssetHub>,
             mut sender: Sender<AssetHubEvent>,
         ) {
-            while let Some(message) = manager.out_queue.pop() {
+            while let Some(message) = hub.out_queue.pop() {
                 match message {
                     OutMessage::Loaded(qid, aid, tid, ptr) => {
                         debug!("Query {} loaded asset {}", qid, aid);
-                        if let Some(item) = manager.registry.get_mut(&aid) {
-                            item.state = AssetState::Loaded(tid, ptr);
-                        } else {
-                            warn!("Received Loaded message for unknown asset ID: {}", aid);
-                            continue;
-                        }
+                        hub.registry
+                            .update(aid.clone(), AssetState::Loaded(Asset::new(tid, ptr)))
+                            .expect("Failed to update asset state");
 
                         sender.send(AssetHubEvent::AssetLoaded(aid.clone()));
                         sender.send(AssetHubEvent::QueryCompleted(qid.clone()));
-                        manager.queries.remove_query(&qid);
+                        hub.queries.remove_query(&qid);
 
-                        if manager.registry.all_loaded() {
+                        if hub.registry.all_loaded() {
                             info!("All assets loaded");
                             sender.send(AssetHubEvent::AllAssetsLoaded);
                         }
@@ -306,17 +294,15 @@ impl AssetHub {
 
                     OutMessage::Freed(qid, aid) => {
                         debug!("Query {} freed asset {}", qid, aid);
-                        if let Some(item) = manager.registry.get_mut(&aid) {
-                            item.state = AssetState::Freed;
-                        } else {
-                            warn!("Received Freed message for unknown asset ID: {}", aid);
-                        }
+                        hub.registry
+                            .update(aid.clone(), AssetState::Empty)
+                            .expect("Failed to update asset state");
 
                         sender.send(AssetHubEvent::AssetFreed(aid.clone()));
                         sender.send(AssetHubEvent::QueryCompleted(qid.clone()));
-                        manager.queries.remove_query(&qid);
+                        hub.queries.remove_query(&qid);
 
-                        if manager.registry.all_freed() {
+                        if hub.registry.all_empty() {
                             info!("All assets loaded");
                             sender.send(AssetHubEvent::AllAssetsFreed);
                         }
@@ -326,7 +312,7 @@ impl AssetHub {
 
                         sender.send(AssetHubEvent::LoadFailed(qid.clone(), aid.clone(), error));
                         sender.send(AssetHubEvent::QueryCompleted(qid.clone()));
-                        manager.queries.remove_query(&qid);
+                        hub.queries.remove_query(&qid);
                     }
                 }
             }
