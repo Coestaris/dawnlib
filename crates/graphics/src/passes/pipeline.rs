@@ -54,7 +54,7 @@ where
         }
     }
 
-    pub(crate) fn dispatch(&self, e: &RenderPassEvent<E>) {
+    pub(crate) fn dispatch(&self, e: RenderPassEvent<E>) {
         let index = e.get_target_id().as_usize();
 
         #[cfg(debug_assertions)]
@@ -68,7 +68,7 @@ where
         }
 
         // Dispatch the event to the appropriate target.
-        self.event_router[index].dispatch(e.get_event());
+        self.event_router[index].dispatch(e.event());
     }
 
     pub(crate) fn get_names(&self) -> Vec<&str> {
