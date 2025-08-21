@@ -1,13 +1,16 @@
-use std::collections::HashMap;
 use crate::ir::IRAsset;
-use crate::{Asset, AssetHeader, AssetID, AssetMemoryUsage};
-use log::info;
+use crate::{Asset, AssetHeader, AssetID};
+use log::{info, warn};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub(crate) enum AssetState {
     Empty,
     IR(IRAsset),
-    Loaded(Asset, AssetMemoryUsage),
+    Loaded(Asset),
 }
 
 pub(crate) struct AssetContainer {
