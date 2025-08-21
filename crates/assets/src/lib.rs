@@ -7,9 +7,9 @@ use std::sync::Arc;
 pub mod factory;
 pub mod hub;
 pub mod ir;
-pub mod query;
 pub mod reader;
 pub(crate) mod registry;
+pub mod query;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetChecksum([u8; 16]);
