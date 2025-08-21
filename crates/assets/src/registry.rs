@@ -1,16 +1,13 @@
-use crate::factory::AssetQueryID;
-use crate::ir::IRAsset;
-use crate::{Asset, AssetHeader, AssetID};
-use log::{info, warn};
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
+use crate::ir::IRAsset;
+use crate::{Asset, AssetHeader, AssetID, AssetMemoryUsage};
+use log::info;
 
+#[derive(Debug, Clone)]
 pub(crate) enum AssetState {
     Empty,
     IR(IRAsset),
-    Loaded(Asset),
+    Loaded(Asset, AssetMemoryUsage),
 }
 
 pub(crate) struct AssetContainer {
@@ -46,27 +43,21 @@ impl AssetRegistry {
         }
     }
 
-    pub fn get_header(&self, id: &AssetID) -> Option<&AssetHeader> {
-        self.0.get(id).map(|container| &container.header)
+    pub fn get_header(&self, id: &AssetID) -> Result<&AssetHeader, String> {
+        self.0
+            .get(id)
+            .map(|container| &container.header)
+            .ok_or_else(|| format!("Asset with ID {} not found", id))
     }
 
-    pub fn get_state(&self, id: &AssetID) -> Option<&AssetState> {
-        self.0.get(id).map(|container| &container.state)
+    pub fn get_state(&self, id: &AssetID) -> Result<&AssetState, String> {
+        self.0
+            .get(id)
+            .map(|container| &container.state)
+            .ok_or_else(|| format!("Asset with ID {} not found", id))
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &AssetID> {
         self.0.keys()
-    }
-
-    pub fn all_loaded(&self) -> bool {
-        self.0
-            .values()
-            .all(|item| matches!(item.state, AssetState::Loaded(_)))
-    }
-
-    pub fn all_empty(&self) -> bool {
-        self.0
-            .values()
-            .all(|item| matches!(item.state, AssetState::Empty))
     }
 }

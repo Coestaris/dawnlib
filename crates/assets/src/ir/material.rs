@@ -50,3 +50,36 @@ impl Default for IRMaterial {
         }
     }
 }
+
+impl IRMaterial {
+    pub fn memory_usage(&self) -> usize {
+        let mut sum = size_of::<IRMaterial>();
+        sum += if let Some(ref texture) = self.base_color_texture {
+            texture.memory_usage()
+        } else {
+            0
+        };
+        sum += if let Some(ref texture) = self.metallic_texture {
+            texture.memory_usage()
+        } else {
+            0
+        };
+        sum += if let Some(ref texture) = self.roughness_texture {
+            texture.memory_usage()
+        } else {
+            0
+        };
+        sum += if let Some(ref texture) = self.normal.as_ref().map(|x| &x.texture) {
+            texture.memory_usage()
+        } else {
+            0
+        };
+        sum += if let Some(ref texture) = self.occlusion.as_ref().map(|x| &x.texture) {
+            texture.memory_usage()
+        } else {
+            0
+        };
+
+        sum
+    }
+}

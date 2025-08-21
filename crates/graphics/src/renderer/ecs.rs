@@ -1,6 +1,8 @@
 use crate::input::InputEvent;
 use crate::passes::events::{PassEventTrait, RenderPassEvent};
-use crate::renderable::{Position, Renderable, RenderableMesh, Rotation, Scale};
+use crate::renderable::{
+    ObjectMaterial, ObjectMesh, ObjectPosition, ObjectRotation, ObjectScale, Renderable,
+};
 use crate::renderer::monitor::RendererMonitoring;
 use crate::renderer::Renderer;
 use dawn_ecs::{StopEventLoop, Tick};
@@ -111,10 +113,11 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
 
     #[derive(Query)]
     struct Query<'a> {
-        mesh: &'a RenderableMesh,
-        position: Option<&'a Position>,
-        rotation: Option<&'a Rotation>,
-        scale: Option<&'a Scale>,
+        mesh: &'a ObjectMesh,
+        position: Option<&'a ObjectPosition>,
+        rotation: Option<&'a ObjectRotation>,
+        scale: Option<&'a ObjectScale>,
+        material: Option<&'a ObjectMaterial>,
     }
 
     // Collect renderables from the ECS and send them to the renderer thread
@@ -133,14 +136,19 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
 
         for query in fetcher.iter() {
             // Collect the renderable data from the query
+            // TODO: Get rid of these clones
             let mesh_asset = query.mesh.0.clone();
             let position = query.position.map_or(Vec3::ZERO, |p| p.0);
             let rotation = query.rotation.map_or(Quat::IDENTITY, |r| r.0);
             let scale = query.scale.map_or(Vec3::ONE, |s| s.0);
+            let material = query
+                .material
+                .map_or_else(|| ObjectMaterial::default_material(), |m| m.0.clone());
 
             // Push the renderable to the vector
             renderables.push(Renderable {
                 model: Mat4::from_scale_rotation_translation(scale, rotation, position),
+                material,
                 mesh: mesh_asset,
             });
         }

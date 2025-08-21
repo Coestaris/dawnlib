@@ -3,7 +3,7 @@ use crate::gl::bindings::types::GLuint;
 use crate::gl::entities::shader::Shader;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::shader::IRShader;
-use dawn_assets::AssetCastable;
+use dawn_assets::{AssetCastable, AssetMemoryUsage};
 use log::debug;
 
 #[derive(Debug)]
@@ -90,7 +90,7 @@ mod targets {
 pub use targets::*;
 
 impl ShaderProgram {
-    pub(crate) fn from_ir<E: PassEventTrait>(ir: &IRShader) -> Result<ShaderProgram, String> {
+    pub(crate) fn from_ir<E: PassEventTrait>(ir: IRShader) -> Result<(Self, AssetMemoryUsage), String> {
         // TODO: Cache the compilation result
         // TODO: Try load SPIRV instead of compiling from source
         let program = ShaderProgram::new().ok_or("Failed to create shader program")?;
@@ -113,7 +113,8 @@ impl ShaderProgram {
             .map_err(|e| format!("Failed to link shader program: {}", e))?;
 
         debug!("Allocated shader program ID: {}", program.id);
-        Ok(program)
+        // TODO: Approximate memory usage
+        Ok((program, AssetMemoryUsage::new(size_of::<ShaderProgram>(), 0)))
     }
 
     fn new() -> Option<ShaderProgram> {

@@ -5,7 +5,7 @@ use crate::gl::entities::element_array_buffer::{ElementArrayBuffer, ElementArray
 use crate::gl::entities::vertex_array::VertexArray;
 use crate::passes::result::PassExecuteResult;
 use dawn_assets::ir::mesh::{IRMesh, IRPrimitive, IRVertex};
-use dawn_assets::AssetCastable;
+use dawn_assets::{AssetCastable, AssetMemoryUsage};
 use glam::Vec3;
 
 pub struct Mesh {
@@ -21,7 +21,7 @@ pub struct Mesh {
 impl AssetCastable for Mesh {}
 
 impl Mesh {
-    pub fn from_ir(ir: &IRMesh) -> Result<Self, String> {
+    pub fn from_ir(ir: IRMesh) -> Result<(Self, AssetMemoryUsage), String> {
         let vao = VertexArray::new(ir.primitive.clone())
             .map_err(|e| format!("Failed to create VertexArray: {}", e))?;
         let mut vbo =
@@ -50,15 +50,18 @@ impl Mesh {
         drop(ebo_binding);
         drop(vao_binding);
 
-        Ok(Mesh {
-            vao,
-            vbo,
-            ebo,
-            indices_count: ir.indices.len(),
-            primitives_count: ir.primitives_count,
-            min: ir.bounds.min(),
-            max: ir.bounds.max(),
-        })
+        Ok((
+            Mesh {
+                vao,
+                vbo,
+                ebo,
+                indices_count: ir.indices.len(),
+                primitives_count: ir.primitives_count,
+                min: ir.bounds.min(),
+                max: ir.bounds.max(),
+            },
+            AssetMemoryUsage::new(size_of::<Mesh>(), 0),
+        ))
     }
 
     #[inline(always)]
