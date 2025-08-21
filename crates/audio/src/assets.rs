@@ -3,7 +3,7 @@ use dawn_assets::factory::{BasicFactory, FactoryBinding};
 use dawn_assets::ir::audio::IRAudio;
 use dawn_assets::ir::notes::IRNotes;
 use dawn_assets::ir::IRAsset;
-use dawn_assets::{AssetCastable, AssetType};
+use dawn_assets::{AssetCastable, AssetMemoryUsage, AssetType};
 use dawn_ecs::Tick;
 use evenio::component::Component;
 use evenio::event::Receiver;
@@ -36,11 +36,12 @@ impl AudioAssetFactory {
 
     pub fn process_events(&mut self) {
         self.basic_factory.process_events(
-            |_, ir| {
-                if let IRAsset::Audio(data) = ir {
+            |message| {
+                if let IRAsset::Audio(data) = message.ir {
                     // TODO: Resample the audio data to the desired sample rate
                     // For now, we just return the ir data as is.
-                    Ok(AudioAsset(data.clone()))
+                    let size = data.memory_usage();
+                    Ok((AudioAsset(data), AssetMemoryUsage::new(size, 0)))
                 } else {
                     Err("Expected audio metadata".to_string())
                 }
@@ -83,9 +84,10 @@ impl NotesAssetFactory {
 
     pub fn process_events(&mut self) {
         self.basic_factory.process_events(
-            |_, ir| {
-                if let IRAsset::Notes(data) = ir {
-                    Ok(NotesAsset(data.clone()))
+            |message| {
+                if let IRAsset::Notes(data) = message.ir {
+                    let size = data.memory_usage();
+                    Ok((NotesAsset(data), AssetMemoryUsage::new(size, 0)))
                 } else {
                     Err("Expected shader metadata".to_string())
                 }

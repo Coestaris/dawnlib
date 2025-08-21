@@ -285,7 +285,7 @@ impl<E: PassEventTrait> Renderer<E> {
     {
         monitor.events_start();
         while let Some(event) = renderer_queue.pop() {
-            pipeline.dispatch(&event);
+            pipeline.dispatch(event);
         }
         monitor.events_stop();
 

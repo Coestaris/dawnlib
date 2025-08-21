@@ -7,9 +7,9 @@ use std::sync::Arc;
 pub mod factory;
 pub mod hub;
 pub mod ir;
+pub mod query;
 pub mod reader;
 pub(crate) mod registry;
-mod pool;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetChecksum([u8; 16]);
@@ -65,6 +65,20 @@ pub enum AssetType {
     Mesh,
 }
 
+impl std::fmt::Display for AssetType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AssetType::Unknown => write!(f, "Unknown"),
+            AssetType::Shader => write!(f, "Shader"),
+            AssetType::Texture => write!(f, "Texture"),
+            AssetType::Audio => write!(f, "Audio"),
+            AssetType::Notes => write!(f, "Notes"),
+            AssetType::Material => write!(f, "Material"),
+            AssetType::Mesh => write!(f, "Mesh"),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AssetID(String);
 
@@ -74,6 +88,10 @@ impl AssetID {
     }
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    pub fn memory_usage(&self) -> usize {
+        self.0.len()
     }
 }
 
@@ -122,11 +140,11 @@ unsafe impl Send for Asset {}
 unsafe impl Sync for Asset {}
 
 impl Asset {
-    pub fn new(tid: TypeId, ptr: NonNull<()>) -> Asset {
+    pub fn new(id: AssetID, tid: TypeId, ptr: NonNull<()>) -> Asset {
         Asset(Arc::new(AssetInner { tid, ptr }))
     }
-    
-    pub(crate) fn get_strong_count(&self) -> usize {
+
+    pub(crate) fn ref_count(&self) -> usize {
         Arc::strong_count(&self.0)
     }
 
@@ -179,5 +197,17 @@ impl<T: AssetCastable> TypedAsset<T> {
 
     pub fn cast(&self) -> &T {
         self.inner.cast()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct AssetMemoryUsage {
+    pub ram: usize,
+    pub vram: usize,
+}
+
+impl AssetMemoryUsage {
+    pub fn new(ram: usize, vram: usize) -> Self {
+        AssetMemoryUsage { ram, vram }
     }
 }

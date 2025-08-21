@@ -11,3 +11,11 @@ pub enum IRNoteEvent {
 pub struct IRNotes {
     pub events: Vec<IRNoteEvent>,
 }
+
+impl IRNotes {
+    pub fn memory_usage(&self) -> usize {
+        let mut sum = size_of::<IRNotes>();
+        sum += self.events.capacity() * size_of::<IRNoteEvent>();
+        sum
+    }
+}

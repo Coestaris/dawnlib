@@ -1,8 +1,10 @@
-use crate::factory::{AssetQueryID, FactoryBinding, InMessage, OutMessage};
-use crate::pool::QueryPool;
+use crate::factory::{
+    FactoryBinding, FreeFactoryMessage, FromFactoryMessage, LoadFactoryMessage, ToFactoryMessage,
+};
+use crate::query::{AssetQueryID, AssetTaskID, QueryError, TaskCommand, TaskDoneResult, TaskPool};
 use crate::reader::AssetReader;
 use crate::registry::{AssetRegistry, AssetState};
-use crate::{Asset, AssetCastable, AssetID, AssetType, TypedAsset};
+use crate::{Asset, AssetCastable, AssetID, AssetMemoryUsage, AssetType, TypedAsset};
 use crossbeam_queue::ArrayQueue;
 use dawn_ecs::Tick;
 use evenio::component::Component;
@@ -13,6 +15,7 @@ use evenio::prelude::World;
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
 use std::sync::Arc;
+use thiserror::Error;
 
 /// Capacity of the queue for messages sent to the asset factory.
 const IN_QUEUE_CAPACITY: usize = 100;
@@ -24,12 +27,10 @@ const OUT_QUEUE_CAPACITY: usize = 100;
 /// of asset queries, loading, and freeing operations
 #[derive(GlobalEvent)]
 pub enum AssetHubEvent {
-    QueryCompleted(AssetQueryID),
+    QueryCompleted(AssetQueryID, bool), // Query ID and success status
+    AssetFailed(AssetID, Option<String>), // Asset ID and optional error message
     AssetLoaded(AssetID),
     AssetFreed(AssetID),
-    LoadFailed(AssetQueryID, AssetID, String),
-    AllAssetsLoaded,
-    AllAssetsFreed,
 }
 
 /// Error type for retrieving assets from the AssetHub.
@@ -51,36 +52,23 @@ impl std::fmt::Display for GetAssetError {
 impl std::error::Error for GetAssetError {}
 
 /// Error type for querying assets in the AssetHub.
-#[derive(Debug)]
+#[derive(Debug, Error, Clone)]
 pub enum QueryAssetError {
+    #[error("Asset with ID {0} is not registered in the AssetHub")]
     AssetNotFound(AssetID),
+    #[error("Asset with ID {0} is still in use, reference count: {1}")]
     StillInUse(AssetID, usize), // AssetID and reference count
+    #[error("Asset with ID {0} is not in IR state, cannot load it")]
     AlreadyLoaded(AssetID),
+    #[error("Asset with ID {0} is not in Loaded state, cannot free it")]
     AlreadyFreed(AssetID),
+    #[error("Asset type {0} is not supported by the AssetHub")]
     FactoryNotFound(AssetType),
+    #[error("Query error occurred: {0}")]
+    QueryError(#[from] QueryError),
+    #[error("IPC error occurred")]
     IPCError,
 }
-
-impl std::fmt::Display for QueryAssetError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            QueryAssetError::AssetNotFound(id) => write!(f, "Asset with ID {} not found", id),
-            QueryAssetError::StillInUse(id, rc) => {
-                write!(f, "Asset {} is still in use (rc: {})", id, rc)
-            }
-            QueryAssetError::AlreadyLoaded(id) => {
-                write!(f, "Asset with ID {} is already loaded", id)
-            }
-            QueryAssetError::AlreadyFreed(id) => write!(f, "Asset with ID {} is already freed", id),
-            QueryAssetError::FactoryNotFound(asset_type) => {
-                write!(f, "Factory for asset type {:?} not found", asset_type)
-            }
-            QueryAssetError::IPCError => write!(f, "Inter-process communication error"),
-        }
-    }
-}
-
-impl std::error::Error for QueryAssetError {}
 
 /// The AssetHub is the main entry point for managing assets in the system.
 ///
@@ -96,9 +84,20 @@ impl std::error::Error for QueryAssetError {}
 #[derive(Component)]
 pub struct AssetHub {
     factories: HashMap<AssetType, FactoryBinding>,
-    out_queue: Arc<ArrayQueue<OutMessage>>,
+    out_queue: Arc<ArrayQueue<FromFactoryMessage>>,
     registry: AssetRegistry,
-    queries: QueryPool,
+    task_pool: TaskPool,
+}
+
+pub enum AssetInfoState {
+    Empty,
+    IR(usize), // Ram usage
+    Loaded { usage: AssetMemoryUsage, rc: usize },
+}
+
+pub struct AssetInfo {
+    id: AssetID,
+    state: AssetInfoState,
 }
 
 impl AssetHub {
@@ -113,7 +112,7 @@ impl AssetHub {
             factories: HashMap::new(),
             out_queue: Arc::new(ArrayQueue::new(OUT_QUEUE_CAPACITY)),
             registry,
-            queries: QueryPool::new(),
+            task_pool: TaskPool::new(),
         })
     }
 
@@ -135,122 +134,35 @@ impl AssetHub {
         binding
     }
 
-    fn send_message(factory: &FactoryBinding, message: InMessage) -> Result<(), QueryAssetError> {
-        if factory.in_queue().push(message).is_err() {
-            Err(QueryAssetError::IPCError)
-        } else {
-            Ok(())
-        }
-    }
-
-    fn select_factory(&self, id: &AssetID) -> Result<&FactoryBinding, QueryAssetError> {
-        if let Some(header) = self.registry.get_header(id) {
-            if let Some(factory) = self.factories.get(&header.asset_type) {
-                Ok(factory)
-            } else {
-                Err(QueryAssetError::FactoryNotFound(header.asset_type.clone()))
-            }
-        } else {
-            Err(QueryAssetError::AssetNotFound(id.clone()))
-        }
-    }
-
-    fn query_load_inner(
-        &self,
-        qid: AssetQueryID,
-        aid: AssetID,
-    ) -> Result<AssetQueryID, QueryAssetError> {
-        let factory = self.select_factory(&aid)?;
-        let header = self.registry.get_header(&aid).unwrap();
-        let state = self.registry.get_state(&aid).unwrap();
-        match state {
-            AssetState::IR(ir) => {
-                // If the asset is ir, we need to load it
-                let message = InMessage::Load(qid, aid.clone(), header.clone(), ir.clone());
-                Self::send_message(factory, message)?;
-            }
-            _ => {
-                // If the asset is already loaded or freed, we can return an error
-                return Err(QueryAssetError::AlreadyLoaded(aid.clone()));
-            }
-        }
-
-        debug!("Query {} sent for asset {}", qid, aid);
-        self.queries.add_query(qid.clone());
+    pub fn query_load(&mut self, id: AssetID) -> Result<AssetQueryID, QueryAssetError> {
+        let qid = self.task_pool.query_load(id.clone(), &self.registry)?;
         Ok(qid)
     }
 
-    pub fn query_free_inner(
-        &self,
-        qid: AssetQueryID,
-        aid: AssetID,
-    ) -> Result<AssetQueryID, QueryAssetError> {
-        let factory = self.select_factory(&aid)?;
-        let header = self.registry.get_header(&aid).unwrap();
-        let state = self.registry.get_state(&aid).unwrap();
-        match state {
-            // If the asset is loaded, we can free it
-            AssetState::Loaded(asset) => {
-                let rc = asset.get_strong_count();
-                if rc != 1 {
-                    return Err(QueryAssetError::StillInUse(aid.clone(), rc));
-                }
-
-                // If the asset is still in use, we cannot free it
-                let message = InMessage::Free(qid, aid.clone());
-                Self::send_message(factory, message)?;
-            }
-            _ => {
-                // If the asset is not loaded, we can return an error
-                return Err(QueryAssetError::AlreadyFreed(aid.clone()));
-            }
-        }
-
-        debug!("Query {} sent for asset {}", qid, aid);
-        self.queries.add_query(qid.clone());
+    pub fn query_load_all(&mut self) -> Result<AssetQueryID, QueryAssetError> {
+        let qid = self.task_pool.query_load_all(&self.registry)?;
         Ok(qid)
-    }
-
-    fn query_load(&self, id: AssetID) -> Result<AssetQueryID, QueryAssetError> {
-        let qid = AssetQueryID::new();
-        self.query_load_inner(qid, id)
-    }
-
-    pub fn query_load_all(&self) -> Result<AssetQueryID, QueryAssetError> {
-        // let qid = AssetQueryID::new();
-        // TODO: Batch queries is not implemented yet.
-        for id in self.registry.keys() {
-            self.query_load_inner(AssetQueryID::new(), id.clone())?;
-        }
-        Ok(AssetQueryID::new())
     }
 
     pub fn query_free(&self, id: AssetID) -> Result<AssetQueryID, QueryAssetError> {
-        let qid = AssetQueryID::new();
-        self.query_free_inner(qid, id)
+        todo!()
     }
 
     pub fn query_free_all(&mut self) -> Result<AssetQueryID, QueryAssetError> {
-        // let qid = AssetQueryID::new();
-        // TODO: Batch queries is not implemented yet.
-        for id in self.registry.keys() {
-            let qid = AssetQueryID::new();
-            self.query_free_inner(qid.clone(), id.clone())?;
-        }
-        Ok(AssetQueryID::new())
+        todo!()
     }
 
     /// Retrieves an asset by its ID.
     /// If the asset is loaded, it returns an `Asset` instance.
     /// If the asset is not found or not loaded, it returns an error.
     pub fn get(&self, id: AssetID) -> Result<Asset, GetAssetError> {
-        if let Some(state) = self.registry.get_state(&id) {
-            match state {
-                AssetState::Loaded(asset) => Ok(asset.clone()),
-                AssetState::Empty | AssetState::IR(_) => Err(GetAssetError::NotLoaded(id.clone())),
-            }
-        } else {
-            Err(GetAssetError::NotFound(id))
+        match self
+            .registry
+            .get_state(&id)
+            .map_err(|_| GetAssetError::NotFound(id.clone()))?
+        {
+            AssetState::Loaded(asset, _) => Ok(asset.clone()),
+            AssetState::Empty | AssetState::IR(_) => Err(GetAssetError::NotLoaded(id.clone())),
         }
     }
 
@@ -259,6 +171,77 @@ impl AssetHub {
     /// type-safe access to the asset data.
     pub fn get_typed<T: AssetCastable>(&self, id: AssetID) -> Result<TypedAsset<T>, GetAssetError> {
         Ok(TypedAsset::new(self.get(id)?))
+    }
+
+    fn send_load(&mut self, task_id: AssetTaskID, id: AssetID) {
+        let header = self.registry.get_header(&id).unwrap();
+        match self.registry.get_state(&id).unwrap() {
+            AssetState::IR(ir) => {
+                let factory = self.factories.get(&header.asset_type);
+                if let Some(factory) = factory {
+                    let mut dependencies = HashMap::new();
+                    for dep in &header.dependencies {
+                        dependencies.insert(dep.clone(), self.get(dep.clone()).unwrap());
+                    }
+                    let message = LoadFactoryMessage {
+                        task_id: task_id.clone(),
+                        asset_id: id.clone(),
+                        asset_header: header.clone(),
+                        ir: ir.clone(),
+                        dependencies,
+                    };
+                    debug!("Sending load message {:?}", message);
+                    factory
+                        .in_queue()
+                        .push(ToFactoryMessage::Load(message))
+                        .unwrap();
+                } else {
+                    panic!(
+                        "No factory found for asset type {:?} for asset ID {}",
+                        header.asset_type, id
+                    );
+                }
+            }
+            other => {
+                warn!(
+                    "Asset with ID {} is not in IR state, cannot load it: {:?}",
+                    id, other
+                );
+                return;
+            }
+        }
+    }
+
+    fn send_free(&mut self, task_id: AssetTaskID, id: AssetID) {
+        let header = self.registry.get_header(&id).unwrap();
+        match self.registry.get_state(&id).unwrap() {
+            AssetState::Loaded(_, _) => {
+                let factory = self.factories.get(&header.asset_type);
+                if let Some(factory) = factory {
+                    let message = FreeFactoryMessage {
+                        task_id: task_id.clone(),
+                        asset_id: id.clone(),
+                    };
+                    debug!("Sending free message {:?}", message);
+                    factory
+                        .in_queue()
+                        .push(ToFactoryMessage::Free(message))
+                        .unwrap();
+                } else {
+                    panic!(
+                        "No factory found for asset type {:?} for asset ID {}",
+                        header.asset_type, id
+                    );
+                }
+            }
+            other => {
+                warn!(
+                    "Asset with ID {} is not in Loaded state, cannot free it: {:?}",
+                    id, other
+                );
+                return;
+            }
+        }
     }
 
     /// Moves the Asset Hub into the ECS world.
@@ -274,50 +257,99 @@ impl AssetHub {
             mut hub: Single<&mut AssetHub>,
             mut sender: Sender<AssetHubEvent>,
         ) {
+            // Peek tasks and route the to the factories
+            while let Some(task) = hub.task_pool.peek_task() {
+                match task.command {
+                    TaskCommand::IR(_) => {
+                        unimplemented!()
+                    }
+                    TaskCommand::Load(aid) => hub.send_load(task.id.clone(), aid),
+                    TaskCommand::Free(aid) => hub.send_free(task.id.clone(), aid),
+                }
+            }
+
+            // Process events from factories
             while let Some(message) = hub.out_queue.pop() {
+                debug!("Received message {:?}", message);
                 match message {
-                    OutMessage::Loaded(qid, aid, tid, ptr) => {
-                        debug!("Query {} loaded asset {}", qid, aid);
+                    FromFactoryMessage::Loaded(message) => {
+                        // Save the asset to the registry
                         hub.registry
-                            .update(aid.clone(), AssetState::Loaded(Asset::new(tid, ptr)))
-                            .expect("Failed to update asset state");
-
-                        sender.send(AssetHubEvent::AssetLoaded(aid.clone()));
-                        sender.send(AssetHubEvent::QueryCompleted(qid.clone()));
-                        hub.queries.remove_query(&qid);
-
-                        if hub.registry.all_loaded() {
-                            info!("All assets loaded");
-                            sender.send(AssetHubEvent::AllAssetsLoaded);
+                            .update(
+                                message.asset_id.clone(),
+                                AssetState::Loaded(
+                                    Asset::new(
+                                        message.asset_id.clone(),
+                                        message.asset_type,
+                                        message.asset_ptr,
+                                    ),
+                                    message.usage,
+                                ),
+                            )
+                            .unwrap();
+                        // Update the task pool with the completed task
+                        match hub.task_pool.task_done(message.task_id) {
+                            TaskDoneResult::QueryComplete(qid) => {
+                                // Notify the ECS world about the completed query
+                                sender.send(AssetHubEvent::QueryCompleted(qid, true));
+                            }
+                            _ => {}
                         }
+                        // Notify the ECS world about the loaded asset
+                        sender.send(AssetHubEvent::AssetLoaded(message.asset_id.clone()));
                     }
-
-                    OutMessage::Freed(qid, aid) => {
-                        debug!("Query {} freed asset {}", qid, aid);
+                    FromFactoryMessage::Freed(message) => {
+                        // Remove the asset from the registry
                         hub.registry
-                            .update(aid.clone(), AssetState::Empty)
-                            .expect("Failed to update asset state");
-
-                        sender.send(AssetHubEvent::AssetFreed(aid.clone()));
-                        sender.send(AssetHubEvent::QueryCompleted(qid.clone()));
-                        hub.queries.remove_query(&qid);
-
-                        if hub.registry.all_empty() {
-                            info!("All assets loaded");
-                            sender.send(AssetHubEvent::AllAssetsFreed);
+                            .update(message.asset_id.clone(), AssetState::Empty)
+                            .unwrap();
+                        // Update the task pool with the completed task
+                        match hub.task_pool.task_done(message.task_id) {
+                            TaskDoneResult::QueryComplete(qid) => {
+                                // Notify the ECS world about the completed query
+                                sender.send(AssetHubEvent::QueryCompleted(qid, true));
+                            }
+                            _ => {}
                         }
+                        // Notify the ECS world about the freed asset
+                        sender.send(AssetHubEvent::AssetFreed(message.asset_id.clone()));
                     }
-                    OutMessage::Failed(qid, aid, error) => {
-                        error!("Query {} failed on asset {}. Error: {}", qid, aid, error);
-
-                        sender.send(AssetHubEvent::LoadFailed(qid.clone(), aid.clone(), error));
-                        sender.send(AssetHubEvent::QueryCompleted(qid.clone()));
-                        hub.queries.remove_query(&qid);
+                    FromFactoryMessage::LoadFailed(message) => {
+                        // Update the task pool with the failed task
+                        hub.task_pool.task_failed(message.task_id);
+                        // Notify the ECS world about the failed asset
+                        sender.send(AssetHubEvent::QueryCompleted(
+                            message.task_id.as_query_id(),
+                            false,
+                        ));
+                        sender.send(AssetHubEvent::AssetFailed(
+                            message.asset_id.clone(),
+                            Some(message.error),
+                        ));
                     }
                 }
             }
         }
 
         world.add_handler(tick_handler.low());
+    }
+
+    pub fn asset_infos(&self) -> Vec<AssetInfo> {
+        let mut infos = Vec::new();
+        for id in self.registry.keys() {
+            infos.push(AssetInfo {
+                id: id.clone(),
+                state: match self.registry.get_state(&id).unwrap() {
+                    AssetState::Empty => AssetInfoState::Empty,
+                    AssetState::IR(ir) => AssetInfoState::IR(ir.memory_usage()),
+                    AssetState::Loaded(asset, usage) => AssetInfoState::Loaded {
+                        usage: usage.clone(),
+                        rc: asset.ref_count(),
+                    },
+                },
+            })
+        }
+
+        infos
     }
 }

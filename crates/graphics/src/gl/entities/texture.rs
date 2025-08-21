@@ -2,8 +2,9 @@ use crate::gl::bindings;
 use crate::gl::bindings::types::{GLenum, GLint, GLsizei, GLuint};
 use crate::passes::events::PassEventTrait;
 use log::debug;
-use dawn_assets::AssetCastable;
+use dawn_assets::{AssetCastable, AssetMemoryUsage};
 use dawn_assets::ir::texture::{IRPixelDataType, IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap};
+use crate::gl::entities::shader_program::ShaderProgram;
 
 #[derive(Debug)]
 pub struct Texture {
@@ -172,13 +173,13 @@ impl<'a> TextureBinding<'a> {
 impl Drop for TextureBinding<'_> {
     fn drop(&mut self) {
         unsafe {
-            bindings::BindTexture(self.texture.texture_type, 0);
+            // bindings::BindTexture(self.texture.texture_type, 0);
         }
     }
 }
 
 impl Texture {
-    pub(crate) fn from_ir<E: PassEventTrait>(ir: &IRTexture) -> Result<Self, String> {
+    pub(crate) fn from_ir<E: PassEventTrait>(ir: IRTexture) -> Result<(Self, AssetMemoryUsage), String> {
         let texture = Self::new(ir.texture_type.clone())?;
         let binding = texture.bind(0);
 
@@ -207,7 +208,7 @@ impl Texture {
         }
 
         drop(binding);
-        Ok(texture)
+        Ok((texture, AssetMemoryUsage::new(size_of::<Texture>(), 0)))
     }
 
     pub fn bind(&self, texture_index: usize) -> TextureBinding<'_> {
