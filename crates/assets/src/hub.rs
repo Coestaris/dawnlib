@@ -4,7 +4,7 @@ use crate::factory::{
 use crate::query::{AssetQueryID, AssetTaskID, QueryError, TaskCommand, TaskDoneResult, TaskPool};
 use crate::reader::AssetReader;
 use crate::registry::{AssetRegistry, AssetState};
-use crate::{Asset, AssetCastable, AssetID, AssetMemoryUsage, AssetType, TypedAsset};
+use crate::{Asset, AssetCastable, AssetHeader, AssetID, AssetMemoryUsage, AssetType, TypedAsset};
 use crossbeam_queue::ArrayQueue;
 use dawn_ecs::Tick;
 use evenio::component::Component;
@@ -89,15 +89,18 @@ pub struct AssetHub {
     task_pool: TaskPool,
 }
 
+#[derive(Debug, Clone)]
 pub enum AssetInfoState {
     Empty,
     IR(usize), // Ram usage
     Loaded { usage: AssetMemoryUsage, rc: usize },
 }
 
+#[derive(Debug, Clone)]
 pub struct AssetInfo {
-    id: AssetID,
-    state: AssetInfoState,
+    pub id: AssetID,
+    pub header: AssetHeader,
+    pub state: AssetInfoState,
 }
 
 impl AssetHub {
@@ -339,6 +342,7 @@ impl AssetHub {
         for id in self.registry.keys() {
             infos.push(AssetInfo {
                 id: id.clone(),
+                header: self.registry.get_header(id).unwrap().clone(),
                 state: match self.registry.get_state(&id).unwrap() {
                     AssetState::Empty => AssetInfoState::Empty,
                     AssetState::IR(ir) => AssetInfoState::IR(ir.memory_usage()),

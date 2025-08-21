@@ -1,5 +1,5 @@
 use crate::ir::IRAsset;
-use crate::{Asset, AssetHeader, AssetID};
+use crate::{Asset, AssetHeader, AssetID, AssetMemoryUsage};
 use log::{info, warn};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub(crate) enum AssetState {
     Empty,
     IR(IRAsset),
-    Loaded(Asset),
+    Loaded(Asset, AssetMemoryUsage),
 }
 
 pub(crate) struct AssetContainer {
