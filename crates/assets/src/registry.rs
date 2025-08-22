@@ -1,15 +1,11 @@
 use crate::ir::IRAsset;
 use crate::{Asset, AssetHeader, AssetID, AssetMemoryUsage};
-use log::{info, warn};
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub(crate) enum AssetState {
     Empty,
-    IR(IRAsset),
+    Read(IRAsset),
     Loaded(Asset, AssetMemoryUsage),
 }
 
@@ -25,16 +21,17 @@ impl AssetRegistry {
         AssetRegistry(HashMap::new())
     }
 
-    pub fn register(&mut self, id: AssetID, header: AssetHeader) {
-        info!("Registering asset: {} (type {:?})", id, header.asset_type);
-
-        self.0.insert(
-            id,
-            AssetContainer {
-                header,
-                state: AssetState::Empty,
-            },
-        );
+    pub fn enumerate(&mut self, headers: Vec<AssetHeader>) {
+        self.0.clear();
+        for header in headers {
+            self.0.insert(
+                header.id.clone(),
+                AssetContainer {
+                    header,
+                    state: AssetState::Empty,
+                },
+            );
+        }
     }
 
     pub fn update(&mut self, id: AssetID, state: AssetState) -> Result<(), String> {

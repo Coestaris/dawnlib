@@ -1,3 +1,4 @@
+use std::time::Duration;
 use crate::gl::entities::material::Material;
 use crate::gl::entities::mesh::Mesh;
 use crate::gl::entities::shader_program::ShaderProgram;
@@ -35,6 +36,7 @@ impl ShaderAssetFactory {
             |_| {
                 // Free will be handled in the Drop implementation of ShaderProgram
             },
+            Duration::ZERO,
         );
     }
 }
@@ -67,6 +69,7 @@ impl TextureAssetFactory {
             |_| {
                 // Free will be handled in the Drop implementation of Texture
             },
+            Duration::ZERO,
         );
     }
 }
@@ -99,6 +102,7 @@ impl MeshAssetFactory {
             |_| {
                 // Free will be handled in the Drop implementation of Mesh
             },
+            Duration::ZERO,
         );
     }
 }
@@ -131,6 +135,7 @@ impl MaterialAssetFactory {
             |_| {
                 // Free will be handled in the Drop implementation of Mesh
             },
+            Duration::ZERO,
         );
     }
 }
