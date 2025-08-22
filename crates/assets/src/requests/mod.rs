@@ -5,39 +5,39 @@ use std::collections::HashSet;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AssetQueryID(usize);
+pub struct AssetRequest(usize);
 
-impl std::fmt::Display for AssetQueryID {
+impl std::fmt::Display for AssetRequest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "QueryID({})", self.0)
+        write!(f, "AssetRequest({})", self.0)
     }
 }
 
-impl Default for AssetQueryID {
+impl Default for AssetRequest {
     fn default() -> Self {
-        AssetQueryID(0)
+        AssetRequest(0)
     }
 }
 
-impl AssetQueryID {
+impl AssetRequest {
     pub fn new() -> Self {
         static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        AssetQueryID(id)
+        AssetRequest(id)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AssetTaskID(AssetQueryID, usize);
+pub struct AssetTaskID(AssetRequest, usize);
 
 impl AssetTaskID {
-    pub fn new(qid: AssetQueryID) -> Self {
+    pub fn new(qid: AssetRequest) -> Self {
         static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         AssetTaskID(qid, id)
     }
 
-    pub fn as_query_id(&self) -> AssetQueryID {
+    pub fn as_request(&self) -> AssetRequest {
         self.0
     }
 
@@ -53,7 +53,7 @@ impl std::fmt::Display for AssetTaskID {
 }
 
 pub(crate) struct TaskPool {
-    queries: Vec<Query>,
+    requests: Vec<Request>,
     peekable: bool,
 }
 
@@ -79,42 +79,42 @@ pub(crate) struct Task {
     state: TaskState,
 }
 
-struct Query {
-    id: AssetQueryID,
+struct Request {
+    id: AssetRequest,
     pending: Vec<Task>,
 }
 
 #[derive(Debug, Clone, Error)]
-pub enum QueryError {
+pub enum RequestError {
     #[error("Asset not found: {0}")]
     AssetNotFound(AssetID),
     #[error("Circular dependency detected for asset: {0}")]
     CircularDependency(AssetID),
-    #[error("Query already exists for asset: {0}")]
+    #[error("Request already exists for asset: {0}")]
     Other(String),
 }
 
 pub(crate) enum TaskDoneResult {
     Ok,
-    QueryComplete(AssetQueryID),
+    RequestCompleted(AssetRequest),
 }
 
 impl TaskPool {
     pub fn new() -> Self {
         TaskPool {
-            queries: Vec::new(),
+            requests: Vec::new(),
             peekable: false,
         }
     }
 
     fn collect_load_tasks(
-        qid: AssetQueryID,
+        qid: AssetRequest,
         aid: AssetID,
         registry: &AssetRegistry,
-    ) -> Result<Vec<Task>, QueryError> {
+    ) -> Result<Vec<Task>, RequestError> {
         let header = registry
             .get_header(&aid)
-            .map_err(|_| QueryError::AssetNotFound(aid.clone()))?;
+            .map_err(|_| RequestError::AssetNotFound(aid.clone()))?;
         let mut tasks = Vec::new();
 
         // Handle all dependencies of the asset
@@ -125,7 +125,7 @@ impl TaskPool {
 
         let state = registry
             .get_state(&aid)
-            .map_err(|_| QueryError::AssetNotFound(aid.clone()))?;
+            .map_err(|_| RequestError::AssetNotFound(aid.clone()))?;
         let dep_ids = tasks.iter().map(|task| task.id).collect::<HashSet<_>>();
         match state {
             AssetState::Empty => {
@@ -162,39 +162,42 @@ impl TaskPool {
         Ok(tasks)
     }
 
-    pub fn query_load(
+    pub fn request_load(
         &mut self,
         aid: AssetID,
         registry: &AssetRegistry,
-    ) -> Result<AssetQueryID, QueryError> {
-        let qid = AssetQueryID::new();
+    ) -> Result<AssetRequest, RequestError> {
+        let qid = AssetRequest::new();
 
-        // Add the query to the pool
-        self.queries.push(Query {
+        // Add the request to the pool
+        self.requests.push(Request {
             id: qid,
             pending: Self::collect_load_tasks(qid.clone(), aid, registry)?,
         });
 
-        // Return the query ID
+        // Return the request ID
         self.peekable = true;
         Ok(qid)
     }
 
-    pub fn query_load_all(&mut self, registry: &AssetRegistry) -> Result<AssetQueryID, QueryError> {
-        let qid = AssetQueryID::new();
+    pub fn request_load_all(
+        &mut self,
+        registry: &AssetRegistry,
+    ) -> Result<AssetRequest, RequestError> {
+        let qid = AssetRequest::new();
         let mut tasks = Vec::new();
         for aid in registry.keys() {
             tasks.extend(Self::collect_load_tasks(qid, aid.clone(), registry)?);
         }
 
-        let query = Query {
+        let request = Request {
             id: qid,
             pending: tasks,
         };
 
-        // Add the query to the pool
-        self.queries.push(query);
-        // Return the query ID
+        // Add the request to the pool
+        self.requests.push(request);
+        // Return the request ID
         self.peekable = true;
         Ok(qid)
     }
@@ -204,13 +207,13 @@ impl TaskPool {
             return None;
         }
 
-        for query in self.queries.iter_mut() {
+        for request in self.requests.iter_mut() {
             // Find the pending task with empty dependencies
-            if let Some(index) = query.pending.iter().position(|task| {
+            if let Some(index) = request.pending.iter().position(|task| {
                 matches!(task.state, TaskState::Pending) && task.dependencies.is_empty()
             }) {
                 // Mark the task as processing
-                let task = query.pending.get_mut(index).unwrap();
+                let task = request.pending.get_mut(index).unwrap();
                 task.state = TaskState::Processing;
 
                 // Return the task
@@ -226,29 +229,29 @@ impl TaskPool {
 
     pub fn task_done(&mut self, task_id: AssetTaskID) -> TaskDoneResult {
         // Mark the task as done and remove it from all the dependencies
-        let qid = task_id.as_query_id();
-        let query = self.queries.iter_mut().find(|q| q.id == qid).unwrap();
-        let task_index = query
+        let qid = task_id.as_request();
+        let request = self.requests.iter_mut().find(|q| q.id == qid).unwrap();
+        let task_index = request
             .pending
             .iter()
             .position(|task| task.id == task_id)
             .unwrap();
 
-        query.pending.get_mut(task_index).unwrap().state = TaskState::Done;
-        for task in query.pending.iter_mut() {
+        request.pending.get_mut(task_index).unwrap().state = TaskState::Done;
+        for task in request.pending.iter_mut() {
             // Remove the task from dependencies of other tasks
             task.dependencies.remove(&task_id);
         }
 
-        // If there are no more pending tasks, we can remove the query
-        if query
+        // If there are no more pending tasks, we can remove the request
+        if request
             .pending
             .iter()
             .all(|task| matches!(task.state, TaskState::Done))
         {
-            debug!("All tasks in query {} are done, removing query", qid);
-            self.queries.retain(|q| q.id != qid);
-            return TaskDoneResult::QueryComplete(qid);
+            debug!("All tasks in request {} are done, removing request", qid);
+            self.requests.retain(|q| q.id != qid);
+            return TaskDoneResult::RequestCompleted(qid);
         }
 
         self.peekable = true;
@@ -256,9 +259,9 @@ impl TaskPool {
     }
 
     pub fn task_failed(&mut self, task_id: AssetTaskID) {
-        // Remove the query that contains the task
-        let qid = task_id.as_query_id();
-        self.queries.retain(|query| query.id == qid);
+        // Remove the request that contains the task
+        let qid = task_id.as_request();
+        self.requests.retain(|request| request.id == qid);
         self.peekable = true;
     }
 }
