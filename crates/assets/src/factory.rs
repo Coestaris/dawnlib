@@ -1,5 +1,4 @@
 use crate::ir::IRAsset;
-use crate::query::AssetTaskID;
 use crate::{Asset, AssetHeader, AssetID, AssetMemoryUsage, AssetType};
 use crossbeam_queue::ArrayQueue;
 use log::{error, warn};
@@ -7,6 +6,7 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::Arc;
+use crate::requests::AssetTaskID;
 
 #[derive(Debug)]
 pub struct LoadFactoryMessage {

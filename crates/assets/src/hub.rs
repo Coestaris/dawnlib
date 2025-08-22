@@ -1,9 +1,11 @@
 use crate::factory::{
     FactoryBinding, FreeFactoryMessage, FromFactoryMessage, LoadFactoryMessage, ToFactoryMessage,
 };
-use crate::query::{AssetQueryID, AssetTaskID, QueryError, TaskCommand, TaskDoneResult, TaskPool};
 use crate::reader::AssetReader;
 use crate::registry::{AssetRegistry, AssetState};
+use crate::requests::{
+    AssetRequest, AssetTaskID, RequestError, TaskCommand, TaskDoneResult, TaskPool,
+};
 use crate::{Asset, AssetCastable, AssetHeader, AssetID, AssetMemoryUsage, AssetType, TypedAsset};
 use crossbeam_queue::ArrayQueue;
 use dawn_ecs::Tick;
@@ -24,10 +26,10 @@ const OUT_QUEUE_CAPACITY: usize = 100;
 
 /// AssetHub events are used to notify the ECS world about asset-related events.
 /// These events can be used to track the status
-/// of asset queries, loading, and freeing operations
+/// of asset requests, loading, and freeing operations
 #[derive(GlobalEvent)]
 pub enum AssetHubEvent {
-    QueryCompleted(AssetQueryID, bool), // Query ID and success status
+    RequestCompleted(AssetRequest, bool), // Request ID and success status
     AssetFailed(AssetID, Option<String>), // Asset ID and optional error message
     AssetLoaded(AssetID),
     AssetFreed(AssetID),
@@ -51,9 +53,8 @@ impl std::fmt::Display for GetAssetError {
 
 impl std::error::Error for GetAssetError {}
 
-/// Error type for querying assets in the AssetHub.
 #[derive(Debug, Error, Clone)]
-pub enum QueryAssetError {
+pub enum RequestAssetError {
     #[error("Asset with ID {0} is not registered in the AssetHub")]
     AssetNotFound(AssetID),
     #[error("Asset with ID {0} is still in use, reference count: {1}")]
@@ -64,8 +65,6 @@ pub enum QueryAssetError {
     AlreadyFreed(AssetID),
     #[error("Asset type {0} is not supported by the AssetHub")]
     FactoryNotFound(AssetType),
-    #[error("Query error occurred: {0}")]
-    QueryError(#[from] QueryError),
     #[error("IPC error occurred")]
     IPCError,
 }
@@ -78,8 +77,8 @@ pub enum QueryAssetError {
 /// The AssetHub keeps track of the assets usage using reference counting,
 /// allowing safe multithreading read-only access to the assets.
 ///
-/// To control the assets, you create a queries, e.g. `query_load` or `query_free`.
-/// The status of the queries can be tracked using the `AssetHubEvent`
+/// To control the assets, you create requests, by 'request' methods,
+/// The status of the requests can be tracked using the `AssetHubEvent`
 /// sent to the ECS world.
 #[derive(Component)]
 pub struct AssetHub {
@@ -137,21 +136,21 @@ impl AssetHub {
         binding
     }
 
-    pub fn query_load(&mut self, id: AssetID) -> Result<AssetQueryID, QueryAssetError> {
-        let qid = self.task_pool.query_load(id.clone(), &self.registry)?;
+    pub fn request_load(&mut self, id: AssetID) -> Result<AssetRequest, RequestError> {
+        let qid = self.task_pool.request_load(id.clone(), &self.registry)?;
         Ok(qid)
     }
 
-    pub fn query_load_all(&mut self) -> Result<AssetQueryID, QueryAssetError> {
-        let qid = self.task_pool.query_load_all(&self.registry)?;
+    pub fn request_load_all(&mut self) -> Result<AssetRequest, RequestError> {
+        let qid = self.task_pool.request_load_all(&self.registry)?;
         Ok(qid)
     }
 
-    pub fn query_free(&self, id: AssetID) -> Result<AssetQueryID, QueryAssetError> {
+    pub fn request_free(&self, id: AssetID) -> Result<AssetRequest, RequestError> {
         todo!()
     }
 
-    pub fn query_free_all(&mut self) -> Result<AssetQueryID, QueryAssetError> {
+    pub fn request_free_all(&mut self) -> Result<AssetRequest, RequestError> {
         todo!()
     }
 
@@ -250,7 +249,7 @@ impl AssetHub {
     /// Moves the Asset Hub into the ECS world.
     /// This will allow automatically processing async events on each main loop tick.
     /// This also will provide additional ECS events as `AssetHubEvent` that can be
-    /// used to track queries status and other asset-related events.
+    /// used to track requests status and other asset-related events.
     pub fn attach_to_ecs(self, world: &mut World) {
         let entity = world.spawn();
         world.insert(entity, self);
@@ -292,9 +291,9 @@ impl AssetHub {
                             .unwrap();
                         // Update the task pool with the completed task
                         match hub.task_pool.task_done(message.task_id) {
-                            TaskDoneResult::QueryComplete(qid) => {
-                                // Notify the ECS world about the completed query
-                                sender.send(AssetHubEvent::QueryCompleted(qid, true));
+                            TaskDoneResult::RequestCompleted(qid) => {
+                                // Notify the ECS world about the completed request
+                                sender.send(AssetHubEvent::RequestCompleted(qid, true));
                             }
                             _ => {}
                         }
@@ -308,9 +307,9 @@ impl AssetHub {
                             .unwrap();
                         // Update the task pool with the completed task
                         match hub.task_pool.task_done(message.task_id) {
-                            TaskDoneResult::QueryComplete(qid) => {
-                                // Notify the ECS world about the completed query
-                                sender.send(AssetHubEvent::QueryCompleted(qid, true));
+                            TaskDoneResult::RequestCompleted(qid) => {
+                                // Notify the ECS world about the completed request
+                                sender.send(AssetHubEvent::RequestCompleted(qid, true));
                             }
                             _ => {}
                         }
@@ -321,8 +320,8 @@ impl AssetHub {
                         // Update the task pool with the failed task
                         hub.task_pool.task_failed(message.task_id);
                         // Notify the ECS world about the failed asset
-                        sender.send(AssetHubEvent::QueryCompleted(
-                            message.task_id.as_query_id(),
+                        sender.send(AssetHubEvent::RequestCompleted(
+                            message.task_id.as_request(),
                             false,
                         ));
                         sender.send(AssetHubEvent::AssetFailed(
