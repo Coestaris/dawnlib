@@ -1,3 +1,4 @@
+use std::time::Duration;
 use crate::SampleRate;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
 use dawn_assets::ir::audio::IRAudio;
@@ -49,6 +50,7 @@ impl AudioAssetFactory {
             |_| {
                 // Free will be handled in the Drop implementation of AudioAsset
             },
+            Duration::ZERO,
         );
     }
 
@@ -95,6 +97,7 @@ impl NotesAssetFactory {
             |_| {
                 // Free will be handled in the Drop implementation of ShaderProgram
             },
+            Duration::ZERO,
         );
     }
 

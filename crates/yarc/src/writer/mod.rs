@@ -2,9 +2,12 @@ mod ir;
 mod user;
 
 use crate::manifest::Manifest;
+use crate::serialize_backend::serialize;
 use crate::writer::ir::user_to_ir;
 use crate::writer::user::UserAsset;
-use crate::{ChecksumAlgorithm, Compression, PackedAsset, ReadMode, WriteOptions};
+use crate::{
+    serialize_backend, ChecksumAlgorithm, Compression, PackedAsset, ReadMode, WriteOptions,
+};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetHeader, AssetID};
 use flate2::write::GzEncoder;
@@ -137,9 +140,7 @@ fn irs_to_binaries(
     let mut binary = Vec::new();
 
     // Serialize the manifest
-    let serialized = manifest
-        .serialize()
-        .map_err(WriterError::SerializationError)?;
+    let serialized = serialize(manifest).map_err(WriterError::SerializationError)?;
     binary.push(AssetBinary {
         raw: serialized,
         name: Manifest::location().to_string(),
@@ -148,9 +149,7 @@ fn irs_to_binaries(
     // Serialize each IR asset
     for ir in irs {
         let packed_asset = PackedAsset::new(ir.header.clone(), ir.ir);
-        let serialized = packed_asset
-            .serialize()
-            .map_err(WriterError::SerializationError)?;
+        let serialized = serialize(&packed_asset).map_err(WriterError::SerializationError)?;
         binary.push(AssetBinary {
             raw: serialized,
             name: ir.header.id.as_str().to_string(),
@@ -264,8 +263,8 @@ pub fn write_from_directory(
 
 #[cfg(test)]
 mod tests {
-    use crate::{write_from_directory, ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
-    use std::path::PathBuf;
+    use crate::{ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
+    use crate::writer::write_from_directory;
 
     #[test]
     fn test() {

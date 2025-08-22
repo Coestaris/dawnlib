@@ -4,11 +4,11 @@ use crate::writer::ir::mesh::convert_mesh;
 use crate::writer::ir::shader::convert_shader;
 use crate::writer::ir::texture::convert_texture;
 use crate::writer::user::{UserAssetHeader, UserAssetProperties};
-use crate::writer::{UserAssetFile, UserIRAsset};
-use crate::{ChecksumAlgorithm, WriterError};
+use crate::writer::{UserAssetFile, UserIRAsset, WriterError};
+use crate::ChecksumAlgorithm;
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 mod audio;
 mod material;

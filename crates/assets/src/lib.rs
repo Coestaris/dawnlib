@@ -10,6 +10,7 @@ pub mod ir;
 pub mod reader;
 pub(crate) mod registry;
 pub mod requests;
+pub mod binding;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetChecksum([u8; 16]);
