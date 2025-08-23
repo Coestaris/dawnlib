@@ -218,7 +218,7 @@ where
     Ok(())
 }
 
-/// Implementation of creating a YARC from a directory
+/// Implementation of creating a dac from a directory
 /// This will involve reading files, normalizing names, and writing to a
 /// .tar or .tar.gz archive with the specified compression and checksum algorithm.
 pub fn write_from_directory(

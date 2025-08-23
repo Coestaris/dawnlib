@@ -5,5 +5,5 @@ members = [
     "crates/ecs",
     "crates/graphics",
     "crates/profile",
-    "crates/yarc",
+    "crates/dac",
 ]

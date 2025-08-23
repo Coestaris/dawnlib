@@ -12,6 +12,7 @@ use evenio::fetch::Single;
 use evenio::handler::IntoHandler;
 use evenio::prelude::World;
 use log::{debug, error, info};
+use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
 use thiserror::Error;
 
@@ -76,17 +77,23 @@ impl ReadStorage {
         self.sender.send(message).unwrap();
     }
 
-    fn recv(&self, max: usize) -> Vec<FromReaderMessage> {
-        let mut messages = Vec::new();
-        for _ in 0..max {
-            if let Ok(message) = self.receiver.try_recv() {
-                debug!("Received message {:?}", message);
-                messages.push(message);
-            } else {
-                break;
+    pub fn try_recv(storage: Option<&Self>) -> Option<FromReaderMessage> {
+        match storage {
+            Some(s) => match s.receiver.try_recv() {
+                Ok(message) => {
+                    debug!("Received message {:?}", message);
+                    Some(message)
+                }
+                Err(crossbeam_channel::TryRecvError::Empty) => None,
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    panic!("Reader channel disconnected")
+                }
+            },
+            None => {
+                error!("Reader binding is not registered");
+                None
             }
         }
-        messages
     }
 }
 
@@ -106,18 +113,17 @@ impl FactoryStorage {
         self.sender.send(message).unwrap();
     }
 
-    fn recv(&self, max: usize) -> Vec<FromFactoryMessage> {
-        let mut messages = Vec::new();
-        for _ in 0..max {
-            if let Ok(message) = self.receiver.try_recv() {
+    fn try_recv(&self) -> Option<FromFactoryMessage> {
+        match self.receiver.try_recv() {
+            Ok(message) => {
                 debug!("Received message {:?}", message);
-                messages.push(message);
-            } else {
-                break;
+                Some(message)
+            }
+            Err(crossbeam_channel::TryRecvError::Empty) => None,
+            Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                panic!("Factory channel disconnected")
             }
         }
-
-        messages
     }
 }
 
@@ -263,37 +269,14 @@ impl AssetHub {
 }
 
 impl AssetHub {
+    /// The main tick handler for the AssetHub.
+    /// This is called on each main loop tick and processes pending tasks,
+    /// reader events, and factory events.
     fn tick_handler(
         _: Receiver<Tick>,
         mut hub: Single<&mut AssetHub>,
         mut sender: Sender<AssetHubEvent>,
     ) {
-        fn task_done(tid: AssetTaskID, hub: &mut AssetHub, sender: &mut Sender<AssetHubEvent>) {
-            // Update the task pool with the completed task
-            match hub.task_pool.task_done(tid) {
-                TaskDoneResult::RequestCompleted(qid) => {
-                    // Notify the ECS world about the completed request
-                    sender.send(AssetHubEvent::RequestCompleted(qid, Ok(())));
-                }
-                _ => {}
-            }
-        }
-
-        fn task_failed(
-            tid: AssetTaskID,
-            error: String,
-            hub: &mut AssetHub,
-            sender: &mut Sender<AssetHubEvent>,
-        ) {
-            // Update the task pool with the failed task
-            hub.task_pool.task_failed(tid);
-            // Notify the ECS world about the completed request
-            sender.send(AssetHubEvent::RequestCompleted(
-                tid.as_request(),
-                Err(error.clone()),
-            ));
-        }
-
         // Peek tasks and route the to the factories
         loop {
             match hub.task_pool.peek_task() {
@@ -305,15 +288,14 @@ impl AssetHub {
                         TaskCommand::Free(aid) => hub.send_free(task.id.clone(), aid),
                     };
                     if let Err(e) = result {
-                        task_failed(task.id.clone(), e, &mut hub, &mut sender);
+                        hub.task_failed(task.id.clone(), e, &mut sender);
                     }
                 }
                 PeekResult::NoPendingTasks => break,
                 PeekResult::UnwrapFailed(tid, message) => {
-                    task_failed(
+                    hub.task_failed(
                         tid,
                         format!("Failed to unwrap task with ID {:?}: {}", tid, message),
-                        &mut hub,
                         &mut sender,
                     );
                 }
@@ -321,174 +303,193 @@ impl AssetHub {
         }
 
         // Process events from reader
-        for message in hub.receive_from_readers(8) {
-            match message {
-                FromReaderMessage::Enumerate(tid, Ok(headers)) => {
-                    // Register all headers in the registry
-                    hub.registry.enumerate(headers);
-                    task_done(tid, &mut hub, &mut sender);
-                }
-                FromReaderMessage::Enumerate(tid, Err(message)) => {
-                    task_failed(tid, message, &mut hub, &mut sender);
-                }
-                FromReaderMessage::Read(tid, aid, Ok(ir)) => {
-                    // Save the IR asset to the registry
-                    hub.registry
-                        .update(aid.clone(), AssetState::Read(ir))
-                        .unwrap();
-                    task_done(tid, &mut hub, &mut sender);
-                }
-                FromReaderMessage::Read(tid, _, Err(message)) => {
-                    task_failed(tid, message, &mut hub, &mut sender);
-                }
-            };
+        while let Some(message) = ReadStorage::try_recv(hub.reader.as_ref()) {
+            hub.recv_reader(message, &mut sender);
         }
 
         // Process events from factories
         // Since we're sharing 'from' queue between factories,
         // we can just poll any of the binding
-        for message in hub.receive_from_factory(8) {
-            match message {
-                FromFactoryMessage::Load(tid, aid, Ok(message)) => {
-                    // Save the asset to the registry
-                    hub.registry
-                        .update(
-                            aid.clone(),
-                            AssetState::Loaded(
-                                Asset::new(aid.clone(), message.asset_type, message.asset_ptr),
-                                message.usage,
-                            ),
-                        )
-                        .unwrap();
+        let mut vec: SmallVec<[FromFactoryMessage; 8]> = smallvec![];
+        for factory in hub.factories.values() {
+            while let Some(message) = factory.try_recv() {
+                vec.push(message);
+            }
+        }
+        for message in vec {
+            hub.recv_factory(message, &mut sender);
+        }
+    }
 
-                    // Notify the ECS world about the loaded asset
-                    sender.send(AssetHubEvent::AssetLoaded(aid.clone()));
-                    task_done(tid, &mut hub, &mut sender);
-                }
-                FromFactoryMessage::Load(tid, aid, Err(message)) => {
-                    sender.send(AssetHubEvent::AssetFailed(
+    /// Processes the task completion.
+    /// This updates the task pool and notifies the ECS world about the completed request.
+    fn task_done(&mut self, tid: AssetTaskID, sender: &mut Sender<AssetHubEvent>) {
+        // Update the task pool with the completed task
+        match self.task_pool.task_done(tid) {
+            TaskDoneResult::RequestCompleted(qid) => {
+                // Notify the ECS world about the completed request
+                sender.send(AssetHubEvent::RequestCompleted(qid, Ok(())));
+            }
+            _ => {}
+        }
+    }
+
+    /// Processes the task failure.
+    /// This updates the task pool and notifies the ECS world about the failed request.
+    fn task_failed(&mut self, tid: AssetTaskID, error: String, sender: &mut Sender<AssetHubEvent>) {
+        // Update the task pool with the failed task
+        self.task_pool.task_failed(tid);
+        // Notify the ECS world about the completed request
+        sender.send(AssetHubEvent::RequestCompleted(
+            tid.as_request(),
+            Err(error.clone()),
+        ));
+    }
+
+    /// Receives messages from the reader and processes them.
+    /// This updates the asset registry and notifies the ECS world about the asset state changes.
+    fn recv_reader(&mut self, message: FromReaderMessage, mut sender: &mut Sender<AssetHubEvent>) {
+        match message {
+            FromReaderMessage::Enumerate(tid, Ok(headers)) => {
+                // Register all headers in the registry
+                self.registry.enumerate(headers);
+                self.task_done(tid, &mut sender);
+            }
+            FromReaderMessage::Enumerate(tid, Err(message)) => {
+                self.task_failed(tid, message, &mut sender);
+            }
+            FromReaderMessage::Read(tid, aid, Ok(ir)) => {
+                // Save the IR asset to the registry
+                self.registry
+                    .update(aid.clone(), AssetState::Read(ir))
+                    .unwrap();
+                self.task_done(tid, &mut sender);
+            }
+            FromReaderMessage::Read(tid, _, Err(message)) => {
+                self.task_failed(tid, message, &mut sender);
+            }
+        };
+    }
+
+    /// Receives messages from the factories and processes them.
+    /// This updates the asset registry and notifies the ECS world about the asset state changes.
+    fn recv_factory(
+        &mut self,
+        message: FromFactoryMessage,
+        mut sender: &mut Sender<AssetHubEvent>,
+    ) {
+        match message {
+            FromFactoryMessage::Load(tid, aid, Ok(message)) => {
+                self.registry
+                    .update(
                         aid.clone(),
-                        Some(message.clone()),
-                    ));
-                    task_failed(tid, message, &mut hub, &mut sender);
-                }
-                FromFactoryMessage::Free(tid, aid, Ok(())) => {
-                    // Save the asset to the registry
-                    hub.registry.update(aid.clone(), AssetState::Empty).unwrap();
-                    // Notify the ECS world about the loaded asset
-                    sender.send(AssetHubEvent::AssetLoaded(aid.clone()));
-                    task_done(tid, &mut hub, &mut sender);
-                }
-                FromFactoryMessage::Free(tid, aid, Err(message)) => {
-                    task_failed(tid, message, &mut hub, &mut sender);
-                }
-            };
-        }
+                        AssetState::Loaded(
+                            Asset::new(aid.clone(), message.asset_type, message.asset_ptr),
+                            message.usage,
+                        ),
+                    )
+                    .unwrap();
+
+                // Notify the ECS world about the loaded asset
+                sender.send(AssetHubEvent::AssetLoaded(aid.clone()));
+                self.task_done(tid, &mut sender);
+            }
+            FromFactoryMessage::Load(tid, aid, Err(message)) => {
+                sender.send(AssetHubEvent::AssetFailed(
+                    aid.clone(),
+                    Some(message.clone()),
+                ));
+                self.task_failed(tid, message, &mut sender);
+            }
+            FromFactoryMessage::Free(tid, aid, Ok(())) => {
+                self.registry
+                    .update(aid.clone(), AssetState::Empty)
+                    .unwrap();
+                // Notify the ECS world about the loaded asset
+                sender.send(AssetHubEvent::AssetFreed(aid.clone()));
+                self.task_done(tid, &mut sender);
+            }
+            FromFactoryMessage::Free(tid, aid, Err(message)) => {
+                self.task_failed(tid, message, &mut sender);
+            }
+        };
     }
 
+    /// Sends an enumerate request to the reader.
     fn send_enumerate(&mut self, task_id: AssetTaskID) -> Result<(), String> {
-        if let Some(reader) = self.reader.as_ref() {
-            for id in self.registry.keys() {
-                if let AssetState::Loaded(_, _) = self.registry.get_state(id).unwrap() {
-                    return Err(format!(
-                        "Asset ID {} is not freed or in use. Cannot enumerate",
-                        id
-                    ));
-                }
+        let reader = self.reader.as_ref().unwrap();
+        for id in self.registry.keys() {
+            if let AssetState::Loaded(_, _) = self.registry.get_state(id).unwrap() {
+                return Err(format!(
+                    "Asset ID {} is not freed or in use. Cannot enumerate",
+                    id
+                ));
             }
-            reader.send(ToReaderMessage::Enumerate(task_id.clone()));
-            Ok(())
-        } else {
-            Err("No reader found".to_string())
         }
+        reader.send(ToReaderMessage::Enumerate(task_id.clone()));
+        Ok(())
     }
 
+    /// Sends a read request to the reader.
     fn send_read(&mut self, task_id: AssetTaskID, id: AssetID) -> Result<(), String> {
-        if let Some(reader) = self.reader.as_ref() {
-            if let Err(_) = self.registry.get_header(&id) {
-                return Err(format!("Asset with ID {} not found", id));
-            }
-            reader.send(ToReaderMessage::Read(task_id.clone(), id.clone()));
-            Ok(())
-        } else {
-            Err("No reader found".to_string())
+        let reader = self.reader.as_ref().unwrap();
+        if let Err(_) = self.registry.get_header(&id) {
+            return Err(format!("Asset with ID {} not found", id));
         }
+        reader.send(ToReaderMessage::Read(task_id.clone(), id.clone()));
+        Ok(())
     }
 
+    /// Sends a load request to the appropriate factory.
     fn send_load(&mut self, task_id: AssetTaskID, id: AssetID) -> Result<(), String> {
         let header = self.registry.get_header(&id)?;
-        match self.registry.get_state(&id)? {
-            AssetState::Read(ir) => {
-                let factory = self.factories.get(&header.asset_type);
-                if let Some(factory) = factory {
-                    let mut dependencies = HashMap::new();
-                    for dep in &header.dependencies {
-                        dependencies.insert(dep.clone(), self.get(dep.clone()).unwrap());
-                    }
+        if let AssetState::Read(ir) = self.registry.get_state(&id)? {
+            let factory = self.factories.get(&header.asset_type).unwrap();
 
-                    let message = ToFactoryMessage::Load(
-                        task_id.clone(),
-                        id.clone(),
-                        LoadFactoryMessage {
-                            asset_header: header.clone(),
-                            ir: ir.clone(),
-                            dependencies,
-                        },
-                    );
-                    factory.send(message);
-                } else {
-                    panic!(
-                        "No factory found for asset type {:?} for asset ID {}",
-                        header.asset_type, id
-                    );
-                }
-
-                Ok(())
+            // Collect dependencies
+            let mut dependencies = HashMap::new();
+            for dep in &header.dependencies {
+                dependencies.insert(dep.clone(), self.get(dep.clone()).unwrap());
             }
-            other => Err(format!(
-                "Asset with ID {} is not in READ state, cannot load it: {:?}",
-                id, other
-            )),
+
+            factory.send(ToFactoryMessage::Load(
+                task_id.clone(),
+                id.clone(),
+                LoadFactoryMessage {
+                    asset_header: header.clone(),
+                    ir: ir.clone(),
+                    dependencies,
+                },
+            ));
+            Ok(())
+        } else {
+            Err(format!(
+                "Asset with ID {} is not in IR state, cannot load it",
+                id
+            ))
         }
     }
 
+    /// Sends a free request to the appropriate factory.
     fn send_free(&mut self, task_id: AssetTaskID, id: AssetID) -> Result<(), String> {
         let header = self.registry.get_header(&id)?;
-        match self.registry.get_state(&id)? {
-            AssetState::Loaded(_, _) => {
-                let factory = self.factories.get(&header.asset_type);
-                if let Some(factory) = factory {
-                    let message = ToFactoryMessage::Free(task_id.clone(), id.clone());
-                    factory.send(message);
-                } else {
-                    panic!(
-                        "No factory found for asset type {:?} for asset ID {}",
-                        header.asset_type, id
-                    );
-                }
-
-                Ok(())
+        if let AssetState::Loaded(asset, _) = self.registry.get_state(&id)? {
+            if asset.ref_count() > 1 {
+                return Err(format!(
+                    "Asset with ID {} is still in use, reference count: {}",
+                    id,
+                    asset.ref_count()
+                ));
             }
-            other => Err(format!(
-                "Asset with ID {} is not in LOADED state, cannot free it: {:?}",
-                id, other
-            )),
-        }
-    }
 
-    fn receive_from_readers(&mut self, max: usize) -> Vec<FromReaderMessage> {
-        let mut messages = Vec::new();
-        if let Some(reader) = &self.reader {
-            messages.extend(reader.recv(max));
+            let factory = self.factories.get(&header.asset_type).unwrap();
+            factory.send(ToFactoryMessage::Free(task_id.clone(), id.clone()));
+            Ok(())
+        } else {
+            Err(format!(
+                "Asset with ID {} is not in Loaded state, cannot free it",
+                id
+            ))
         }
-        messages
-    }
-
-    fn receive_from_factory(&mut self, max: usize) -> Vec<FromFactoryMessage> {
-        let mut messages = Vec::new();
-        for factory in self.factories.values() {
-            messages.extend(factory.recv(max));
-        }
-        messages
     }
 }

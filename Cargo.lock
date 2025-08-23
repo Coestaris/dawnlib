@@ -364,6 +364,7 @@ dependencies = [
  "glam",
  "log",
  "serde",
+ "smallvec",
  "thiserror 2.0.16",
 ]
 
@@ -385,38 +386,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "dawn-ecs"
-version = "0.1.0"
-dependencies = [
- "dawn-profile",
- "evenio",
- "glam",
- "log",
-]
-
-[[package]]
-name = "dawn-graphics"
-version = "0.1.0"
-dependencies = [
- "crossbeam-queue",
- "dawn-assets",
- "dawn-ecs",
- "dawn-profile",
- "evenio",
- "gl_generator",
- "glam",
- "log",
- "triple_buffer",
- "windows 0.61.3",
- "x11",
-]
-
-[[package]]
-name = "dawn-profile"
-version = "0.1.0"
-
-[[package]]
-name = "dawn-yarc"
+name = "dawn-dac"
 version = "0.1.0"
 dependencies = [
  "dawn-assets",
@@ -433,6 +403,37 @@ dependencies = [
  "toml 0.9.5",
  "walkdir",
 ]
+
+[[package]]
+name = "dawn-ecs"
+version = "0.1.0"
+dependencies = [
+ "dawn-profile",
+ "evenio",
+ "glam",
+ "log",
+]
+
+[[package]]
+name = "dawn-graphics"
+version = "0.1.0"
+dependencies = [
+ "crossbeam-channel",
+ "dawn-assets",
+ "dawn-ecs",
+ "dawn-profile",
+ "evenio",
+ "gl_generator",
+ "glam",
+ "log",
+ "triple_buffer",
+ "windows 0.61.3",
+ "x11",
+]
+
+[[package]]
+name = "dawn-profile"
+version = "0.1.0"
 
 [[package]]
 name = "dispatch2"

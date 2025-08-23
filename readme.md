@@ -22,7 +22,7 @@ the [DAWN](https://github.com/Coestaris/dawn) pet-project.
 - `graphics` - Contains OS-dependent Window management, input handling, and
   rendering pipelines on top of OpenGL.
 - `profile` - Contains profiling tools and utilities.
-- `yarc` - Contains an implementation of Asset container. It also provides 
+- `dac` - Contains an implementation of Asset container. It also provides 
   utilities for converting raw assets (like .png, .wav, etc.) into
   internal representation of assets.
 

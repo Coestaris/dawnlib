@@ -1,12 +1,12 @@
 use crate::passes::result::PassExecuteResult;
 use crate::passes::MAX_RENDER_PASSES;
-use crossbeam_queue::ArrayQueue;
 use evenio::event::GlobalEvent;
 use log::{debug, warn};
 use std::collections::HashMap;
 use std::panic::UnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
+use crossbeam_channel::Sender;
 use dawn_profile::MonitorSample;
 use dawn_profile::sync::{Counter, Stopwatch};
 
@@ -39,7 +39,7 @@ pub struct RendererMonitoring {
 }
 
 pub(crate) trait RendererMonitorTrait: Send + Sync + 'static + UnwindSafe {
-    fn set_queue(&mut self, _queue: Arc<ArrayQueue<RendererMonitoring>>) {}
+    fn set_sender(&mut self, _queue: Sender<RendererMonitoring>) {}
     fn set_pass_names(&mut self, _names: &[&str]) {}
     fn view_start(&mut self) {}
     fn view_stop(&mut self) {}
@@ -62,13 +62,13 @@ pub(crate) struct RendererMonitor {
     pass_names: Vec<String>,
     pass_samples: Vec<MonitorSample<Duration>>,
     last_send: std::time::Instant,
-    queue: Option<Arc<ArrayQueue<RendererMonitoring>>>,
+    sender: Option<Sender<RendererMonitoring>>,
     counter: usize,
 }
 
 impl RendererMonitorTrait for RendererMonitor {
-    fn set_queue(&mut self, queue: Arc<ArrayQueue<RendererMonitoring>>) {
-        self.queue = Some(queue);
+    fn set_sender(&mut self, sender: Sender<RendererMonitoring>) {
+        self.sender = Some(sender);
     }
 
     fn set_pass_names(&mut self, names: &[&str]) {
@@ -138,7 +138,7 @@ impl RendererMonitorTrait for RendererMonitor {
             self.fps.update();
             self.drawn_primitives.update();
 
-            if let Some(queue) = &self.queue {
+            if let Some(sender) = &self.sender {
                 let mut passes = HashMap::with_capacity(self.pass_names.len());
                 for (i, name) in self.pass_names.iter().enumerate() {
                     passes.insert(name.clone(), self.pass_samples[i].clone());
@@ -154,9 +154,7 @@ impl RendererMonitorTrait for RendererMonitor {
                     draw_calls: self.draw_calls.get(),
                 };
 
-                if queue.push(frame).is_err() {
-                    warn!("Cannot send frame to renderer monitor queue");
-                }
+                sender.send(frame).unwrap();
             }
 
             // Reset the counters each 5 seconds to get more smooth data
@@ -184,7 +182,7 @@ impl RendererMonitor {
             pass_names: Vec::with_capacity(MAX_RENDER_PASSES),
             pass_samples: Vec::with_capacity(MAX_RENDER_PASSES),
             last_send: std::time::Instant::now(),
-            queue: None,
+            sender: None,
             counter: 0,
         }
     }
