@@ -1,31 +1,13 @@
+use crate::container::ContainerError;
 use crate::manifest::Manifest;
 use dawn_assets::ir::IRAsset;
-use dawn_assets::{AssetID};
-use std::path::{Path, PathBuf};
+use dawn_assets::AssetID;
+use std::io::{Read, Seek};
 
-#[derive(Debug)]
-pub enum ReadError {
-    IoError(std::io::Error),
-    ReadTarError(std::io::Error),
-    DecodeError(String),
-    ParseAssetError(String),
+pub fn read_manifest<R: Read + Seek>(reader: &mut R) -> Result<Manifest, ContainerError> {
+    crate::container::read_manifest(reader)
 }
 
-impl std::fmt::Display for ReadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReadError::IoError(e) => write!(f, "I/O error: {}", e),
-            ReadError::ReadTarError(e) => write!(f, "Failed to read tar entry: {}", e),
-            ReadError::DecodeError(e) => write!(f, "Failed to decode contents: {}", e),
-            ReadError::ParseAssetError(e) => write!(f, "Failed to parse asset: {}", e),
-        }
-    }
-}
-
-pub fn read_manifest(path: PathBuf) -> Result<Manifest, ReadError> {
-    todo!()
-}
-
-pub fn read(path: PathBuf, id: AssetID) -> Result<IRAsset, ReadError> {
-    todo!()
+pub fn read_asset<R: Read + Seek>(reader: &mut R, id: AssetID) -> Result<IRAsset, ContainerError> {
+    crate::container::read_ir(reader, id)
 }
