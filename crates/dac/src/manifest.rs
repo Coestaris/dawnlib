@@ -1,4 +1,4 @@
-use crate::{ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
+use crate::writer::{ChecksumAlgorithm, ReadMode, WriteConfig};
 use dawn_assets::AssetHeader;
 use log::warn;
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,6 @@ pub struct Manifest {
     pub tool: String,
     pub tool_version: String,
     pub created: SystemTime,
-    pub compression: Compression,
     pub read_mode: ReadMode,
     pub checksum_algorithm: ChecksumAlgorithm,
     pub headers: Vec<AssetHeader>,
@@ -34,12 +33,11 @@ impl Manifest {
         "_manifest"
     }
 
-    pub(crate) fn new(write_options: &WriteOptions, headers: Vec<AssetHeader>) -> Self {
+    pub(crate) fn new(write_options: &WriteConfig, headers: Vec<AssetHeader>) -> Self {
         Manifest {
             tool: Self::generator_tool(),
             tool_version: Self::generator_tool_version(),
             created: SystemTime::now(),
-            compression: write_options.compression,
             read_mode: write_options.read_mode,
             checksum_algorithm: write_options.checksum_algorithm,
             author: write_options.author.clone(),

@@ -1,13 +1,7 @@
 use crate::manifest::Manifest;
-use crate::{serialize_backend, PackedAsset};
 use dawn_assets::ir::IRAsset;
-use dawn_assets::{AssetHeader, AssetID};
-use flate2::read::GzDecoder;
-use log::info;
-use std::fs::File;
-use std::io::{BufReader, Read};
+use dawn_assets::{AssetID};
 use std::path::{Path, PathBuf};
-use tar::Archive;
 
 #[derive(Debug)]
 pub enum ReadError {

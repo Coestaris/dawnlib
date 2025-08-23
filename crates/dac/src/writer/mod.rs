@@ -2,21 +2,54 @@ mod ir;
 mod user;
 
 use crate::manifest::Manifest;
+use crate::serialize_backend;
 use crate::serialize_backend::serialize;
 use crate::writer::ir::user_to_ir;
 use crate::writer::user::UserAsset;
-use crate::{
-    serialize_backend, ChecksumAlgorithm, Compression, PackedAsset, ReadMode, WriteOptions,
-};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetHeader, AssetID};
-use flate2::write::GzEncoder;
 use log::info;
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
-use tar::Builder;
 use thiserror::Error;
+use crate::layout::AssetBinary;
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum ReadMode {
+    Flat,
+    Recursive,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum ChecksumAlgorithm {
+    Blake3,
+    Md5,
+    SHA256,
+}
+
+impl Display for ChecksumAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Blake3 => write!(f, "Blake3"),
+            Self::Md5 => write!(f, "MD5"),
+            Self::SHA256 => write!(f, "SHA256"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WriteConfig {
+    pub read_mode: ReadMode,
+    pub checksum_algorithm: ChecksumAlgorithm,
+
+    pub author: Option<String>,
+    pub description: Option<String>,
+    pub version: Option<String>,
+    pub license: Option<String>,
+}
 
 #[derive(Debug)]
 pub(crate) struct UserAssetFile {
@@ -27,11 +60,6 @@ pub(crate) struct UserAssetFile {
 pub(crate) struct UserIRAsset {
     header: AssetHeader,
     ir: IRAsset,
-}
-
-pub(crate) struct AssetBinary {
-    raw: Vec<u8>,
-    name: String,
 }
 
 #[derive(Debug, Error)]
@@ -84,7 +112,7 @@ fn collect_files(path: PathBuf, read_mode: ReadMode) -> Result<Vec<PathBuf>, std
 
 fn collect_user_assets(
     files: &[PathBuf],
-    options: WriteOptions,
+    options: WriteConfig,
 ) -> Result<Vec<UserAssetFile>, WriterError> {
     // Find all toml files
     let mut toml_files = Vec::new();
@@ -133,32 +161,6 @@ fn user_assets_to_irs(
     Ok(result)
 }
 
-fn irs_to_binaries(
-    irs: Vec<UserIRAsset>,
-    manifest: &Manifest,
-) -> Result<Vec<AssetBinary>, WriterError> {
-    let mut binary = Vec::new();
-
-    // Serialize the manifest
-    let serialized = serialize(manifest).map_err(WriterError::SerializationError)?;
-    binary.push(AssetBinary {
-        raw: serialized,
-        name: Manifest::location().to_string(),
-    });
-
-    // Serialize each IR asset
-    for ir in irs {
-        let packed_asset = PackedAsset::new(ir.header.clone(), ir.ir);
-        let serialized = serialize(&packed_asset).map_err(WriterError::SerializationError)?;
-        binary.push(AssetBinary {
-            raw: serialized,
-            name: ir.header.id.as_str().to_string(),
-        });
-    }
-
-    Ok(binary)
-}
-
 fn sanity_check(irs: &[UserIRAsset]) -> Result<(), WriterError> {
     // Check that all dependencies are present
     for ir in irs {
@@ -194,36 +196,12 @@ fn sanity_check(irs: &[UserIRAsset]) -> Result<(), WriterError> {
     Ok(())
 }
 
-fn add_binaries<W>(tar: &mut Builder<W>, binaries: &[AssetBinary]) -> Result<(), WriterError>
-where
-    W: std::io::Write,
-{
-    for binary in binaries {
-        let mut header = tar::Header::new_gnu();
-        header.set_path(binary.name.as_str())?;
-        header.set_size(binary.raw.len() as u64);
-        header.set_mode(0o644); // Set file mode to 644
-        header.set_uid(0); // Set user ID to 0 (root)
-        header.set_gid(0); // Set group ID to 0 (root)
-        header.set_mtime(
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs(),
-        );
-        header.set_cksum();
-
-        tar.append(&header, binary.raw.as_slice())?;
-    }
-    Ok(())
-}
-
 /// Implementation of creating a dac from a directory
 /// This will involve reading files, normalizing names, and writing to a
 /// .tar or .tar.gz archive with the specified compression and checksum algorithm.
 pub fn write_from_directory(
     input_dir: PathBuf,
-    options: WriteOptions,
+    options: WriteConfig,
     output: PathBuf,
 ) -> Result<(), WriterError> {
     let input_files = collect_files(input_dir, options.read_mode)?;
@@ -231,40 +209,15 @@ pub fn write_from_directory(
     let irs = user_assets_to_irs(user_assets, options.checksum_algorithm)?;
     sanity_check(&irs)?;
     let manifest = Manifest::new(&options, irs.iter().map(|h| h.header.clone()).collect());
-    let binaries = irs_to_binaries(irs, &manifest)?;
-
-    info!(
-        "Writing {} files to {}",
-        binaries.len(),
-        output.to_str().unwrap()
-    );
-
-    let output_file = File::create(&output)?;
-    match options.compression {
-        Compression::None => {
-            // Create a tar archive
-            let mut tar = Builder::new(output_file);
-            add_binaries(&mut tar, &binaries)?;
-            tar.finish()?;
-        }
-        Compression::Gzip => {
-            // Create a gzipped tar archive
-            let enc = GzEncoder::new(output_file, flate2::Compression::default());
-            let mut tar = Builder::new(enc);
-            add_binaries(&mut tar, &binaries)?;
-            tar.finish()?;
-            let enc = tar.into_inner()?;
-            enc.finish()?;
-        }
-    }
+    
 
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
     use crate::writer::write_from_directory;
+    use crate::{ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
 
     #[test]
     fn test() {
