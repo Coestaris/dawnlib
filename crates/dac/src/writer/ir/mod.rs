@@ -21,6 +21,18 @@ fn checksum<T>(obj: &T, algorithm: ChecksumAlgorithm) -> Result<AssetChecksum, W
         unsafe { std::slice::from_raw_parts(obj as *const T as *const u8, size_of_val(obj)) };
 
     let hash = match algorithm {
+        ChecksumAlgorithm::Blake3 => {
+            let mut hasher = blake3::Hasher::new();
+            hasher.update(slice);
+            hasher.finalize().as_bytes().to_owned()
+        }
+        #[cfg(feature = "hash_sha2")]
+        ChecksumAlgorithm::SHA256 => {
+            let mut hasher = sha2::Sha256::new();
+            hasher.update(slice);
+            hasher.finalize().to_vec()
+        }
+        #[cfg(feature = "hash_md5")]
         ChecksumAlgorithm::Md5 => {
             let mut hasher = md5::Context::new();
             hasher.consume(slice);

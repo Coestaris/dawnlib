@@ -1,6 +1,7 @@
 mod ir;
 mod user;
 
+use crate::container::{write_container, ContainerError};
 use crate::manifest::Manifest;
 use crate::serialize_backend;
 use crate::serialize_backend::serialize;
@@ -10,12 +11,12 @@ use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetHeader, AssetID};
 use log::info;
 use serde::{Deserialize, Serialize};
+use std::alloc::Layout;
 use std::fmt::Display;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use thiserror::Error;
-use crate::layout::AssetBinary;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum ReadMode {
@@ -80,6 +81,8 @@ pub enum WriterError {
     CircleDependency(AssetID, AssetID),
     #[error("Non-unique ID: {0}")]
     NonUniqueID(AssetID),
+    #[error("Container creation failed: {0}")]
+    ContainerCreationFailed(#[from] ContainerError),
 }
 
 /// Collect files from the specified path based on the read mode
@@ -197,27 +200,35 @@ fn sanity_check(irs: &[UserIRAsset]) -> Result<(), WriterError> {
 }
 
 /// Implementation of creating a dac from a directory
-/// This will involve reading files, normalizing names, and writing to a
+/// This will involve reading filezzs, normalizing names, and writing to a
 /// .tar or .tar.gz archive with the specified compression and checksum algorithm.
-pub fn write_from_directory(
+pub fn write_from_directory<W: Write>(
+    writer: &mut W,
     input_dir: PathBuf,
     options: WriteConfig,
-    output: PathBuf,
 ) -> Result<(), WriterError> {
     let input_files = collect_files(input_dir, options.read_mode)?;
     let user_assets = collect_user_assets(&input_files, options.clone())?;
     let irs = user_assets_to_irs(user_assets, options.checksum_algorithm)?;
     sanity_check(&irs)?;
     let manifest = Manifest::new(&options, irs.iter().map(|h| h.header.clone()).collect());
-    
+
+    info!("Creating DAC container");
+    write_container(
+        writer,
+        manifest,
+        irs.into_iter()
+            .map(|h| (h.header.id.clone(), h.ir))
+            .collect(),
+    )?;
 
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::writer::write_from_directory;
-    use crate::{ChecksumAlgorithm, Compression, ReadMode, WriteOptions};
+    use crate::container::{read_ir, read_manifest};
+    use crate::writer::{write_from_directory, ChecksumAlgorithm, ReadMode, WriteConfig};
 
     #[test]
     fn test() {
@@ -239,21 +250,30 @@ mod tests {
         log::set_max_level(log::LevelFilter::Debug);
 
         // TODO: Do not commit me :(
-        let current_dir = "/home/taris/work/dawn/assets";
-        let target_dir = "/tmp/test.tar.gz";
+        let current_dir = "/Users/maximkurylko/work/dawn/assets";
+        let target_dir = "/var/tmp/test.dac";
+        let file = std::fs::File::create(target_dir).unwrap();
+        let mut writer = std::io::BufWriter::new(file);
         write_from_directory(
+            &mut writer,
             current_dir.into(),
-            WriteOptions {
-                compression: Compression::Gzip,
+            WriteConfig {
                 read_mode: ReadMode::Recursive,
-                checksum_algorithm: ChecksumAlgorithm::Md5,
+                checksum_algorithm: ChecksumAlgorithm::Blake3,
                 author: Some("Coestaris <vk_vm@ukr.net>".to_string()),
                 description: Some("Test assets".to_string()),
                 version: Some("0.1.0".to_string()),
                 license: Some("MIT".to_string()),
             },
-            target_dir.into(),
         )
         .unwrap();
+        drop(writer.into_inner().unwrap());
+
+        let file = std::fs::File::open(target_dir).unwrap();
+        let mut reader = std::io::BufReader::new(file);
+        let manifest = read_manifest(&mut reader).unwrap();
+        println!("{:#?}", manifest);
+        let ir = read_ir(&mut reader, "image".into()).unwrap();
+        println!("{:#?}", ir);
     }
 }
