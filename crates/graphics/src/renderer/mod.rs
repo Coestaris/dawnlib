@@ -13,7 +13,7 @@ use crate::renderer::backend::{RendererBackendError, RendererBackendTrait};
 use crate::renderer::ecs::attach_to_ecs;
 use crate::renderer::monitor::{DummyRendererMonitor, RendererMonitor, RendererMonitorTrait};
 use crate::view::{TickResult, View, ViewConfig, ViewError, ViewTrait};
-use crossbeam_queue::ArrayQueue;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use evenio::component::Component;
 use evenio::world::World;
 use log::{info, warn};
@@ -27,10 +27,6 @@ use triple_buffer::{triple_buffer, Input, Output};
 pub use backend::{RendererBackend, RendererBackendConfig};
 pub use monitor::RendererMonitoring;
 
-const INPUTS_QUEUE_CAPACITY: usize = 1024;
-const RENDERER_QUEUE_CAPACITY: usize = 1024;
-const MONITOR_QUEUE_CAPACITY: usize = 32;
-
 #[derive(Component)]
 pub struct Renderer<E: PassEventTrait> {
     stop_signal: Arc<AtomicBool>,
@@ -39,10 +35,10 @@ pub struct Renderer<E: PassEventTrait> {
     // without blocking the renderer thread.
     renderables_buffer_input: Input<Vec<Renderable>>,
     // Used for transferring input events from the renderer thread to the ECS.
-    inputs_queue: Arc<ArrayQueue<InputEvent>>,
+    inputs_receiver: Receiver<InputEvent>,
     // Used for transferring render pass events from the ECS to the renderer thread.
-    renderer_queue: Arc<ArrayQueue<RenderPassEvent<E>>>,
-    monitor_queue: Arc<ArrayQueue<RendererMonitoring>>,
+    renderer_sender: Sender<RenderPassEvent<E>>,
+    monitor_receiver: Receiver<RendererMonitoring>,
     handle: Option<JoinHandle<()>>,
 }
 
@@ -170,19 +166,16 @@ impl<E: PassEventTrait> Renderer<E> {
         C: RenderChain<E>,
     {
         // Setup monitor
-        let monitor_queue = Arc::new(ArrayQueue::new(MONITOR_QUEUE_CAPACITY));
-        monitor.set_queue(monitor_queue.clone());
+        let (monitor_sender, monitor_receiver) = unbounded();
+        monitor.set_sender(monitor_sender.clone());
 
         // Setup renderer
-        let inputs_queue = Arc::new(ArrayQueue::<InputEvent>::new(INPUTS_QUEUE_CAPACITY));
-        let renderer_queue = Arc::new(ArrayQueue::new(RENDERER_QUEUE_CAPACITY));
+        let (inputs_sender, inputs_receiver) = unbounded();
+        let (renderer_sender, renderer_receiver) = unbounded();
         let (buffer_input, mut buffer_output) = triple_buffer::<Vec<Renderable>>(&vec![]);
-
-        let inputs_queue_clone = inputs_queue.clone();
-        let renderer_queue_clone = renderer_queue.clone();
         let stop_signal = Arc::new(AtomicBool::new(false));
-        let stop_signal_clone = stop_signal.clone();
 
+        let stop_signal_clone = stop_signal.clone();
         let handle = Builder::new()
             .name("renderer".to_string())
             .spawn(move || {
@@ -190,7 +183,7 @@ impl<E: PassEventTrait> Renderer<E> {
 
                 let func = || {
                     // Create the view, backend and the rendering pipeline
-                    let mut view = View::open(view_config, inputs_queue_clone)
+                    let mut view = View::open(view_config, inputs_sender)
                         .map_err(RendererError::ViewCreateError)?;
                     let mut backend = RendererBackend::<E>::new(backend_config, view.get_handle())
                         .map_err(RendererError::BackendCreateError)?;
@@ -212,7 +205,7 @@ impl<E: PassEventTrait> Renderer<E> {
                             }
                             _ => {}
                         }
-                        Self::handle_events(&mut monitor, &mut pipeline, &renderer_queue_clone)?;
+                        Self::handle_events(&mut monitor, &mut pipeline, &renderer_receiver)?;
                         Self::handle_render(
                             &mut monitor,
                             &mut backend,
@@ -240,9 +233,9 @@ impl<E: PassEventTrait> Renderer<E> {
         Ok(Self {
             stop_signal,
             renderables_buffer_input: buffer_input,
-            inputs_queue,
-            renderer_queue,
-            monitor_queue,
+            inputs_receiver,
+            renderer_sender,
+            monitor_receiver,
             handle: Some(handle),
         })
     }
@@ -278,13 +271,13 @@ impl<E: PassEventTrait> Renderer<E> {
     fn handle_events<C>(
         monitor: &mut impl RendererMonitorTrait,
         pipeline: &mut RenderPipeline<C, E>,
-        renderer_queue: &ArrayQueue<RenderPassEvent<E>>,
+        renderer_queue: &Receiver<RenderPassEvent<E>>,
     ) -> Result<(), RendererError>
     where
         C: RenderChain<E>,
     {
         monitor.events_start();
-        while let Some(event) = renderer_queue.pop() {
+        for event in renderer_queue.try_iter() {
             pipeline.dispatch(event);
         }
         monitor.events_stop();

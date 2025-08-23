@@ -84,7 +84,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         mut sender: Sender<RendererMonitoring>,
     ) {
         let renderer = renderer.cast::<E>();
-        while let Some(frame) = renderer.monitor_queue.pop() {
+        for frame in renderer.monitor_receiver.try_iter() {
             sender.send(frame);
         }
     }
@@ -97,8 +97,8 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         mut sender: Sender<InputEvent>,
     ) {
         let renderer = renderer.cast::<E>();
-        while let Some(input) = renderer.inputs_queue.pop() {
-            sender.send(input);
+        for event in renderer.inputs_receiver.try_iter() {
+            sender.send(event);
         }
     }
 
@@ -108,7 +108,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         renderer: Single<&Boxed>,
     ) {
         let renderer = renderer.cast::<E>();
-        let _ = renderer.renderer_queue.push(rpe.event.clone());
+        renderer.renderer_sender.send(rpe.event.clone());
     }
 
     #[derive(Query)]

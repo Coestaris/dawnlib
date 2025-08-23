@@ -23,7 +23,7 @@ pub struct Manifest {
 }
 impl Manifest {
     fn generator_tool() -> String {
-        "dawn-yarc".to_string() // TODO: Get from Cargo.toml
+        "dawn-dac".to_string() // TODO: Get from Cargo.toml
     }
 
     pub fn generator_tool_version() -> String {

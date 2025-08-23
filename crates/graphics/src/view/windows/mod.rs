@@ -4,10 +4,10 @@ use crate::gl::ViewHandleOpenGL;
 use crate::input::{InputEvent, MouseButton};
 use crate::view::windows::input::{convert_key, convert_mouse_button};
 use crate::view::{TickResult, ViewConfig, ViewTrait};
-use crossbeam_queue::ArrayQueue;
 use log::{debug, info, warn};
 use std::ffi::c_void;
 use std::sync::Arc;
+use crossbeam_channel::Sender;
 use windows::core::{s, HSTRING, PCSTR, PCWSTR};
 use windows::Win32::Foundation::{
     FreeLibrary, GetLastError, FARPROC, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WIN32_ERROR,
@@ -89,13 +89,13 @@ pub const WM_APP_QUIT_REQUESTED: u32 = WM_APP + 1;
 pub(crate) struct View {
     hwnd: HWND,
     hinstance: HINSTANCE,
-    events_sender: Arc<ArrayQueue<InputEvent>>,
+    events_sender: Sender<InputEvent>,
 }
 
 impl ViewTrait for View {
     fn open(
         cfg: ViewConfig,
-        events_sender: Arc<ArrayQueue<InputEvent>>,
+        events_sender: Sender<InputEvent>,
     ) -> Result<Self, crate::view::ViewError> {
         unsafe {
             debug!("Retrieving the instance handle");
@@ -221,9 +221,7 @@ impl ViewTrait for View {
                 }
             }
 
-            if let Err(e) = self.events_sender.push(event) {
-                warn!("Failed to send event: {:?}", e);
-            }
+            self.events_sender.send(event).unwrap();
         }
 
         if !closed {

@@ -6,6 +6,7 @@ use std::fmt::Display;
 pub mod manifest;
 pub mod reader;
 pub mod writer;
+mod layout;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum Compression {

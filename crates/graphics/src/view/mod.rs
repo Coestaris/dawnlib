@@ -7,8 +7,7 @@ mod windows;
 mod x11;
 
 use crate::input::InputEvent;
-use crossbeam_queue::ArrayQueue;
-use std::sync::Arc;
+use crossbeam_channel::Sender;
 
 #[cfg(target_os = "macos")]
 pub mod view_impl {
@@ -60,7 +59,7 @@ pub(crate) enum TickResult {
 }
 
 pub(crate) trait ViewTrait {
-    fn open(cfg: ViewConfig, events_sender: Arc<ArrayQueue<InputEvent>>) -> Result<Self, ViewError>
+    fn open(cfg: ViewConfig, events_sender: Sender<InputEvent>) -> Result<Self, ViewError>
     where
         Self: Sized;
 
