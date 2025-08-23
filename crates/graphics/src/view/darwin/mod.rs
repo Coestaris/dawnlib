@@ -1,8 +1,8 @@
 use crate::gl::ViewHandleOpenGL;
 use crate::input::InputEvent;
 use crate::view::{TickResult, ViewConfig, ViewTrait};
-use crossbeam_queue::ArrayQueue;
 use std::sync::Arc;
+use crossbeam_channel::Sender;
 
 #[derive(Debug, Clone)]
 pub struct PlatformSpecificViewConfig {}
@@ -23,7 +23,7 @@ pub(crate) struct View {}
 impl ViewTrait for View {
     fn open(
         cfg: ViewConfig,
-        events_sender: Arc<ArrayQueue<InputEvent>>,
+        events_sender: Sender<InputEvent>,
     ) -> Result<Self, crate::view::ViewError>
     where
         Self: Sized,
@@ -56,7 +56,7 @@ impl ViewHandleOpenGL for ViewHandle {
         todo!()
     }
 
-    fn get_proc_addr(&self, symbol: &str) -> Result<*const std::ffi::c_void, ViewError> {
+    fn get_proc_addr(&mut self, symbol: &str) -> Result<*const std::ffi::c_void, ViewError> {
         todo!()
     }
 
