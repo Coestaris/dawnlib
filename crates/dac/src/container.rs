@@ -247,7 +247,7 @@ fn segment_to_object<R: Read + Seek, T: DeserializeOwned>(
 }
 
 pub(crate) fn read_manifest<R: Read + Seek>(reader: &mut R) -> Result<Manifest, ContainerError> {
-    let segments = read_segments(reader, MANIFEST_MAGIC)?;
+    let segments = read_segments(reader)?;
     Ok(segment_to_object(reader, &segments, MANIFEST_MAGIC)?)
 }
 
@@ -256,7 +256,7 @@ pub(crate) fn read_ir<R: Read + Seek>(
     id: AssetID,
 ) -> Result<IRAsset, ContainerError> {
     // Locate and read the TOC
-    let segments = read_segments(reader, DATA_MAGIC)?;
+    let segments = read_segments(reader)?;
     let toc = segment_to_object::<R, TOC>(reader, &segments, TOC_MAGIC)?;
 
     // Locate the asset in the TOC

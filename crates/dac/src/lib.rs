@@ -44,7 +44,8 @@ pub mod compression_backend {
     use std::io::{Read, Write};
 
     pub fn compress(data: &[u8]) -> Result<Vec<u8>, String> {
-        let mut encoder = brotli::CompressorWriter::new(Vec::new(), 4096, 5, 22);
+        // TODO: Make compression level configurable
+        let mut encoder = brotli::CompressorWriter::new(Vec::new(), 4096, 2, 22);
         encoder.write_all(data).map_err(|e| e.to_string())?;
         encoder.flush().map_err(|e| e.to_string())?;
         Ok(encoder.into_inner())
