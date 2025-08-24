@@ -25,6 +25,7 @@ use triple_buffer::{triple_buffer, Input, Output};
 
 // Re-export the necessary types for user
 pub use backend::{RendererBackend, RendererBackendConfig};
+use dawn_util::rendezvous::Rendezvous;
 pub use monitor::RendererMonitoring;
 
 #[derive(Component)]
@@ -92,6 +93,24 @@ impl<E: PassEventTrait> Drop for Renderer<E> {
     }
 }
 
+trait RendezvousTrait: Send + Sync + 'static + UnwindSafe {
+    fn wait(&self) {}
+    fn unlock(&self) {}
+}
+
+struct RendezvousWrapper(Rendezvous);
+impl RendezvousTrait for RendezvousWrapper {
+    fn wait(&self) {
+        self.0.wait();
+    }
+    fn unlock(&self) {
+        self.0.unlock();
+    }
+}
+
+struct DummyRendezvous;
+impl RendezvousTrait for DummyRendezvous {}
+
 pub trait RenderChainConstructor<C, E> = FnOnce(&mut RendererBackend<E>) -> Result<RenderPipeline<C, E>, String>
     + Send
     + Sync
@@ -125,12 +144,23 @@ impl<E: PassEventTrait> Renderer<E> {
     where
         C: RenderChain<E>,
     {
-        Self::new_inner(
-            view_config,
-            backend_config,
-            constructor,
-            DummyRendererMonitor {},
-        )
+        if let Some(r) = view_config.rendezvous.clone() {
+            Self::new_inner(
+                view_config,
+                backend_config,
+                constructor,
+                RendezvousWrapper(r),
+                DummyRendererMonitor {},
+            )
+        } else {
+            Self::new_inner(
+                view_config,
+                backend_config,
+                constructor,
+                DummyRendezvous {},
+                DummyRendererMonitor {},
+            )
+        }
     }
 
     /// Creates a new renderer instance with enabled monitoring.
@@ -147,18 +177,30 @@ impl<E: PassEventTrait> Renderer<E> {
     where
         C: RenderChain<E>,
     {
-        Self::new_inner(
-            view_config,
-            backend_config,
-            constructor,
-            RendererMonitor::new(),
-        )
+        if let Some(r) = view_config.rendezvous.clone() {
+            Self::new_inner(
+                view_config,
+                backend_config,
+                constructor,
+                RendezvousWrapper(r),
+                RendererMonitor::new(),
+            )
+        } else {
+            Self::new_inner(
+                view_config,
+                backend_config,
+                constructor,
+                DummyRendezvous {},
+                RendererMonitor::new(),
+            )
+        }
     }
 
     fn new_inner<P, C>(
         view_config: ViewConfig,
         backend_config: RendererBackendConfig,
         constructor: impl RenderChainConstructor<C, E>,
+        rendezvous: impl RendezvousTrait,
         mut monitor: P,
     ) -> Result<Self, RendererError>
     where
@@ -196,8 +238,11 @@ impl<E: PassEventTrait> Renderer<E> {
 
                     info!("Starting renderer loop");
                     while !stop_signal_clone.load(Ordering::SeqCst) {
+                        rendezvous.wait();
+
                         match Self::handle_view(&mut view, &mut monitor) {
                             Ok(false) => {
+                                rendezvous.unlock();
                                 return Ok(());
                             }
                             Err(e) => {

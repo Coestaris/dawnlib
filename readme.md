@@ -21,7 +21,7 @@ the [DAWN](https://github.com/Coestaris/dawn) pet-project.
 - `ecs` - Define Main Loop and some common ECS components and events.
 - `graphics` - Contains OS-dependent Window management, input handling, and
   rendering pipelines on top of OpenGL.
-- `profile` - Contains profiling tools and utilities.
+- `util` - Contains various utility functions and types used across the project.
 - `dac` - Contains an general data types of Dawn Asset Container (DAC) file format. 
   It also contains implementation of DAC file reader.
 - `dacgen` - Implementation of DAC file writer. It is responsible for converting 

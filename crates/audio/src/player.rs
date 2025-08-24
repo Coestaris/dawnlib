@@ -10,8 +10,6 @@ use crate::sample::MappedInterleavedBuffer;
 use crate::{ChannelsCount, SampleRate, SampleType, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
 use crossbeam_queue::ArrayQueue;
 use dawn_ecs::Tick;
-use dawn_profile::sync::{Counter, Stopwatch};
-use dawn_profile::MonitorSample;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver, Sender};
 use evenio::fetch::Single;
@@ -22,6 +20,7 @@ use std::fmt::{Display, Formatter};
 use std::sync::{atomic::AtomicBool, Arc};
 use std::thread::Builder;
 use std::time::{Duration, Instant};
+use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 
 const EVENTS_QUEUE_CAPACITY: usize = 1024;
 const MONITOR_QUEUE_CAPACITY: usize = 32;

@@ -8,6 +8,7 @@ mod x11;
 
 use crate::input::InputEvent;
 use crossbeam_channel::Sender;
+use dawn_util::rendezvous::Rendezvous;
 
 #[cfg(target_os = "macos")]
 pub mod view_impl {
@@ -44,11 +45,18 @@ pub mod view_impl {
 
 pub use view_impl::*;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ViewConfig {
+    /// Platform-specific configuration
     pub platform_specific: PlatformSpecificViewConfig,
+    /// Allows enable additional synchronization between threads.
+    /// For example, to synchronize rendering and logic threads.
+    pub rendezvous: Option<Rendezvous>,
+    /// Title of the window
     pub title: String,
+    /// Width of the window in pixels
     pub width: usize,
+    /// Height of the window in pixels
     pub height: usize,
 }
 
