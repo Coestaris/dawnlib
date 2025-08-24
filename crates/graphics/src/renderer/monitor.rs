@@ -7,8 +7,7 @@ use std::panic::UnwindSafe;
 use std::sync::Arc;
 use std::time::Duration;
 use crossbeam_channel::Sender;
-use dawn_profile::MonitorSample;
-use dawn_profile::sync::{Counter, Stopwatch};
+use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 
 #[derive(GlobalEvent)]
 pub struct RendererMonitoring {

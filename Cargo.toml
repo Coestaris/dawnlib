@@ -4,6 +4,6 @@ members = [
     "crates/audio",
     "crates/ecs",
     "crates/graphics",
-    "crates/profile",
+    "crates/util",
     "crates/dac",
 ]

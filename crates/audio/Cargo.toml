@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-dawn-profile = { path = "../profile" }
+dawn-util = { path = "../util" }
 dawn-ecs = { path = "../ecs" }
 dawn-assets = { path = "../assets", features = ["hub"] }
 log = "0.4.27"

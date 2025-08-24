@@ -29,8 +29,8 @@ pub struct GLRenderer<E: PassEventTrait> {
 }
 
 pub struct GLRendererConfig {
-    pub fps: usize,
-    pub vsync: bool,
+    // pub fps: usize,
+    // pub vsync: bool,
     pub texture_factory_binding: Option<FactoryBinding>,
     pub shader_factory_binding: Option<FactoryBinding>,
     pub mesh_factory_binding: Option<FactoryBinding>,
@@ -73,7 +73,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         Self: Sized,
     {
         // Create the OpenGL context
-        view_handle.create_context(cfg.fps, cfg.vsync).unwrap();
+        view_handle.create_context(0, false).unwrap();
         // Load OpenGL functions using the OS-specific loaders
         bindings::load_with(|symbol| {
             view_handle

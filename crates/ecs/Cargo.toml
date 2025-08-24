@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-dawn-profile = { path = "../profile" }
+dawn-util = { path = "../util" }
 evenio = "0.6.0"
 glam = "0.30.5"
 log = "0.4.27"

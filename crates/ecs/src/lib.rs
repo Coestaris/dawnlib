@@ -1,13 +1,14 @@
-use dawn_profile::sync::{Counter, Stopwatch};
-use dawn_profile::MonitorSample;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver};
 use evenio::fetch::Single;
+use evenio::handler::IntoHandler;
 use evenio::world::World;
 use glam::*;
 use log::{info, warn};
+use std::panic::UnwindSafe;
 use std::time::{Duration, Instant};
-use evenio::handler::IntoHandler;
+use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
+use dawn_util::rendezvous::Rendezvous;
 
 /// Event sent every tick in the main loop (usually 60 times per second).
 /// Can be used to update game logic, render frames, etc.
@@ -114,21 +115,96 @@ struct DummyMainLoopMonitor;
 
 impl MainLoopMonitorTrait for DummyMainLoopMonitor {}
 
+trait Synchronization: Send + Sync + 'static + UnwindSafe {
+    fn wait(&self, _elapsed: Duration) {}
+    fn unlock(&self) {}
+}
+
+struct RendezvousSynchronization(Rendezvous);
+
+impl Synchronization for RendezvousSynchronization {
+    fn wait(&self, _: Duration) {
+        self.0.wait();
+    }
+
+    fn unlock(&self) {
+        self.0.unlock();
+    }
+}
+
+struct FixedRateSynchronization {
+    target_duration: Duration,
+}
+
+impl FixedRateSynchronization {
+    pub fn new(tick_rate: f32) -> Self {
+        let target_duration = Duration::from_secs_f32(1.0 / tick_rate);
+        Self { target_duration }
+    }
+}
+
+impl Synchronization for FixedRateSynchronization {
+    fn wait(&self, elapsed: Duration) {
+        if elapsed < self.target_duration {
+            let sleep_duration = self.target_duration - elapsed;
+            std::thread::sleep(sleep_duration);
+        } else {
+            warn!(
+                "Tick took longer than expected: {:.3} seconds",
+                elapsed.as_secs_f32()
+            );
+        }
+    }
+
+    fn unlock(&self) {}
+}
+
 /// Runs the main loop of the application.
 /// Every `tps` ticks per second, it sends a `Tick` event to the ECS.
 /// You can stop the loop by sending a `StopEventLoop` event to the ECS.
-pub fn run_loop(world: &mut World, tps: f32) {
-    run_loop_inner(world, tps, DummyMainLoopMonitor);
+///
+/// The loop will synchronize with the given `Rendezvous` object,
+/// allowing it to run in a multi-threaded environment.
+pub fn synchronized_loop(world: &mut World, rendezvous: Rendezvous) {
+    run_loop_inner(
+        world,
+        RendezvousSynchronization(rendezvous.clone()),
+        DummyMainLoopMonitor,
+    );
 }
 
-/// Same as `run_loop`, but it will also send monitoring data every second
+/// Same as `synchronized_loop`, but it will also send monitoring data every second
 /// to the ECS as `MainLoopMonitorSample` events.
 /// That may affect the performance of the main loop.
-pub fn run_loop_with_monitoring(world: &mut World, tps: f32) {
-    run_loop_inner(world, tps, MainLoopMonitor::new());
+pub fn synchronized_loop_with_monitoring(world: &mut World, rendezvous: Rendezvous) {
+    run_loop_inner(
+        world,
+        RendezvousSynchronization(rendezvous.clone()),
+        MainLoopMonitor::new(),
+    );
 }
 
-fn run_loop_inner<M>(world: &mut World, tps: f32, mut monitor: M)
+/// Same as `synchronized_loop`, but it will run without any synchronization.
+/// You can specify the target tick rate in ticks per second.
+pub fn unsynchronized_loop(world: &mut World, tick_rate: f32) {
+    run_loop_inner(
+        world,
+        FixedRateSynchronization::new(tick_rate),
+        DummyMainLoopMonitor,
+    );
+}
+
+/// Same as `unsynchronized_loop`, but it will also send monitoring data every second
+/// to the ECS as `MainLoopMonitorSample` events.
+pub fn unsynchronized_loop_with_monitoring(world: &mut World, tick_rate: f32) {
+    run_loop_inner(
+        world,
+        FixedRateSynchronization::new(tick_rate),
+        MainLoopMonitor::new(),
+    );
+}
+
+fn run_loop_inner<M>(world: &mut World, synchronization: impl Synchronization, mut monitor: M)
 where
     M: MainLoopMonitorTrait + 'static,
 {
@@ -146,8 +222,8 @@ where
     world.insert(entity, PrivateData { stopped: false });
     world.add_handler(stop_event_loop_handler.low());
 
-    let mut prev_tick = std::time::Instant::now();
-    let loop_start = std::time::Instant::now();
+    let mut prev_tick = Instant::now();
+    let loop_start = Instant::now();
 
     loop {
         monitor.cycle(world);
@@ -155,13 +231,14 @@ where
         // Check if the event loop should stop
         if let Some(private_data) = world.get::<PrivateData>(entity) {
             if private_data.stopped {
+                synchronization.unlock();
                 info!("Stopping event loop");
                 break;
             }
         }
 
         // Remember the start time to keep the loop running at a fixed rate
-        let start = std::time::Instant::now();
+        let start = Instant::now();
 
         // Calculate the delta time
         let delta = start.duration_since(prev_tick).as_secs_f32();
@@ -177,18 +254,6 @@ where
 
         // Update the previous tick time
         prev_tick = start;
-
-        // Sleep to maintain the target ticks per second
-        let target_duration = Duration::from_secs_f32(1.0 / tps);
-        let elapsed = start.duration_since(prev_tick);
-        if elapsed < target_duration {
-            let sleep_duration = target_duration - elapsed;
-            std::thread::sleep(sleep_duration);
-        } else {
-            warn!(
-                "Tick took longer than expected: {:.3} seconds",
-                elapsed.as_secs_f32()
-            );
-        }
+        synchronization.wait(start.elapsed());
     }
 }
