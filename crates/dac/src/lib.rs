@@ -1,7 +1,7 @@
+use dawn_assets::AssetHeader;
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
 use std::time::SystemTime;
-use dawn_assets::AssetHeader;
 
 pub mod container;
 pub mod reader;
@@ -57,18 +57,18 @@ pub struct Manifest {
 
 #[cfg(any())]
 pub mod serialize_backend {
-    use crate::PackedAsset;
+    use serde::{Deserialize, Serialize};
+    use toml;
 
-    pub fn get_tool_name() -> String {
-        "toml_parser".to_string() // TODO: Get from Cargo.toml
+    pub fn serialize<T: Serialize>(object: &T) -> Result<Vec<u8>, String> {
+        toml::to_string(object)
+            .map(|s| s.into_bytes())
+            .map_err(|e| e.to_string())
     }
-    pub fn get_tool_version() -> String {
-        "0.1.0".to_string() // TODO: Get from Cargo.toml
+
+    pub fn deserialize<'a, T: Deserialize<'a>>(bytes: &'a [u8]) -> Result<T, String> {
+        toml::from_slice(bytes).map_err(|e| e.to_string())
     }
-
-    pub fn serialize<T: Serialize>(object: &T) -> Result<Vec<u8>, String> {}
-
-    pub fn deserialize<'a, T: Deserialize<'a>>(bytes: &'a [u8]) -> Result<T, String> {}
 }
 
 #[cfg(all())]
@@ -96,9 +96,9 @@ pub mod compression_backend {
     pub fn compress(data: &[u8], level: CompressionLevel) -> Result<Vec<u8>, String> {
         let level = match level {
             CompressionLevel::None => return Ok(data.to_vec()),
-            CompressionLevel::UltraFast => 0,
+            CompressionLevel::UltraFast => 1,
             CompressionLevel::Fast => 4,
-            CompressionLevel::Balanced => 6,
+            CompressionLevel::Balanced => 7,
             CompressionLevel::Best => 11,
         };
 
