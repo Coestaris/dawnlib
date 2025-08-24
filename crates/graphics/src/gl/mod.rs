@@ -163,20 +163,6 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             }
         });
 
-        // Setup OpenGL state
-        unsafe {
-            // Enable wireframe mode
-            // bindings::PolygonMode(bindings::FRONT_AND_BACK, bindings::LINE);
-
-            bindings::ShadeModel(bindings::SMOOTH);
-            bindings::Enable(bindings::DEPTH_TEST);
-            bindings::DepthFunc(bindings::LEQUAL);
-            bindings::Enable(bindings::MULTISAMPLE);
-            bindings::Hint(bindings::PERSPECTIVE_CORRECTION_HINT, bindings::NICEST);
-            bindings::Enable(bindings::BLEND);
-            bindings::BlendFunc(bindings::SRC_ALPHA, bindings::ONE_MINUS_SRC_ALPHA);
-        }
-
         Ok(GLRenderer::<E> {
             _marker: Default::default(),
             _debugger: debugger,
@@ -204,12 +190,8 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             factory.process_events::<E>();
         }
 
-        // Clear the screen with a green color
-        unsafe {
-            bindings::Clear(bindings::COLOR_BUFFER_BIT | bindings::DEPTH_BUFFER_BIT);
-            bindings::ClearColor(0.0, 0.2, 0.0, 1.0);
-        }
-
+        // User will handle clearing the screen in the render passes.
+        
         Ok(())
     }
 
