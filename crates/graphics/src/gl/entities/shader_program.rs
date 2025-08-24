@@ -12,33 +12,6 @@ pub struct ShaderProgram {
     id: GLuint,
 }
 
-pub struct ShaderProgramBind<'a> {
-    program: &'a ShaderProgram,
-}
-
-impl<'a> ShaderProgramBind<'a> {
-    pub fn new(program: &'a ShaderProgram) -> Self {
-        unsafe {
-            bindings::UseProgram(program.id);
-        }
-        Self { program }
-    }
-
-    #[inline(always)]
-    pub fn set_uniform<T: UniformTarget>(&self, location: UniformLocation, value: T) {
-        T::set_uniform(location, value);
-    }
-}
-
-impl Drop for ShaderProgramBind<'_> {
-    fn drop(&mut self) {
-        unsafe {
-            // TODO: ???
-           // bindings::UseProgram(0);
-        }
-    }
-}
-
 pub type UniformLocation = GLuint;
 
 impl AssetCastable for ShaderProgram {}
@@ -62,11 +35,11 @@ macro_rules! define_target(
 
 #[rustfmt::skip]
 mod targets {
-    use crate::gl::entities::shader_program::UniformLocation;
-    use crate::gl::entities::shader_program::UniformTarget;
-    use crate::gl::bindings::types::GLint;
-    use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
     use crate::gl::bindings;
+use crate::gl::bindings::types::GLint;
+use crate::gl::entities::shader_program::UniformLocation;
+use crate::gl::entities::shader_program::UniformTarget;
+use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 
     define_target!(u32, |l, v| bindings::Uniform1ui(l, v));
     define_target!(i32, |l, v| bindings::Uniform1i(l, v));
@@ -90,7 +63,9 @@ mod targets {
 pub use targets::*;
 
 impl ShaderProgram {
-    pub(crate) fn from_ir<E: PassEventTrait>(ir: IRShader) -> Result<(Self, AssetMemoryUsage), String> {
+    pub(crate) fn from_ir<E: PassEventTrait>(
+        ir: IRShader,
+    ) -> Result<(Self, AssetMemoryUsage), String> {
         // TODO: Cache the compilation result
         // TODO: Try load SPIRV instead of compiling from source
         let program = ShaderProgram::new().ok_or("Failed to create shader program")?;
@@ -114,7 +89,10 @@ impl ShaderProgram {
 
         debug!("Allocated shader program ID: {}", program.id);
         // TODO: Approximate memory usage
-        Ok((program, AssetMemoryUsage::new(size_of::<ShaderProgram>(), 0)))
+        Ok((
+            program,
+            AssetMemoryUsage::new(size_of::<ShaderProgram>(), 0),
+        ))
     }
 
     fn new() -> Option<ShaderProgram> {
@@ -159,9 +137,22 @@ impl ShaderProgram {
     }
 
     #[inline(always)]
-    #[must_use]
-    pub fn bind(&self) -> ShaderProgramBind<'_> {
-        ShaderProgramBind::new(self)
+    pub fn bind(&self) {
+        unsafe {
+            bindings::UseProgram(self.id);
+        }
+    }
+
+    #[inline(always)]
+    pub fn unbind() {
+        unsafe {
+            bindings::UseProgram(0);
+        }
+    }
+
+    #[inline(always)]
+    pub fn set_uniform<T: UniformTarget>(&self, location: UniformLocation, value: T) {
+        T::set_uniform(location, value);
     }
 
     #[inline(always)]

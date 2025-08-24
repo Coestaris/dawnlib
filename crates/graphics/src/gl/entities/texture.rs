@@ -1,10 +1,12 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::{GLenum, GLint, GLsizei, GLuint};
-use crate::passes::events::PassEventTrait;
-use log::debug;
-use dawn_assets::{AssetCastable, AssetMemoryUsage};
-use dawn_assets::ir::texture::{IRPixelDataType, IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap};
 use crate::gl::entities::shader_program::ShaderProgram;
+use crate::passes::events::PassEventTrait;
+use dawn_assets::ir::texture::{
+    IRPixelDataType, IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap,
+};
+use dawn_assets::{AssetCastable, AssetMemoryUsage};
+use log::debug;
 
 #[derive(Debug)]
 pub struct Texture {
@@ -87,23 +89,56 @@ fn pixel_format_to_gl_type(format: &IRPixelFormat) -> Result<GLenum, String> {
     })
 }
 
-pub struct TextureBinding<'a> {
-    texture: &'a Texture,
-}
+impl Texture {
+    pub fn from_ir<E: PassEventTrait>(ir: IRTexture) -> Result<(Self, AssetMemoryUsage), String> {
+        let texture = Self::new(ir.texture_type.clone())?;
 
-impl<'a> TextureBinding<'a> {
-    pub fn new(texture: &'a Texture, index: usize) -> Self {
-        assert!(index < 32, "Texture index must be less than 32");
-        unsafe {
-            bindings::ActiveTexture(bindings::TEXTURE0 + index as GLenum);
-            bindings::BindTexture(texture.texture_type, texture.id);
+        texture.bind(0);
+        texture.set_wrap_s(ir.wrap_s.clone())?;
+        texture.set_wrap_t(ir.wrap_t.clone())?;
+        texture.set_wrap_r(ir.wrap_r.clone())?;
+        texture.set_min_filter(ir.min_filter.clone())?;
+        texture.set_mag_filter(ir.mag_filter.clone())?;
+        if ir.use_mipmaps {
+            texture.generate_mipmap()?;
         }
-        Self { texture }
+        match ir.texture_type {
+            IRTextureType::Texture2D { width, height } => {
+                texture.texture_image_2d(
+                    0,
+                    width as usize,
+                    height as usize,
+                    false,
+                    ir.pixel_format.clone(),
+                    &ir.data,
+                )?;
+            }
+            _ => {
+                return Err("Unsupported texture type for raw texture".to_string());
+            }
+        }
+        Texture::unbind(texture.texture_type, 0);
+
+        Ok((texture, AssetMemoryUsage::new(size_of::<Texture>(), 0)))
+    }
+
+    pub fn bind(&self, texture_index: usize) {
+        unsafe {
+            bindings::ActiveTexture(bindings::TEXTURE0 + texture_index as GLenum);
+            bindings::BindTexture(self.texture_type, self.id);
+        }
+    }
+
+    pub fn unbind(texture_type: GLenum, texture_index: usize) {
+        unsafe {
+            bindings::ActiveTexture(bindings::TEXTURE0 + texture_index as GLenum);
+            bindings::BindTexture(texture_type, 0);
+        }
     }
 
     fn set_param(&self, param: GLenum, value: GLint) -> Result<(), String> {
         unsafe {
-            bindings::TexParameteri(self.texture.texture_type, param, value);
+            bindings::TexParameteri(self.texture_type, param, value);
         }
         Ok(())
     }
@@ -136,7 +171,7 @@ impl<'a> TextureBinding<'a> {
 
     pub fn generate_mipmap(&self) -> Result<(), String> {
         unsafe {
-            bindings::GenerateMipmap(self.texture.texture_type);
+            bindings::GenerateMipmap(self.texture_type);
         }
         Ok(())
     }
@@ -154,7 +189,7 @@ impl<'a> TextureBinding<'a> {
         let data_type = pixel_format_to_gl_type(&pixel_format)?;
         unsafe {
             bindings::TexImage2D(
-                self.texture.texture_type,
+                self.texture_type,
                 level as GLint,
                 format as GLint,
                 width as GLsizei,
@@ -167,52 +202,6 @@ impl<'a> TextureBinding<'a> {
         }
 
         Ok(())
-    }
-}
-
-impl Drop for TextureBinding<'_> {
-    fn drop(&mut self) {
-        unsafe {
-            // bindings::BindTexture(self.texture.texture_type, 0);
-        }
-    }
-}
-
-impl Texture {
-    pub(crate) fn from_ir<E: PassEventTrait>(ir: IRTexture) -> Result<(Self, AssetMemoryUsage), String> {
-        let texture = Self::new(ir.texture_type.clone())?;
-        let binding = texture.bind(0);
-
-        binding.set_wrap_s(ir.wrap_s.clone())?;
-        binding.set_wrap_t(ir.wrap_t.clone())?;
-        binding.set_wrap_r(ir.wrap_r.clone())?;
-        binding.set_min_filter(ir.min_filter.clone())?;
-        binding.set_mag_filter(ir.mag_filter.clone())?;
-        if ir.use_mipmaps {
-            binding.generate_mipmap()?;
-        }
-        match ir.texture_type {
-            IRTextureType::Texture2D { width, height } => {
-                binding.texture_image_2d(
-                    0,
-                    width as usize,
-                    height as usize,
-                    false,
-                    ir.pixel_format.clone(),
-                    &ir.data,
-                )?;
-            }
-            _ => {
-                return Err("Unsupported texture type for raw texture".to_string());
-            }
-        }
-
-        drop(binding);
-        Ok((texture, AssetMemoryUsage::new(size_of::<Texture>(), 0)))
-    }
-
-    pub fn bind(&self, texture_index: usize) -> TextureBinding<'_> {
-        TextureBinding::new(self, texture_index)
     }
 
     #[inline(always)]

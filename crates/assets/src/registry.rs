@@ -1,12 +1,19 @@
 use crate::ir::IRAsset;
 use crate::{Asset, AssetHeader, AssetID, AssetMemoryUsage};
 use std::collections::HashMap;
+use thiserror::Error;
 
 #[derive(Debug, Clone)]
 pub(crate) enum AssetState {
     Empty,
     Read(IRAsset),
     Loaded(Asset, AssetMemoryUsage),
+}
+
+#[derive(Error, Debug, Clone)]
+pub enum RegistryError {
+    #[error("Asset with ID {0} not found")]
+    NotFound(AssetID),
 }
 
 pub(crate) struct AssetContainer {
@@ -34,27 +41,27 @@ impl AssetRegistry {
         }
     }
 
-    pub fn update(&mut self, id: AssetID, state: AssetState) -> Result<(), String> {
+    pub fn update(&mut self, id: AssetID, state: AssetState) -> Result<(), RegistryError> {
         if let Some(container) = self.0.get_mut(&id) {
             container.state = state;
             Ok(())
         } else {
-            Err(format!("Asset with ID {} not found", id))
+            Err(RegistryError::NotFound(id))
         }
     }
 
-    pub fn get_header(&self, id: &AssetID) -> Result<&AssetHeader, String> {
+    pub fn get_header(&self, id: &AssetID) -> Result<&AssetHeader, RegistryError> {
         self.0
             .get(id)
             .map(|container| &container.header)
-            .ok_or_else(|| format!("Asset with ID {} not found", id))
+            .ok_or_else(|| RegistryError::NotFound(id.clone()))
     }
 
-    pub fn get_state(&self, id: &AssetID) -> Result<&AssetState, String> {
+    pub fn get_state(&self, id: &AssetID) -> Result<&AssetState, RegistryError> {
         self.0
             .get(id)
             .map(|container| &container.state)
-            .ok_or_else(|| format!("Asset with ID {} not found", id))
+            .ok_or_else(|| RegistryError::NotFound(id.clone()))
     }
 
     pub fn keys(&self) -> impl Iterator<Item = &AssetID> {
