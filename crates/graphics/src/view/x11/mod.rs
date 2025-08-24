@@ -395,7 +395,7 @@ impl ViewTrait for View {
                     ViewError::SpawnEventsThreadError
                 })?;
 
-            info!("X11 Window with Vulkan graphics created successfully");
+            info!("X11 Window created successfully");
             Ok(View {
                 display,
                 window,

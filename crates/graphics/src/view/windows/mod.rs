@@ -135,7 +135,7 @@ impl ViewTrait for View {
                 Err(_) => Err(ViewError::CreateWindowError(get_last_error())),
             }?;
 
-            info!("WIN32 Window with Vulkan graphics created successfully");
+            info!("WIN32 Window created successfully");
             Ok(View {
                 hwnd,
                 hinstance,
