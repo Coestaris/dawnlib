@@ -1,7 +1,7 @@
 use crate::requests::AssetRequestID;
 use crate::AssetID;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum TaskCommand {
     Enumerate,
     Read(AssetID),
@@ -13,10 +13,10 @@ pub(crate) enum TaskCommand {
 pub struct AssetTaskID(AssetRequestID, usize);
 
 impl AssetTaskID {
-    pub fn new(qid: AssetRequestID) -> Self {
+    pub fn new(rid: AssetRequestID) -> Self {
         static NEXT_ID: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         let id = NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        AssetTaskID(qid, id)
+        AssetTaskID(rid, id)
     }
 
     pub fn as_request(&self) -> AssetRequestID {

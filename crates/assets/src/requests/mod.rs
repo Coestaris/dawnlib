@@ -1,7 +1,7 @@
-pub(crate) mod pool;
+pub(crate) mod scheduler;
 pub mod task;
 
-use crate::AssetID;
+use crate::{AssetID, AssetType};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetRequestID(usize);
@@ -17,6 +17,7 @@ pub enum AssetRequestQuery {
     ByID(AssetID),
     ByTag(String),
     ByTags(Vec<String>),
+    ByType(AssetType),
     All,
 }
 
@@ -28,6 +29,7 @@ pub enum AssetRequest {
     Load(AssetRequestQuery),
     LoadNoDeps(AssetRequestQuery),
     Free(AssetRequestQuery),
+    FreeNoDeps(AssetRequestQuery),
 }
 
 impl Default for AssetRequestID {

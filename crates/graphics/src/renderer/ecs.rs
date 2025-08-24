@@ -5,7 +5,7 @@ use crate::renderable::{
 };
 use crate::renderer::monitor::RendererMonitoring;
 use crate::renderer::Renderer;
-use dawn_ecs::{StopEventLoop, Tick};
+use dawn_ecs::{StopMainLoop, Tick};
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::fetch::{Fetcher, Single};
@@ -66,13 +66,13 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
     fn view_closed_handler<E: PassEventTrait>(
         _: Receiver<Tick>,
         renderer: Single<&Boxed>,
-        mut sender: Sender<StopEventLoop>,
+        mut sender: Sender<StopMainLoop>,
     ) {
         // Check if the view was closed, if so, send a global event to stop the event loop
         let renderer = renderer.cast::<E>();
         if renderer.stop_signal.load(Ordering::Relaxed) {
             info!("View closed, stopping the event loop");
-            sender.send(StopEventLoop);
+            sender.send(StopMainLoop);
         }
     }
 

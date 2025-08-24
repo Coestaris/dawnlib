@@ -1,7 +1,7 @@
 use crate::factory::{FactoryBinding, FromFactoryMessage, LoadFactoryMessage, ToFactoryMessage};
 use crate::reader::{FromReaderMessage, ReaderBinding, ToReaderMessage};
 use crate::registry::{AssetRegistry, AssetState};
-use crate::requests::pool::{PeekResult, TaskDoneResult, TaskPool};
+use crate::requests::scheduler::{PeekResult, Scheduler, TaskDoneResult};
 use crate::requests::task::{AssetTaskID, TaskCommand};
 use crate::requests::{AssetRequest, AssetRequestID};
 use crate::{Asset, AssetCastable, AssetHeader, AssetID, AssetMemoryUsage, AssetType, TypedAsset};
@@ -21,44 +21,37 @@ use thiserror::Error;
 /// of asset requests, loading, and freeing operations
 #[derive(GlobalEvent)]
 pub enum AssetHubEvent {
-    RequestCompleted(AssetRequestID, Result<(), String>), // Request ID and success status
+    RequestFinished(AssetRequestID, Result<(), String>), // Request ID and success status
     AssetRead(AssetID),
     AssetLoaded(AssetID),
     AssetFreed(AssetID),
 }
 
 /// Error type for retrieving assets from the AssetHub.
-#[derive(Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum GetAssetError {
+    #[error("Asset with ID {0} not found")]
     NotFound(AssetID),
+    #[error("Asset with ID {0} is not loaded")]
     NotLoaded(AssetID),
 }
 
-impl std::fmt::Display for GetAssetError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            GetAssetError::NotFound(id) => write!(f, "Asset with ID {} not found", id),
-            GetAssetError::NotLoaded(id) => write!(f, "Asset with ID {} is not loaded", id),
-        }
-    }
-}
-
-impl std::error::Error for GetAssetError {}
-
 #[derive(Debug, Error, Clone)]
-pub enum RequestAssetError {
-    #[error("Asset with ID {0} is not registered in the AssetHub")]
-    AssetNotFound(AssetID),
-    #[error("Asset with ID {0} is still in use, reference count: {1}")]
-    StillInUse(AssetID, usize), // AssetID and reference count
-    #[error("Asset with ID {0} is not in IR state, cannot load it")]
-    AlreadyLoaded(AssetID),
-    #[error("Asset with ID {0} is not in Loaded state, cannot free it")]
-    AlreadyFreed(AssetID),
-    #[error("Asset type {0} is not supported by the AssetHub")]
+pub enum HubError {
+    #[error("Cannot enumerate assets while some are still loaded or in use")]
+    EnumerateWhileInUse,
+    #[error("Cannot free asset with ID {0} while it is still in use ({1} references)")]
+    AssetInUse(AssetID, usize),
+    #[error("Invalid asset state for ID {0}")]
+    InvalidAssetState(AssetID),
+    #[error("Asset with ID {0} not found")]
     FactoryNotFound(AssetType),
-    #[error("IPC error occurred")]
-    IPCError,
+    #[error("Reader binding is not registered")]
+    ReaderNotRegistered,
+    #[error("Registry error: {0}")]
+    RegistryError(#[from] crate::registry::RegistryError),
+    #[error("Dependencies collect error: {0}")]
+    DependenciesError(#[from] GetAssetError),
 }
 
 struct ReadStorage {
@@ -141,7 +134,7 @@ pub struct AssetHub {
     reader: Option<ReadStorage>,
     factories: HashMap<AssetType, FactoryStorage>,
     registry: AssetRegistry,
-    task_pool: TaskPool,
+    scheduler: Scheduler,
 }
 
 #[derive(Debug, Clone)]
@@ -159,13 +152,13 @@ pub struct AssetInfo {
 }
 
 impl AssetHub {
-    pub fn new() -> Result<Self, String> {
-        Ok(AssetHub {
+    pub fn new() -> Self {
+        AssetHub {
             reader: None,
             factories: HashMap::new(),
             registry: AssetRegistry::new(),
-            task_pool: TaskPool::new(),
-        })
+            scheduler: Scheduler::new(),
+        }
     }
 
     /// Creates a new factory binding for the specified asset type.
@@ -209,7 +202,7 @@ impl AssetHub {
     /// sent to the ECS world with the error message.
     pub fn request(&mut self, request: AssetRequest) -> AssetRequestID {
         debug!("Requesting: {:?}", request);
-        self.task_pool.request(request)
+        self.scheduler.request(request)
     }
 
     /// Retrieves an asset by its ID.
@@ -277,7 +270,13 @@ impl AssetHub {
     ) {
         // Peek tasks and route the to the factories
         loop {
-            match hub.task_pool.peek_task() {
+            let next = {
+                // TODO: Temporary workaround to satisfy the borrow checker.
+                //       We need to pass a reference to the registry to the scheduler,
+                let registry_ptr = &hub.registry as *const AssetRegistry;
+                hub.scheduler.peek(unsafe { &*registry_ptr })
+            };
+            match next {
                 PeekResult::Peeked(task) => {
                     let result = match task.command {
                         TaskCommand::Enumerate => hub.send_enumerate(task.id.clone()),
@@ -286,16 +285,16 @@ impl AssetHub {
                         TaskCommand::Free(aid) => hub.send_free(task.id.clone(), aid),
                     };
                     if let Err(e) = result {
-                        hub.task_failed(task.id.clone(), e, &mut sender);
+                        hub.task_finished(task.id.clone(), Err(e.to_string()), &mut sender);
                     }
                 }
                 PeekResult::NoPendingTasks => break,
+                PeekResult::EmptyUnwrap(tid) => {
+                    // This should never happen, but just in case
+                    hub.task_finished(tid, Ok(()), &mut sender);
+                }
                 PeekResult::UnwrapFailed(tid, message) => {
-                    hub.task_failed(
-                        tid,
-                        format!("Failed to unwrap task with ID {:?}: {}", tid, message),
-                        &mut sender,
-                    );
+                    hub.task_finished(tid, Err(message.to_string()), &mut sender);
                 }
             }
         }
@@ -321,27 +320,23 @@ impl AssetHub {
 
     /// Processes the task completion.
     /// This updates the task pool and notifies the ECS world about the completed request.
-    fn task_done(&mut self, tid: AssetTaskID, sender: &mut Sender<AssetHubEvent>) {
+    fn task_finished(
+        &mut self,
+        tid: AssetTaskID,
+        result: Result<(), String>,
+        sender: &mut Sender<AssetHubEvent>,
+    ) {
         // Update the task pool with the completed task
-        match self.task_pool.task_done(tid) {
-            TaskDoneResult::RequestCompleted(qid) => {
+        match self.scheduler.task_finished(tid, result) {
+            TaskDoneResult::RequestFinished(rid, result) => {
                 // Notify the ECS world about the completed request
-                sender.send(AssetHubEvent::RequestCompleted(qid, Ok(())));
+                sender.send(AssetHubEvent::RequestFinished(
+                    rid,
+                    result.map_err(|e| e.to_string()),
+                ));
             }
             _ => {}
         }
-    }
-
-    /// Processes the task failure.
-    /// This updates the task pool and notifies the ECS world about the failed request.
-    fn task_failed(&mut self, tid: AssetTaskID, error: String, sender: &mut Sender<AssetHubEvent>) {
-        // Update the task pool with the failed task
-        self.task_pool.task_failed(tid);
-        // Notify the ECS world about the completed request
-        sender.send(AssetHubEvent::RequestCompleted(
-            tid.as_request(),
-            Err(error.clone()),
-        ));
     }
 
     /// Receives messages from the reader and processes them.
@@ -351,10 +346,10 @@ impl AssetHub {
             FromReaderMessage::Enumerate(tid, Ok(headers)) => {
                 // Register all headers in the registry
                 self.registry.enumerate(headers);
-                self.task_done(tid, &mut sender);
+                self.task_finished(tid, Ok(()), &mut sender);
             }
             FromReaderMessage::Enumerate(tid, Err(message)) => {
-                self.task_failed(tid, message, &mut sender);
+                self.task_finished(tid, Err(message), &mut sender);
             }
             FromReaderMessage::Read(tid, aid, Ok(ir)) => {
                 // Save the IR asset to the registry
@@ -363,10 +358,10 @@ impl AssetHub {
                     .unwrap();
                 // Notify the ECS world about the read asset
                 sender.send(AssetHubEvent::AssetRead(aid.clone()));
-                self.task_done(tid, &mut sender);
+                self.task_finished(tid, Ok(()), &mut sender);
             }
             FromReaderMessage::Read(tid, _, Err(message)) => {
-                self.task_failed(tid, message, &mut sender);
+                self.task_finished(tid, Err(message), &mut sender);
             }
         };
     }
@@ -392,10 +387,10 @@ impl AssetHub {
 
                 // Notify the ECS world about the loaded asset
                 sender.send(AssetHubEvent::AssetLoaded(aid.clone()));
-                self.task_done(tid, &mut sender);
+                self.task_finished(tid, Ok(()), &mut sender);
             }
             FromFactoryMessage::Load(tid, _aid, Err(message)) => {
-                self.task_failed(tid, message, &mut sender);
+                self.task_finished(tid, Err(message), &mut sender);
             }
             FromFactoryMessage::Free(tid, aid, Ok(())) => {
                 self.registry
@@ -403,23 +398,20 @@ impl AssetHub {
                     .unwrap();
                 // Notify the ECS world about the loaded asset
                 sender.send(AssetHubEvent::AssetFreed(aid.clone()));
-                self.task_done(tid, &mut sender);
+                self.task_finished(tid, Ok(()), &mut sender);
             }
             FromFactoryMessage::Free(tid, _aid, Err(message)) => {
-                self.task_failed(tid, message, &mut sender);
+                self.task_finished(tid, Err(message), &mut sender);
             }
         };
     }
 
     /// Sends an enumerate request to the reader.
-    fn send_enumerate(&mut self, task_id: AssetTaskID) -> Result<(), String> {
-        let reader = self.reader.as_ref().unwrap();
+    fn send_enumerate(&mut self, task_id: AssetTaskID) -> Result<(), HubError> {
+        let reader = self.reader.as_ref().ok_or(HubError::ReaderNotRegistered)?;
         for id in self.registry.keys() {
-            if let AssetState::Loaded(_, _) = self.registry.get_state(id).unwrap() {
-                return Err(format!(
-                    "Asset ID {} is not freed or in use. Cannot enumerate",
-                    id
-                ));
+            if let AssetState::Loaded(_, _) = self.registry.get_state(id)? {
+                return Err(HubError::EnumerateWhileInUse);
             }
         }
         reader.send(ToReaderMessage::Enumerate(task_id.clone()));
@@ -427,25 +419,25 @@ impl AssetHub {
     }
 
     /// Sends a read request to the reader.
-    fn send_read(&mut self, task_id: AssetTaskID, id: AssetID) -> Result<(), String> {
-        let reader = self.reader.as_ref().unwrap();
-        if let Err(_) = self.registry.get_header(&id) {
-            return Err(format!("Asset with ID {} not found", id));
-        }
+    fn send_read(&mut self, task_id: AssetTaskID, id: AssetID) -> Result<(), HubError> {
+        let reader = self.reader.as_ref().ok_or(HubError::ReaderNotRegistered)?;
         reader.send(ToReaderMessage::Read(task_id.clone(), id.clone()));
         Ok(())
     }
 
     /// Sends a load request to the appropriate factory.
-    fn send_load(&mut self, task_id: AssetTaskID, id: AssetID) -> Result<(), String> {
+    fn send_load(&mut self, task_id: AssetTaskID, id: AssetID) -> Result<(), HubError> {
         let header = self.registry.get_header(&id)?;
         if let AssetState::Read(ir) = self.registry.get_state(&id)? {
-            let factory = self.factories.get(&header.asset_type).unwrap();
+            let factory = self
+                .factories
+                .get(&header.asset_type)
+                .ok_or(HubError::FactoryNotFound(header.asset_type))?;
 
             // Collect dependencies
             let mut dependencies = HashMap::new();
             for dep in &header.dependencies {
-                dependencies.insert(dep.clone(), self.get(dep.clone()).unwrap());
+                dependencies.insert(dep.clone(), self.get(dep.clone())?);
             }
 
             factory.send(ToFactoryMessage::Load(
@@ -459,33 +451,27 @@ impl AssetHub {
             ));
             Ok(())
         } else {
-            Err(format!(
-                "Asset with ID {} is not in IR state, cannot load it",
-                id
-            ))
+            Err(HubError::InvalidAssetState(id))
         }
     }
 
     /// Sends a free request to the appropriate factory.
-    fn send_free(&mut self, task_id: AssetTaskID, id: AssetID) -> Result<(), String> {
+    fn send_free(&mut self, task_id: AssetTaskID, id: AssetID) -> Result<(), HubError> {
         let header = self.registry.get_header(&id)?;
         if let AssetState::Loaded(asset, _) = self.registry.get_state(&id)? {
             if asset.ref_count() > 1 {
-                return Err(format!(
-                    "Asset with ID {} is still in use, reference count: {}",
-                    id,
-                    asset.ref_count()
-                ));
+                return Err(HubError::AssetInUse(id, asset.ref_count()));
             }
 
-            let factory = self.factories.get(&header.asset_type).unwrap();
+            let factory = self
+                .factories
+                .get(&header.asset_type)
+                .ok_or(HubError::FactoryNotFound(header.asset_type))?;
+
             factory.send(ToFactoryMessage::Free(task_id.clone(), id.clone()));
             Ok(())
         } else {
-            Err(format!(
-                "Asset with ID {} is not in Loaded state, cannot free it",
-                id
-            ))
+            Err(HubError::InvalidAssetState(id))
         }
     }
 }

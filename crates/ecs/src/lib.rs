@@ -21,7 +21,7 @@ pub struct Tick {
 
 /// Event sent to stop the main loop.
 #[derive(GlobalEvent)]
-pub struct StopEventLoop;
+pub struct StopMainLoop;
 
 /// Event sent every second with monitoring data about the main loop.
 #[derive(GlobalEvent)]
@@ -137,7 +137,7 @@ where
         stopped: bool,
     }
 
-    fn stop_event_loop_handler(_: Receiver<StopEventLoop>, mut d: Single<&mut PrivateData>) {
+    fn stop_event_loop_handler(_: Receiver<StopMainLoop>, mut d: Single<&mut PrivateData>) {
         d.stopped = true;
     }
 
