@@ -1,6 +1,6 @@
-use crate::writer::ir::{normalize_name, PartialIR};
-use crate::writer::user::{UserAssetHeader, UserTextureAsset};
-use crate::writer::UserAssetFile;
+use crate::ir::{normalize_name, PartialIR};
+use crate::user::{UserAssetHeader, UserTextureAsset};
+use crate::UserAssetFile;
 use dawn_assets::ir::texture::{
     IRPixelDataType, IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap,
 };

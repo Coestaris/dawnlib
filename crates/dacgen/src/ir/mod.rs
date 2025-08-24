@@ -1,10 +1,10 @@
-use crate::writer::ir::audio::convert_audio;
-use crate::writer::ir::material::convert_material;
-use crate::writer::ir::mesh::convert_mesh;
-use crate::writer::ir::shader::convert_shader;
-use crate::writer::ir::texture::convert_texture;
-use crate::writer::user::{UserAssetHeader, UserAssetProperties};
-use crate::writer::{ChecksumAlgorithm, UserAssetFile, UserIRAsset, WriterError};
+use crate::ir::audio::convert_audio;
+use crate::ir::material::convert_material;
+use crate::ir::mesh::convert_mesh;
+use crate::ir::shader::convert_shader;
+use crate::ir::texture::convert_texture;
+use crate::user::{UserAssetHeader, UserAssetProperties};
+use crate::{ChecksumAlgorithm, UserAssetFile, UserIRAsset, WriterError};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
 use std::path::PathBuf;

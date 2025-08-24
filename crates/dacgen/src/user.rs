@@ -1,7 +1,6 @@
-use dawn_assets::ir::material::{Emissive, NormalMap, Occlusion};
 use dawn_assets::ir::shader::IRShaderSourceType;
 use dawn_assets::ir::texture::{IRPixelFormat, IRTextureFilter, IRTextureType, IRTextureWrap};
-use dawn_assets::{AssetChecksum, AssetHeader, AssetID, AssetType};
+use dawn_assets::{AssetID, AssetType};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]

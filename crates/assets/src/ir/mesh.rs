@@ -35,6 +35,7 @@ pub struct IRVertex {
     // pub bone_weights: [f32; IR_MAX_BONE_INFLUENCES],
 }
 
+#[allow(dead_code)]
 impl IRVertex {
     pub fn layout() -> [IRMeshLayout; 3] {
         [

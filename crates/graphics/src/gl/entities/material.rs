@@ -1,5 +1,5 @@
 use crate::passes::events::PassEventTrait;
-use dawn_assets::ir::material::{Emissive, IRMaterial, NormalMap, Occlusion};
+use dawn_assets::ir::material::IRMaterial;
 use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage};
 use glam::Vec4;
 use log::debug;

@@ -1,7 +1,7 @@
-use crate::writer::ir::material::{convert_material_from_memory, UserMaterialAssetInner};
-use crate::writer::ir::{normalize_name, PartialIR};
-use crate::writer::user::{UserAssetHeader, UserMaterialAsset, UserMeshAsset};
-use crate::writer::UserAssetFile;
+use crate::ir::material::{convert_material_from_memory, UserMaterialAssetInner};
+use crate::ir::{normalize_name, PartialIR};
+use crate::user::{UserAssetHeader, UserMeshAsset};
+use crate::UserAssetFile;
 use dawn_assets::ir::mesh::{IRMesh, IRMeshBounds, IRPrimitive, IRVertex};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
@@ -111,13 +111,14 @@ pub fn convert_mesh(file: &UserAssetFile, user: &UserMeshAsset) -> Result<Vec<Pa
                 author: Some("Auto-generated".to_string()),
                 license: None,
             };
+
             let user = UserMaterialAssetInner {
                 base_color_factor: *material.pbr.base_color_factor.as_ref(),
                 base_color_texture: material.pbr.base_color_texture.clone(),
                 metallic_texture: material.pbr.metallic_texture.clone(),
                 metallic_factor: material.pbr.metallic_factor,
                 roughness_texture: material.pbr.roughness_texture.clone(),
-                roughness_factor: material.pbr.roughness_factor,
+                roughness_factor: material.pbr.roughness_factor
             };
             result.extend(
                 convert_material_from_memory(material_id.clone(), header, user)

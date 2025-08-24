@@ -1,5 +1,4 @@
 use crate::{BLOCK_SIZE, CHANNELS_COUNT};
-use i24;
 
 #[derive(Debug)]
 pub enum SampleCode {
@@ -91,19 +90,6 @@ impl F32Converter for i32 {
     }
 }
 
-impl F32Converter for i24::i24 {
-    fn from_f32_inner(value: f32) -> Self {
-        i24::i24::try_from_i32(
-            (value.clamp(-1.0, 1.0) * (i24::i24::MAX.to_i32() / 2) as f32) as i32,
-        )
-        .unwrap()
-    }
-
-    fn to_f32_inner(value: Self) -> f32 {
-        (value.to_i32() as f32) / (i24::i24::MAX.to_i32() / 1) as f32
-    }
-}
-
 impl F32Converter for u16 {
     fn from_f32_inner(value: f32) -> Self {
         ((value.clamp(-1.0, 1.0) + 1.0) * (u16::MAX as f32 / 2.0)) as u16
@@ -146,7 +132,6 @@ impl F32Converter for f64 {
 
 impl_sample!(i8, SampleCode::I8);
 impl_sample!(i16, SampleCode::I16);
-impl_sample!(i24::i24, SampleCode::I24);
 impl_sample!(i32, SampleCode::I32);
 impl_sample!(u16, SampleCode::U16);
 impl_sample!(u32, SampleCode::U32);

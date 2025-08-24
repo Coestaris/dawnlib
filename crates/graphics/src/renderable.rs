@@ -42,7 +42,6 @@ impl ObjectMaterial {
             let material = Material::default();
             let ptr = Box::into_raw(Box::new(material));
             let asset = Asset::new(
-                "default_material".into(),
                 TypeId::of::<Material>(),
                 NonNull::new(ptr as *mut ()).unwrap(),
             );

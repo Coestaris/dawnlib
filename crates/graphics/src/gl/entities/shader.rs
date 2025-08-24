@@ -1,6 +1,6 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::GLuint;
-use log::{debug, info, warn};
+use log::{debug};
 use dawn_assets::ir::shader::IRShaderSourceType;
 
 // RAII wrapper for OpenGL shader

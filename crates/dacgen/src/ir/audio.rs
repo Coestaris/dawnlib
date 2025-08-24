@@ -1,7 +1,7 @@
 use log::debug;
-use crate::writer::ir::PartialIR;
-use crate::writer::user::UserAudioAsset;
-use crate::writer::UserAssetFile;
+use crate::ir::PartialIR;
+use crate::user::UserAudioAsset;
+use crate::UserAssetFile;
 
 pub fn convert_audio(
     file: &UserAssetFile,

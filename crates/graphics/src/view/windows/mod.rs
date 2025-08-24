@@ -2,16 +2,14 @@ mod input;
 
 use crate::gl::ViewHandleOpenGL;
 use crate::input::{InputEvent, MouseButton};
-use crate::view::windows::input::{convert_key, convert_mouse_button};
+use crate::view::windows::input::convert_key;
 use crate::view::{TickResult, ViewConfig, ViewTrait};
+use crossbeam_channel::Sender;
 use log::{debug, info, warn};
 use std::ffi::c_void;
-use std::sync::Arc;
-use crossbeam_channel::Sender;
 use windows::core::{s, HSTRING, PCSTR, PCWSTR};
 use windows::Win32::Foundation::{
-    FreeLibrary, GetLastError, FARPROC, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WIN32_ERROR,
-    WPARAM,
+    FreeLibrary, GetLastError, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WIN32_ERROR, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC, HDC};
 use windows::Win32::Graphics::OpenGL::{
@@ -183,15 +181,13 @@ impl ViewTrait for View {
                     event = InputEvent::MouseButtonPress(MouseButton::Left);
                 }
                 WM_LBUTTONUP => {
-                    event =
-                        InputEvent::MouseButtonRelease(MouseButton::Left);
+                    event = InputEvent::MouseButtonRelease(MouseButton::Left);
                 }
                 WM_MBUTTONDOWN => {
                     event = InputEvent::MouseButtonPress(MouseButton::Middle);
                 }
                 WM_MBUTTONUP => {
-                    event =
-                        InputEvent::MouseButtonRelease(MouseButton::Middle);
+                    event = InputEvent::MouseButtonRelease(MouseButton::Middle);
                 }
                 WM_MOUSEMOVE => {
                     let x = (msg.lParam.0 as i32 & 0xFFFF) as f32;
@@ -209,8 +205,7 @@ impl ViewTrait for View {
                     event = InputEvent::MouseButtonPress(MouseButton::Right);
                 }
                 WM_RBUTTONUP => {
-                    event =
-                        InputEvent::MouseButtonRelease(MouseButton::Right);
+                    event = InputEvent::MouseButtonRelease(MouseButton::Right);
                 }
                 _ => {
                     return if !closed {
@@ -231,11 +226,11 @@ impl ViewTrait for View {
         }
     }
 
-    fn set_size(&self, width: usize, height: usize) {
+    fn set_size(&self, _width: usize, _height: usize) {
         todo!()
     }
 
-    fn set_title(&self, title: &str) {
+    fn set_title(&self, _title: &str) {
         todo!()
     }
 }

@@ -22,7 +22,7 @@ use thiserror::Error;
 #[derive(GlobalEvent)]
 pub enum AssetHubEvent {
     RequestCompleted(AssetRequestID, Result<(), String>), // Request ID and success status
-    AssetFailed(AssetID, Option<String>),                 // Asset ID and optional error message
+    AssetRead(AssetID),
     AssetLoaded(AssetID),
     AssetFreed(AssetID),
 }
@@ -120,9 +120,7 @@ impl FactoryStorage {
                 Some(message)
             }
             Err(crossbeam_channel::TryRecvError::Empty) => None,
-            Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                panic!("Factory channel disconnected")
-            }
+            Err(crossbeam_channel::TryRecvError::Disconnected) => None,
         }
     }
 }
@@ -363,6 +361,8 @@ impl AssetHub {
                 self.registry
                     .update(aid.clone(), AssetState::Read(ir))
                     .unwrap();
+                // Notify the ECS world about the read asset
+                sender.send(AssetHubEvent::AssetRead(aid.clone()));
                 self.task_done(tid, &mut sender);
             }
             FromReaderMessage::Read(tid, _, Err(message)) => {
@@ -384,7 +384,7 @@ impl AssetHub {
                     .update(
                         aid.clone(),
                         AssetState::Loaded(
-                            Asset::new(aid.clone(), message.asset_type, message.asset_ptr),
+                            Asset::new(message.asset_type, message.asset_ptr),
                             message.usage,
                         ),
                     )
@@ -394,11 +394,7 @@ impl AssetHub {
                 sender.send(AssetHubEvent::AssetLoaded(aid.clone()));
                 self.task_done(tid, &mut sender);
             }
-            FromFactoryMessage::Load(tid, aid, Err(message)) => {
-                sender.send(AssetHubEvent::AssetFailed(
-                    aid.clone(),
-                    Some(message.clone()),
-                ));
+            FromFactoryMessage::Load(tid, _aid, Err(message)) => {
                 self.task_failed(tid, message, &mut sender);
             }
             FromFactoryMessage::Free(tid, aid, Ok(())) => {
@@ -409,7 +405,7 @@ impl AssetHub {
                 sender.send(AssetHubEvent::AssetFreed(aid.clone()));
                 self.task_done(tid, &mut sender);
             }
-            FromFactoryMessage::Free(tid, aid, Err(message)) => {
+            FromFactoryMessage::Free(tid, _aid, Err(message)) => {
                 self.task_failed(tid, message, &mut sender);
             }
         };

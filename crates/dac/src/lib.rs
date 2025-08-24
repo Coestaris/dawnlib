@@ -1,10 +1,59 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
+use std::time::SystemTime;
+use dawn_assets::AssetHeader;
 
 pub mod container;
-pub mod manifest;
 pub mod reader;
-pub mod writer;
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum ReadMode {
+    Flat,
+    Recursive,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub enum ChecksumAlgorithm {
+    Blake3,
+    Md5,
+    SHA256,
+}
+
+impl Display for ChecksumAlgorithm {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Blake3 => write!(f, "Blake3"),
+            Self::Md5 => write!(f, "MD5"),
+            Self::SHA256 => write!(f, "SHA256"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum CompressionLevel {
+    None,
+    UltraFast,
+    Fast,
+    Balanced,
+    Best,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Manifest {
+    // File information
+    pub author: Option<String>,
+    pub description: Option<String>,
+    pub version: Option<String>,
+    pub license: Option<String>,
+
+    // Technical information
+    pub tool: String,
+    pub tool_version: String,
+    pub created: SystemTime,
+    pub read_mode: ReadMode,
+    pub checksum_algorithm: ChecksumAlgorithm,
+    pub headers: Vec<AssetHeader>,
+}
 
 #[cfg(any())]
 pub mod serialize_backend {
@@ -41,11 +90,19 @@ pub mod serialize_backend {
 }
 
 pub mod compression_backend {
+    use crate::CompressionLevel;
     use std::io::{Read, Write};
 
-    pub fn compress(data: &[u8]) -> Result<Vec<u8>, String> {
-        // TODO: Make compression level configurable
-        let mut encoder = brotli::CompressorWriter::new(Vec::new(), 4096, 2, 22);
+    pub fn compress(data: &[u8], level: CompressionLevel) -> Result<Vec<u8>, String> {
+        let level = match level {
+            CompressionLevel::None => return Ok(data.to_vec()),
+            CompressionLevel::UltraFast => 0,
+            CompressionLevel::Fast => 4,
+            CompressionLevel::Balanced => 6,
+            CompressionLevel::Best => 11,
+        };
+
+        let mut encoder = brotli::CompressorWriter::new(Vec::new(), 4096, level, 22);
         encoder.write_all(data).map_err(|e| e.to_string())?;
         encoder.flush().map_err(|e| e.to_string())?;
         Ok(encoder.into_inner())

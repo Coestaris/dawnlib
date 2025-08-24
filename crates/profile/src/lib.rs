@@ -1,6 +1,5 @@
 #![feature(trait_alias)]
 
-mod _async;
 pub mod sync;
 
 pub trait MonitorSampleTrait = Clone + Sync + Sync;
