@@ -22,9 +22,11 @@ the [DAWN](https://github.com/Coestaris/dawn) pet-project.
 - `graphics` - Contains OS-dependent Window management, input handling, and
   rendering pipelines on top of OpenGL.
 - `profile` - Contains profiling tools and utilities.
-- `dac` - Contains an implementation of Asset container. It also provides 
-  utilities for converting raw assets (like .png, .wav, etc.) into
-  internal representation of assets.
+- `dac` - Contains an general data types of Dawn Asset Container (DAC) file format. 
+  It also contains implementation of DAC file reader.
+- `dacgen` - Implementation of DAC file writer. It is responsible for converting 
+  raw assets (like .png, .wav, .obj, etc.) into a IR (intermediate representation)
+  format and storing them in a DAC file.
 
 #### Prerequisites
 
