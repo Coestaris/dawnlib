@@ -108,7 +108,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         renderer: Single<&Boxed>,
     ) {
         let renderer = renderer.cast::<E>();
-        renderer.renderer_sender.send(rpe.event.clone());
+        renderer.renderer_sender.send(rpe.event.clone()).unwrap();
     }
 
     #[derive(Query)]

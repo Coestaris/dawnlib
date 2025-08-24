@@ -4,13 +4,20 @@ use std::marker::PhantomData;
 use std::ptr::NonNull;
 use std::sync::Arc;
 
-pub mod factory;
-pub mod hub;
 pub mod ir;
-pub mod reader;
-pub(crate) mod registry;
-pub mod requests;
+
+#[cfg(feature = "hub")]
 pub mod binding;
+#[cfg(feature = "hub")]
+pub mod factory;
+#[cfg(feature = "hub")]
+pub mod hub;
+#[cfg(feature = "hub")]
+pub mod reader;
+#[cfg(feature = "hub")]
+pub(crate) mod registry;
+#[cfg(feature = "hub")]
+pub mod requests;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetChecksum([u8; 16]);
@@ -141,10 +148,11 @@ unsafe impl Send for Asset {}
 unsafe impl Sync for Asset {}
 
 impl Asset {
-    pub fn new(id: AssetID, tid: TypeId, ptr: NonNull<()>) -> Asset {
+    pub fn new(tid: TypeId, ptr: NonNull<()>) -> Asset {
         Asset(Arc::new(AssetInner { tid, ptr }))
     }
 
+    #[allow(dead_code)]
     pub(crate) fn ref_count(&self) -> usize {
         Arc::strong_count(&self.0)
     }

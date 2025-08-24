@@ -63,7 +63,7 @@ pub trait RenderPass<E: PassEventTrait>: Send + Sync + 'static {
     }
 }
 
-pub(crate) struct ChainExecuteCtx<'a, E: PassEventTrait> {
+pub struct ChainExecuteCtx<'a, E: PassEventTrait> {
     // The renderables to be processed by the render pass.
     pub(crate) renderables: &'a [Renderable],
     // Amount of time consumed by render pass in the chain.

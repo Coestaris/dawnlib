@@ -1,6 +1,6 @@
-use crate::writer::ir::PartialIR;
-use crate::writer::user::UserShaderAsset;
-use crate::writer::UserAssetFile;
+use crate::ir::PartialIR;
+use crate::user::UserShaderAsset;
+use crate::UserAssetFile;
 use dawn_assets::ir::shader::IRShader;
 use dawn_assets::ir::IRAsset;
 use std::collections::HashMap;

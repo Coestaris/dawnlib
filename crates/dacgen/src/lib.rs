@@ -1,43 +1,40 @@
 mod ir;
 mod user;
 
-use crate::container::{write_container, ContainerError};
-use crate::manifest::Manifest;
-use crate::serialize_backend;
-use crate::serialize_backend::serialize;
-use crate::writer::ir::user_to_ir;
-use crate::writer::user::UserAsset;
+use crate::ir::user_to_ir;
+use crate::user::UserAsset;
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetHeader, AssetID};
+use dawn_dac::container::writer::write_container;
+use dawn_dac::container::ContainerError;
+use dawn_dac::{ChecksumAlgorithm, CompressionLevel, Manifest, ReadMode};
 use log::info;
-use serde::{Deserialize, Serialize};
-use std::alloc::Layout;
-use std::fmt::Display;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::time::SystemTime;
 use thiserror::Error;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub enum ReadMode {
-    Flat,
-    Recursive,
+fn generator_tool() -> String {
+    "dawn-dac".to_string() // TODO: Get from Cargo.toml
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub enum ChecksumAlgorithm {
-    Blake3,
-    Md5,
-    SHA256,
+fn generator_tool_version() -> String {
+    "0.1.0".to_string() // TODO: Get from Cargo.toml
 }
 
-impl Display for ChecksumAlgorithm {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Blake3 => write!(f, "Blake3"),
-            Self::Md5 => write!(f, "MD5"),
-            Self::SHA256 => write!(f, "SHA256"),
-        }
+pub(crate) fn create_manifest(write_options: &WriteConfig, headers: Vec<AssetHeader>) -> Manifest {
+    Manifest {
+        tool: generator_tool(),
+        tool_version: generator_tool_version(),
+        created: SystemTime::now(),
+        read_mode: write_options.read_mode,
+        checksum_algorithm: write_options.checksum_algorithm,
+        author: write_options.author.clone(),
+        description: write_options.description.clone(),
+        license: write_options.license.clone(),
+        version: write_options.version.clone(),
+        headers,
     }
 }
 
@@ -45,7 +42,8 @@ impl Display for ChecksumAlgorithm {
 pub struct WriteConfig {
     pub read_mode: ReadMode,
     pub checksum_algorithm: ChecksumAlgorithm,
-
+    pub compression_level: CompressionLevel,
+    pub cache_dir: PathBuf,
     pub author: Option<String>,
     pub description: Option<String>,
     pub version: Option<String>,
@@ -113,10 +111,7 @@ fn collect_files(path: PathBuf, read_mode: ReadMode) -> Result<Vec<PathBuf>, std
     Ok(files)
 }
 
-fn collect_user_assets(
-    files: &[PathBuf],
-    options: WriteConfig,
-) -> Result<Vec<UserAssetFile>, WriterError> {
+fn collect_user_assets(files: &[PathBuf]) -> Result<Vec<UserAssetFile>, WriterError> {
     // Find all toml files
     let mut toml_files = Vec::new();
     for file in files {
@@ -208,10 +203,10 @@ pub fn write_from_directory<W: Write>(
     options: WriteConfig,
 ) -> Result<(), WriterError> {
     let input_files = collect_files(input_dir, options.read_mode)?;
-    let user_assets = collect_user_assets(&input_files, options.clone())?;
+    let user_assets = collect_user_assets(&input_files)?;
     let irs = user_assets_to_irs(user_assets, options.checksum_algorithm)?;
     sanity_check(&irs)?;
-    let manifest = Manifest::new(&options, irs.iter().map(|h| h.header.clone()).collect());
+    let manifest = create_manifest(&options, irs.iter().map(|h| h.header.clone()).collect());
 
     info!("Creating DAC container");
     write_container(
@@ -220,6 +215,8 @@ pub fn write_from_directory<W: Write>(
         irs.into_iter()
             .map(|h| (h.header.id.clone(), h.ir))
             .collect(),
+        options.cache_dir,
+        options.compression_level,
     )?;
 
     Ok(())
@@ -227,8 +224,9 @@ pub fn write_from_directory<W: Write>(
 
 #[cfg(test)]
 mod tests {
-    use crate::container::{read_ir, read_manifest};
-    use crate::writer::{write_from_directory, ChecksumAlgorithm, ReadMode, WriteConfig};
+    use crate::{write_from_directory, WriteConfig};
+    use dawn_dac::reader::{read_asset, read_manifest};
+    use dawn_dac::{ChecksumAlgorithm, CompressionLevel, ReadMode};
 
     #[test]
     fn test() {
@@ -252,6 +250,7 @@ mod tests {
         // TODO: Do not commit me :(
         let current_dir = "/Users/maximkurylko/work/dawn/assets";
         let target_dir = "/var/tmp/test.dac";
+        let cache_dir = "/var/tmp/cache";
         let file = std::fs::File::create(target_dir).unwrap();
         let mut writer = std::io::BufWriter::new(file);
         write_from_directory(
@@ -260,6 +259,8 @@ mod tests {
             WriteConfig {
                 read_mode: ReadMode::Recursive,
                 checksum_algorithm: ChecksumAlgorithm::Blake3,
+                compression_level: CompressionLevel::Balanced,
+                cache_dir: cache_dir.into(),
                 author: Some("Coestaris <vk_vm@ukr.net>".to_string()),
                 description: Some("Test assets".to_string()),
                 version: Some("0.1.0".to_string()),
@@ -273,7 +274,7 @@ mod tests {
         let mut reader = std::io::BufReader::new(file);
         let manifest = read_manifest(&mut reader).unwrap();
         println!("{:#?}", manifest);
-        let ir = read_ir(&mut reader, "image".into()).unwrap();
+        let ir = read_asset(&mut reader, "image".into()).unwrap();
         println!("{:#?}", ir);
     }
 }

@@ -199,12 +199,3 @@ pub(crate) fn convert_key(key: VIRTUAL_KEY) -> KeyCode {
         _ => KeyCode::Unknown(key.0 as u32, 0),
     }
 }
-
-pub(crate) fn convert_mouse_button(button: u32) -> MouseButton {
-    match button {
-        0x01 => MouseButton::Left,
-        0x02 => MouseButton::Right,
-        0x04 => MouseButton::Middle,
-        _ => MouseButton::Unknown(button),
-    }
-}

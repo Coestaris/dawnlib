@@ -6,12 +6,11 @@ edition = "2021"
 [dependencies]
 dawn-profile = { path = "../profile" }
 dawn-ecs = { path = "../ecs" }
-dawn-assets = { path = "../assets" }
+dawn-assets = { path = "../assets", features = ["hub"] }
 log = "0.4.27"
 cpal = { version = "0.16.0" } # Primary audio backend
 ringbuf = "0.4.8" # Used for double-buffering audio data
 crossbeam-queue = "0.3.12" # Used for sending messages to the render thread
-i24 = "2.1.0" # For 24-bit PCM support (used in WAV files)
 tinyrand = "0.5.0" # Used in a waveform noise generator source
 glam = "0.30.5" # Used in actors source
 evenio = "0.6.0"

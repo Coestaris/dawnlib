@@ -1,10 +1,10 @@
-use crate::writer::ir::texture::{
+use crate::ir::texture::{
     convert_texture_from_memory, pixel_format_of_dynamic_image, texture_type_of_dynamic_image,
     UserTextureAssetInner,
 };
-use crate::writer::ir::{normalize_name, PartialIR};
-use crate::writer::user::{UserAssetHeader, UserMaterialAsset};
-use crate::writer::UserAssetFile;
+use crate::ir::{normalize_name, PartialIR};
+use crate::user::{UserAssetHeader, UserMaterialAsset};
+use crate::UserAssetFile;
 use dawn_assets::ir::material::{Emissive, IRMaterial};
 use dawn_assets::ir::texture::{IRTextureFilter, IRTextureWrap};
 use dawn_assets::ir::IRAsset;

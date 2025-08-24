@@ -43,7 +43,7 @@ pub struct Head {
 trait MainLoopMonitorTrait {
     fn cycle_start(&mut self) {}
     fn tick_end(&mut self) {}
-    fn cycle(&mut self, world: &mut World) {}
+    fn cycle(&mut self, _world: &mut World) {}
 }
 
 struct MainLoopMonitor {

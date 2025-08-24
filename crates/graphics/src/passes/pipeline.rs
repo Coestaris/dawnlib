@@ -2,7 +2,7 @@ use crate::passes::chain::RenderChain;
 use crate::passes::events::{PassEventTarget, PassEventTrait, RenderPassEvent};
 use crate::passes::result::PassExecuteResult;
 use crate::passes::{ChainExecuteCtx, MAX_RENDER_PASSES};
-use std::mem;
+use std::mem::MaybeUninit;
 
 const ROUTER_CAPACITY: usize = 64;
 
@@ -42,15 +42,26 @@ where
             );
         }
 
-        let mut event_router: [PassEventTarget<E>; ROUTER_CAPACITY] = unsafe { mem::zeroed() };
+        // Create an uninitialized array of `MaybeUninit` to not require
+        // `Default` or `Clone` on `PassEventTarget`.
+        let mut event_router: [MaybeUninit<PassEventTarget<E>>; ROUTER_CAPACITY] =
+            [const { MaybeUninit::uninit() }; ROUTER_CAPACITY];
         for target in targets {
             let id = target.get_id();
-            event_router[id.as_usize()] = target;
+            event_router[id.as_usize()].write(target);
         }
 
         RenderPipeline {
             chain,
-            event_router,
+
+            // Everything is initialized. Transmute the array to the
+            // initialized type.
+            event_router: unsafe {
+                std::mem::transmute::<
+                    [MaybeUninit<PassEventTarget<E>>; ROUTER_CAPACITY],
+                    [PassEventTarget<E>; ROUTER_CAPACITY],
+                >(event_router)
+            },
         }
     }
 
