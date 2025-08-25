@@ -46,12 +46,20 @@ pub mod view_impl {
 pub use view_impl::*;
 
 #[derive(Clone)]
+pub struct ViewSynchronization {
+    pub before_frame: Rendezvous,
+    pub after_frame: Rendezvous,
+}
+
+#[derive(Clone)]
 pub struct ViewConfig {
     /// Platform-specific configuration
     pub platform_specific: PlatformSpecificViewConfig,
-    /// Allows enable additional synchronization between threads.
+
+    /// Allows to enable additional synchronization between threads.
     /// For example, to synchronize rendering and logic threads.
-    pub rendezvous: Option<Rendezvous>,
+    pub synchronization: Option<ViewSynchronization>,
+
     /// Title of the window
     pub title: String,
     /// Width of the window in pixels

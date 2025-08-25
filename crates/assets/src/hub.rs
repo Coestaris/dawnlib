@@ -5,7 +5,6 @@ use crate::requests::scheduler::{PeekResult, Scheduler, TaskDoneResult};
 use crate::requests::task::{AssetTaskID, TaskCommand};
 use crate::requests::{AssetRequest, AssetRequestID};
 use crate::{Asset, AssetCastable, AssetHeader, AssetID, AssetMemoryUsage, AssetType, TypedAsset};
-use dawn_ecs::Tick;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver, Sender};
 use evenio::fetch::Single;
@@ -15,6 +14,7 @@ use log::{debug, error, info};
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
 use thiserror::Error;
+use dawn_ecs::events::TickEvent;
 
 /// AssetHub events are used to notify the ECS world about asset-related events.
 /// These events can be used to track the status
@@ -264,7 +264,7 @@ impl AssetHub {
     /// This is called on each main loop tick and processes pending tasks,
     /// reader events, and factory events.
     fn tick_handler(
-        _: Receiver<Tick>,
+        _: Receiver<TickEvent>,
         mut hub: Single<&mut AssetHub>,
         mut sender: Sender<AssetHubEvent>,
     ) {

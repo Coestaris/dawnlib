@@ -26,20 +26,26 @@ use triple_buffer::{triple_buffer, Input, Output};
 // Re-export the necessary types for user
 pub use backend::{RendererBackend, RendererBackendConfig};
 use dawn_util::rendezvous::Rendezvous;
-pub use monitor::RendererMonitoring;
+pub use monitor::RendererMonitorEvent;
+
+#[derive(Clone)]
+pub(crate) struct DataStreamFrame {
+    epoch: usize,
+    renderables: Vec<Renderable>,
+}
 
 #[derive(Component)]
 pub struct Renderer<E: PassEventTrait> {
     stop_signal: Arc<AtomicBool>,
-    // Used for transferring renderables to the renderer thread
+    // Used for streaming renderables to the renderer thread
     // This is a triple buffer, so it can be used to read and write renderables
     // without blocking the renderer thread.
-    renderables_buffer_input: Input<Vec<Renderable>>,
+    data_stream: Input<DataStreamFrame>,
     // Used for transferring input events from the renderer thread to the ECS.
     inputs_receiver: Receiver<InputEvent>,
     // Used for transferring render pass events from the ECS to the renderer thread.
     renderer_sender: Sender<RenderPassEvent<E>>,
-    monitor_receiver: Receiver<RendererMonitoring>,
+    monitor_receiver: Receiver<RendererMonitorEvent>,
     handle: Option<JoinHandle<()>>,
 }
 
@@ -144,12 +150,13 @@ impl<E: PassEventTrait> Renderer<E> {
     where
         C: RenderChain<E>,
     {
-        if let Some(r) = view_config.rendezvous.clone() {
+        if let Some(sync) = view_config.synchronization.clone() {
             Self::new_inner(
                 view_config,
                 backend_config,
                 constructor,
-                RendezvousWrapper(r),
+                RendezvousWrapper(sync.before_frame),
+                RendezvousWrapper(sync.after_frame),
                 DummyRendererMonitor {},
             )
         } else {
@@ -157,6 +164,7 @@ impl<E: PassEventTrait> Renderer<E> {
                 view_config,
                 backend_config,
                 constructor,
+                DummyRendezvous {},
                 DummyRendezvous {},
                 DummyRendererMonitor {},
             )
@@ -177,12 +185,13 @@ impl<E: PassEventTrait> Renderer<E> {
     where
         C: RenderChain<E>,
     {
-        if let Some(r) = view_config.rendezvous.clone() {
+        if let Some(sync) = view_config.synchronization.clone() {
             Self::new_inner(
                 view_config,
                 backend_config,
                 constructor,
-                RendezvousWrapper(r),
+                RendezvousWrapper(sync.before_frame),
+                RendezvousWrapper(sync.after_frame),
                 RendererMonitor::new(),
             )
         } else {
@@ -190,6 +199,7 @@ impl<E: PassEventTrait> Renderer<E> {
                 view_config,
                 backend_config,
                 constructor,
+                DummyRendezvous {},
                 DummyRendezvous {},
                 RendererMonitor::new(),
             )
@@ -200,7 +210,8 @@ impl<E: PassEventTrait> Renderer<E> {
         view_config: ViewConfig,
         backend_config: RendererBackendConfig,
         constructor: impl RenderChainConstructor<C, E>,
-        rendezvous: impl RendezvousTrait,
+        before_frame: impl RendezvousTrait,
+        after_frame: impl RendezvousTrait,
         mut monitor: P,
     ) -> Result<Self, RendererError>
     where
@@ -214,7 +225,11 @@ impl<E: PassEventTrait> Renderer<E> {
         // Setup renderer
         let (inputs_sender, inputs_receiver) = unbounded();
         let (renderer_sender, renderer_receiver) = unbounded();
-        let (buffer_input, mut buffer_output) = triple_buffer::<Vec<Renderable>>(&vec![]);
+        let (stream_input, mut stream_output) =
+            triple_buffer::<DataStreamFrame>(&DataStreamFrame {
+                epoch: 0,
+                renderables: vec![],
+            });
         let stop_signal = Arc::new(AtomicBool::new(false));
 
         let stop_signal_clone = stop_signal.clone();
@@ -237,12 +252,24 @@ impl<E: PassEventTrait> Renderer<E> {
                     monitor.set_pass_names(&pass_names);
 
                     info!("Starting renderer loop");
+                    let mut frame_index = 0;
                     while !stop_signal_clone.load(Ordering::SeqCst) {
-                        rendezvous.wait();
+                        // This has no sense if no synchronization is disabled,
+                        // but if it is, it is a good idea to process all the events between frames.
+                        // Here, in the meanwhile, the Main thread will copy the renderables to us,
+                        // so we have some time to handle events.
+                        // It also guarantees that all the events the user produced will be processed
+                        // before the next frame.
+                        Self::handle_events(&mut monitor, &mut pipeline, &renderer_receiver)?;
 
+                        // Meet with the Main thread
+                        before_frame.wait();
+
+                        // Get the new events from the OS
                         match Self::handle_view(&mut view, &mut monitor) {
                             Ok(false) => {
-                                rendezvous.unlock();
+                                before_frame.unlock();
+                                after_frame.unlock();
                                 return Ok(());
                             }
                             Err(e) => {
@@ -250,13 +277,18 @@ impl<E: PassEventTrait> Renderer<E> {
                             }
                             _ => {}
                         }
-                        Self::handle_events(&mut monitor, &mut pipeline, &renderer_receiver)?;
-                        Self::handle_render(
+
+                        // Render the frame
+                        frame_index = Self::handle_render(
+                            frame_index,
                             &mut monitor,
                             &mut backend,
-                            &mut buffer_output,
+                            &mut stream_output,
                             &mut pipeline,
                         )?;
+
+                        // Meet with the Main thread again.
+                        after_frame.wait();
                     }
 
                     Ok(())
@@ -277,7 +309,7 @@ impl<E: PassEventTrait> Renderer<E> {
 
         Ok(Self {
             stop_signal,
-            renderables_buffer_input: buffer_input,
+            data_stream: stream_input,
             inputs_receiver,
             renderer_sender,
             monitor_receiver,
@@ -332,11 +364,12 @@ impl<E: PassEventTrait> Renderer<E> {
 
     #[inline(always)]
     fn handle_render<C>(
+        mut frame_index: usize,
         monitor: &mut impl RendererMonitorTrait,
         backend: &mut RendererBackend<E>,
-        renderables_buffer: &mut Output<Vec<Renderable>>,
+        stream: &mut Output<DataStreamFrame>,
         pipeline: &mut RenderPipeline<C, E>,
-    ) -> Result<(), RendererError>
+    ) -> Result<usize, RendererError>
     where
         C: RenderChain<E>,
     {
@@ -345,8 +378,18 @@ impl<E: PassEventTrait> Renderer<E> {
             return Err(RendererError::BackendRenderError(e));
         }
 
-        let renderables = renderables_buffer.read();
-        let mut ctx = ChainExecuteCtx::new(renderables.as_slice(), backend);
+        let frame = stream.read();
+        if frame.epoch != frame_index {
+            warn!(
+                "Renderer is out of sync! Expected epoch {}, got {}",
+                frame_index, frame.epoch
+            );
+            frame_index = frame.epoch;
+        } else {
+            frame_index += 1;
+        }
+
+        let mut ctx = ChainExecuteCtx::new(frame.renderables.as_slice(), backend);
 
         let pass_result = pipeline.execute(&mut ctx);
         if let PassExecuteResult::Failed = pass_result {
@@ -362,7 +405,7 @@ impl<E: PassEventTrait> Renderer<E> {
             return Err(RendererError::BackendRenderError(e))?;
         }
 
-        Ok(())
+        Ok(frame_index)
     }
 
     /// After attaching the renderer to the ECS, it will automatically collect the renderables
@@ -374,7 +417,7 @@ impl<E: PassEventTrait> Renderer<E> {
     /// Also, if you've enabled monitoring, it will send monitor data as `RendererMonitoring`
     /// events to the ECS every second.
     /// Additionally, if the Window or Renderer is closed/failed the event loop will be stopped
-    /// by sending a `StopEventLoop` event to the ECS.
+    /// by sending a `ExitEvent` event to the ECS.
     ///
     /// This function moves the renderer into the ECS world.
     pub fn attach_to_ecs(self, world: &mut World) {
