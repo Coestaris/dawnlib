@@ -136,7 +136,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
     // This is only possible if the renderer is synchronized with the main thread in two
     // points. If you want the smooth movement of the object, consider using a hard sync
     // instead of free running the renderer thread.
-    fn sync_renderables<E: PassEventTrait>(
+    fn stream_data_handle<E: PassEventTrait>(
         t: Receiver<InterSyncEvent>,
         mut renderer: Single<&mut Boxed>,
         fetcher: Fetcher<Query>,
@@ -173,6 +173,6 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
     world.add_handler(monitoring_handler::<E>.low());
     world.add_handler(inputs_handler::<E>.high());
     world.add_handler(view_closed_handler::<E>.low());
-    world.add_handler(sync_renderables::<E>.high());
+    world.add_handler(stream_data_handle::<E>);
     world.add_handler(render_pass_event_handler::<E>.high());
 }

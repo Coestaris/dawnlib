@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::any::TypeId;
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 use std::sync::Arc;
@@ -37,12 +38,12 @@ impl Default for AssetChecksum {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct AssetHeader {
     pub id: AssetID,
     pub asset_type: AssetType,
     pub checksum: AssetChecksum,
-    pub dependencies: Vec<AssetID>,
+    pub dependencies: HashSet<AssetID>,
     pub tags: Vec<String>,
     pub author: Option<String>,
     pub license: Option<String>,
@@ -55,7 +56,7 @@ impl Default for AssetHeader {
             tags: Vec::new(),
             asset_type: AssetType::Unknown,
             checksum: AssetChecksum::default(),
-            dependencies: vec![],
+            dependencies: HashSet::new(),
             license: None,
             author: None,
         }

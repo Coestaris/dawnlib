@@ -2,12 +2,14 @@ use crate::ir::material::{convert_material_from_memory, UserMaterialAssetInner};
 use crate::ir::{normalize_name, PartialIR};
 use crate::user::{UserAssetHeader, UserMeshAsset};
 use crate::UserAssetFile;
-use dawn_assets::ir::mesh::{IRMesh, IRMeshBounds, IRPrimitive, IRVertex};
+use dawn_assets::ir::mesh::{IRMesh, IRMeshBounds, IRPrimitive, IRSubMesh, IRVertex};
 use dawn_assets::ir::IRAsset;
-use dawn_assets::{AssetID, AssetType};
+use dawn_assets::{AssetHeader, AssetID, AssetType};
 use easy_gltf::model::Mode;
 use glam::Vec3;
 use log::{debug, info};
+use std::collections::HashSet;
+use std::os::linux::raw::stat;
 use std::path::PathBuf;
 
 pub fn convert_mesh(file: &UserAssetFile, user: &UserMeshAsset) -> Result<Vec<PartialIR>, String> {
@@ -21,13 +23,13 @@ pub fn convert_mesh(file: &UserAssetFile, user: &UserMeshAsset) -> Result<Vec<Pa
     let scenes = easy_gltf::load(&mesh)
         .map_err(|e| format!("Failed to load mesh file '{}': {}", mesh.display(), e))?;
 
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-    let mut primitives_count = 0;
-    let mut primitive_type = None;
-    let mut min = Vec3::splat(f32::MAX);
-    let mut max = Vec3::splat(f32::MIN);
-    let mut materials = Vec::new();
+    let mut global_min = Vec3::splat(f32::MAX);
+    let mut global_max = Vec3::splat(f32::MIN);
+
+    let mesh_id = normalize_name(mesh.clone());
+    let mut header = file.asset.header.clone();
+    let mut result = Vec::new();
+    let mut submesh = Vec::new();
 
     let mut all_extras = Vec::new();
     for scene in &scenes {
@@ -35,8 +37,51 @@ pub fn convert_mesh(file: &UserAssetFile, user: &UserMeshAsset) -> Result<Vec<Pa
             all_extras.push(extras);
         }
 
-        for model in &scene.models {
-            materials.push(model.material().clone());
+        for (i, model) in scene.models.iter().enumerate() {
+            let mut vertices = Vec::new();
+            let mut indices = Vec::new();
+            let mut min = global_min;
+            let mut max = global_max;
+
+            let material_id = if user.gen_material {
+                let material = model.material();
+                let material_id = match (material.name.clone(), model.mesh_name()) {
+                    (Some(name), _) => format!("_{}_{}_material", mesh_id.as_str(), name),
+                    (None, Some(name)) => {
+                        format!("_{}_{}_material", mesh_id.as_str(), name)
+                    }
+                    (None, None) => format!("_{}_{}_material", mesh_id.as_str(), i),
+                };
+
+                let material_id = AssetID::new(material_id);
+
+                // Mesh reuses material. Do not generate it again.
+                if header.dependencies.insert(material_id.clone()) {
+                    let material_header = UserAssetHeader {
+                        asset_type: AssetType::Material,
+                        dependencies: HashSet::new(),
+                        tags: vec![],
+                        author: Some("Auto-generated".to_string()),
+                        license: None,
+                    };
+
+                    let user = UserMaterialAssetInner {
+                        base_color_factor: *material.pbr.base_color_factor.as_ref(),
+                        base_color_texture: material.pbr.base_color_texture.clone(),
+                        metallic_texture: material.pbr.metallic_texture.clone(),
+                        metallic_factor: material.pbr.metallic_factor,
+                        roughness_texture: material.pbr.roughness_texture.clone(),
+                        roughness_factor: material.pbr.roughness_factor,
+                    };
+                    result.extend(
+                        convert_material_from_memory(material_id.clone(), material_header, user)
+                            .map_err(|e| format!("Failed to convert material: {}", e))?,
+                    );
+                }
+                material_id
+            } else {
+                AssetID::default()
+            };
 
             if let Some(primitive_extras) = model.primitive_extras().as_ref() {
                 all_extras.push(primitive_extras);
@@ -45,33 +90,14 @@ pub fn convert_mesh(file: &UserAssetFile, user: &UserMeshAsset) -> Result<Vec<Pa
                 all_extras.push(mesh_extras);
             }
 
-            let new_type = match model.mode() {
-                Mode::Points => {
-                    primitives_count += model.indices().unwrap().len();
-                    IRPrimitive::Points
-                }
-                Mode::Lines => {
-                    primitives_count += model.indices().unwrap().len() / 2;
-                    IRPrimitive::Lines
-                }
-                Mode::Triangles => {
-                    primitives_count += model.indices().unwrap().len() / 3;
-                    IRPrimitive::Triangles
-                }
+            let (primitive_type, primitives_count) = match model.mode() {
+                Mode::Points => (IRPrimitive::Points, model.indices().unwrap().len()),
+                Mode::Lines => (IRPrimitive::Lines, model.indices().unwrap().len() / 2),
+                Mode::Triangles => (IRPrimitive::Triangles, model.indices().unwrap().len() / 3),
                 _ => {
                     unimplemented!()
                 }
             };
-            if let Some(primitive_type) = primitive_type.take() {
-                if primitive_type != new_type {
-                    return Err(format!(
-                        "Inconsistent primitive types in mesh: {:?} vs {:?}",
-                        primitive_type, new_type
-                    ));
-                }
-            } else {
-                primitive_type = Some(new_type);
-            }
 
             for vertex in model.vertices() {
                 let position = vertex.position.as_ref();
@@ -88,42 +114,21 @@ pub fn convert_mesh(file: &UserAssetFile, user: &UserMeshAsset) -> Result<Vec<Pa
             for index in model.indices().unwrap() {
                 indices.push(*index);
             }
-        }
-    }
 
-    let mut result = Vec::new();
-    let mesh_id = normalize_name(mesh.clone());
-    let mut header = file.asset.header.clone();
-    if let Some(material_id) = &user.gen_material {
-        if materials.len() > 1 {
-            return Err(format!(
-                "Mesh '{}' has more than one material, but only one material can be generated",
-                mesh.display()
-            ));
-        }
-        if let Some(material) = materials.first() {
-            header.dependencies.push(material_id.clone());
+            submesh.push(IRSubMesh {
+                vertices,
+                indices,
+                material: material_id,
+                bounds: IRMeshBounds {
+                    min: min.to_array(),
+                    max: max.to_array(),
+                },
+                primitive: primitive_type,
+                primitives_count,
+            });
 
-            let header = UserAssetHeader {
-                asset_type: AssetType::Material,
-                dependencies: vec![],
-                tags: vec![],
-                author: Some("Auto-generated".to_string()),
-                license: None,
-            };
-
-            let user = UserMaterialAssetInner {
-                base_color_factor: *material.pbr.base_color_factor.as_ref(),
-                base_color_texture: material.pbr.base_color_texture.clone(),
-                metallic_texture: material.pbr.metallic_texture.clone(),
-                metallic_factor: material.pbr.metallic_factor,
-                roughness_texture: material.pbr.roughness_texture.clone(),
-                roughness_factor: material.pbr.roughness_factor
-            };
-            result.extend(
-                convert_material_from_memory(material_id.clone(), header, user)
-                    .map_err(|e| format!("Failed to convert material: {}", e))?,
-            );
+            global_min = global_min.min(min);
+            global_max = global_max.max(max);
         }
     }
 
@@ -132,15 +137,11 @@ pub fn convert_mesh(file: &UserAssetFile, user: &UserMeshAsset) -> Result<Vec<Pa
 
     result.push(PartialIR::new_from_id(
         IRAsset::Mesh(IRMesh {
-            vertices,
-            indices,
-            material: AssetID::default(),
+            submesh,
             bounds: IRMeshBounds {
-                min: min.to_array(),
-                max: max.to_array(),
+                min: global_min.to_array(),
+                max: global_max.to_array(),
             },
-            primitive: primitive_type.unwrap_or(IRPrimitive::Points),
-            primitives_count,
         }),
         header,
         mesh_id.clone(),

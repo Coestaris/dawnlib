@@ -62,6 +62,15 @@ fn pixel_format_to_gl(format: &IRPixelFormat) -> Result<GLenum, String> {
     })
 }
 
+fn pixel_format_to_gl_internal(format: &IRPixelFormat) -> Result<GLenum, String> {
+    Ok(match format {
+        IRPixelFormat::RGBA(_) => bindings::RGBA,
+        IRPixelFormat::RGB(_) => bindings::RGB,
+        IRPixelFormat::R8 => bindings::RED,
+        _ => return Err("Unsupported pixel format".to_string()),
+    })
+}
+
 fn pixel_format_to_gl_type(format: &IRPixelFormat) -> Result<GLenum, String> {
     Ok(match format {
         IRPixelFormat::RGBA(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
@@ -187,6 +196,11 @@ impl Texture {
     ) -> Result<(), String> {
         let format = pixel_format_to_gl(&pixel_format)?;
         let data_type = pixel_format_to_gl_type(&pixel_format)?;
+        let internal = pixel_format_to_gl_internal(&pixel_format)?;
+        debug!(
+            "Uploading texture ID: {} ({}x{}, format: {}, type: {}, level {})",
+            self.id, width, height, format, data_type, level
+        );
         unsafe {
             bindings::TexImage2D(
                 self.texture_type,

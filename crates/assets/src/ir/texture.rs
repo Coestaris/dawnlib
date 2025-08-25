@@ -110,7 +110,7 @@ pub enum IRTextureWrap {
 
 impl Default for IRTextureWrap {
     fn default() -> Self {
-        IRTextureWrap::ClampToEdge
+        IRTextureWrap::Repeat
     }
 }
 

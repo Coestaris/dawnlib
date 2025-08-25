@@ -173,13 +173,16 @@ fn sanity_check(irs: &[UserIRAsset]) -> Result<(), WriterError> {
     }
 
     // Check that there's no circular dependencies
-    let mut visited = std::collections::HashSet::new();
     for ir in irs {
-        if !visited.insert(ir.header.id.clone()) {
-            return Err(WriterError::CircleDependency(
-                ir.header.id.clone(),
-                ir.header.dependencies[0].clone(),
-            ));
+        for iir in irs {
+            if ir.header.id != iir.header.id && ir.header.dependencies.contains(&iir.header.id) {
+                if iir.header.dependencies.contains(&ir.header.id) {
+                    return Err(WriterError::CircleDependency(
+                        ir.header.id.clone(),
+                        iir.header.id.clone(),
+                    ));
+                }
+            }
         }
     }
 
@@ -248,9 +251,9 @@ mod tests {
         log::set_max_level(log::LevelFilter::Debug);
 
         // TODO: Do not commit me :(
-        let current_dir = "/Users/maximkurylko/work/dawn/assets";
-        let target_dir = "/var/tmp/test.dac";
-        let cache_dir = "/var/tmp/cache";
+        let current_dir = "/home/taris/work/dawn/assets";
+        let target_dir = "/tmp/test.dac";
+        let cache_dir = "/tmp/cache";
         let file = std::fs::File::create(target_dir).unwrap();
         let mut writer = std::io::BufWriter::new(file);
         write_from_directory(
@@ -274,7 +277,7 @@ mod tests {
         let mut reader = std::io::BufReader::new(file);
         let manifest = read_manifest(&mut reader).unwrap();
         println!("{:#?}", manifest);
-        let ir = read_asset(&mut reader, "image".into()).unwrap();
+        let ir = read_asset(&mut reader, "sponza".into()).unwrap();
         println!("{:#?}", ir);
     }
 }
