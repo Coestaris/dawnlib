@@ -5,11 +5,11 @@ use dawn_assets::ir::audio::IRAudio;
 use dawn_assets::ir::notes::IRNotes;
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetCastable, AssetMemoryUsage, AssetType};
-use dawn_ecs::Tick;
 use evenio::component::Component;
 use evenio::event::Receiver;
 use evenio::fetch::Single;
 use evenio::world::World;
+use dawn_ecs::events::TickEvent;
 
 #[derive(Debug)]
 pub struct AudioAsset(pub IRAudio);
@@ -55,7 +55,7 @@ impl AudioAssetFactory {
     }
 
     pub fn attach_to_ecs(&mut self, world: &mut World) {
-        fn handler(_: Receiver<Tick>, mut factory: Single<&mut AudioAssetFactory>) {
+        fn handler(_: Receiver<TickEvent>, mut factory: Single<&mut AudioAssetFactory>) {
             factory.process_events();
         }
 
@@ -102,7 +102,7 @@ impl NotesAssetFactory {
     }
 
     pub fn attach_to_ecs(&mut self, world: &mut World) {
-        fn handler(_: Receiver<Tick>, mut factory: Single<&mut NotesAssetFactory>) {
+        fn handler(_: Receiver<TickEvent>, mut factory: Single<&mut NotesAssetFactory>) {
             factory.process_events();
         }
 

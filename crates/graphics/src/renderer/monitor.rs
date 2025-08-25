@@ -10,7 +10,7 @@ use crossbeam_channel::Sender;
 use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 
 #[derive(GlobalEvent)]
-pub struct RendererMonitoring {
+pub struct RendererMonitorEvent {
     /// Actual number of frames drawn per second.
     pub fps: MonitorSample<f32>,
 
@@ -38,7 +38,7 @@ pub struct RendererMonitoring {
 }
 
 pub(crate) trait RendererMonitorTrait: Send + Sync + 'static + UnwindSafe {
-    fn set_sender(&mut self, _queue: Sender<RendererMonitoring>) {}
+    fn set_sender(&mut self, _queue: Sender<RendererMonitorEvent>) {}
     fn set_pass_names(&mut self, _names: &[&str]) {}
     fn view_start(&mut self) {}
     fn view_stop(&mut self) {}
@@ -61,12 +61,12 @@ pub(crate) struct RendererMonitor {
     pass_names: Vec<String>,
     pass_samples: Vec<MonitorSample<Duration>>,
     last_send: std::time::Instant,
-    sender: Option<Sender<RendererMonitoring>>,
+    sender: Option<Sender<RendererMonitorEvent>>,
     counter: usize,
 }
 
 impl RendererMonitorTrait for RendererMonitor {
-    fn set_sender(&mut self, sender: Sender<RendererMonitoring>) {
+    fn set_sender(&mut self, sender: Sender<RendererMonitorEvent>) {
         self.sender = Some(sender);
     }
 
@@ -143,7 +143,7 @@ impl RendererMonitorTrait for RendererMonitor {
                     passes.insert(name.clone(), self.pass_samples[i].clone());
                 }
 
-                let frame = RendererMonitoring {
+                let frame = RendererMonitorEvent {
                     fps: self.fps.get(),
                     view: self.view.get(),
                     events: self.events.get(),

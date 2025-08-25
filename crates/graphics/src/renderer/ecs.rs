@@ -3,9 +3,9 @@ use crate::passes::events::{PassEventTrait, RenderPassEvent};
 use crate::renderable::{
     ObjectMaterial, ObjectMesh, ObjectPosition, ObjectRotation, ObjectScale, Renderable,
 };
-use crate::renderer::monitor::RendererMonitoring;
+use crate::renderer::monitor::RendererMonitorEvent;
 use crate::renderer::Renderer;
-use dawn_ecs::{StopMainLoop, Tick};
+use dawn_ecs::events::{InterSyncEvent, ExitEvent, TickEvent};
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::fetch::{Fetcher, Single};
@@ -64,24 +64,24 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
     // If the renderer loop is closed or stopped,
     // we need to stop the event loop
     fn view_closed_handler<E: PassEventTrait>(
-        _: Receiver<Tick>,
+        _: Receiver<TickEvent>,
         renderer: Single<&Boxed>,
-        mut sender: Sender<StopMainLoop>,
+        mut sender: Sender<ExitEvent>,
     ) {
         // Check if the view was closed, if so, send a global event to stop the event loop
         let renderer = renderer.cast::<E>();
         if renderer.stop_signal.load(Ordering::Relaxed) {
             info!("View closed, stopping the event loop");
-            sender.send(StopMainLoop);
+            sender.send(ExitEvent);
         }
     }
 
     // Check if there's any monitor frame to process.
     // If so, push them to the ECS
     fn monitoring_handler<E: PassEventTrait>(
-        _: Receiver<Tick>,
+        _: Receiver<TickEvent>,
         renderer: Single<&Boxed>,
-        mut sender: Sender<RendererMonitoring>,
+        mut sender: Sender<RendererMonitorEvent>,
     ) {
         let renderer = renderer.cast::<E>();
         for frame in renderer.monitor_receiver.try_iter() {
@@ -92,7 +92,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
     // Check if there's any input event to process.
     // If so, push them to the ECS
     fn inputs_handler<E: PassEventTrait>(
-        _: Receiver<Tick>,
+        _: Receiver<TickEvent>,
         renderer: Single<&Boxed>,
         mut sender: Sender<InputEvent>,
     ) {
@@ -123,20 +123,32 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
     // Collect renderables from the ECS and send them to the renderer thread
     // This function will be called every tick to collect the renderables
     // and send them to the renderer thread.
+    //
+    // Ideally this should be done AFTER the main loop, but before the renderer
+    // thread is started. Like so (one frame):
+    // ╔═══════╤════════════════════════════╤═══════════════════╗
+    // ║  ...  │ (Peek data)  [ Rendering ] │              ...  ║ Renderer
+    // ║       │      [ Processing ]        │ (Post data)       ║ Main Thread
+    // ╟───────┼────────────────────────────┼───────────────────╣
+    // ║     [Sync]                       [Sync]                ║
+    // ╚════════════════════════════════════════════════════════╝
+    //
+    // This is only possible if the renderer is synchronized with the main thread in two
+    // points. If you want the smooth movement of the object, consider using a hard sync
+    // instead of free running the renderer thread.
     fn sync_renderables<E: PassEventTrait>(
-        _: Receiver<Tick>,
+        t: Receiver<InterSyncEvent>,
         mut renderer: Single<&mut Boxed>,
         fetcher: Fetcher<Query>,
     ) {
         let renderer = renderer.cast_mut::<E>();
 
         // Update the renderables buffer in-place
-        let renderables = renderer.renderables_buffer_input.input_buffer_mut();
-        renderables.clear();
+        let frame = renderer.data_stream.input_buffer_mut();
 
+        frame.renderables.clear();
         for query in fetcher.iter() {
             // Collect the renderable data from the query
-            // TODO: Get rid of these clones
             let mesh_asset = query.mesh.0.clone();
             let position = query.position.map_or(Vec3::ZERO, |p| p.0);
             let rotation = query.rotation.map_or(Quat::IDENTITY, |r| r.0);
@@ -146,20 +158,21 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
                 .map_or_else(|| ObjectMaterial::default_material(), |m| m.0.clone());
 
             // Push the renderable to the vector
-            renderables.push(Renderable {
+            frame.renderables.push(Renderable {
                 model: Mat4::from_scale_rotation_translation(scale, rotation, position),
                 material,
                 mesh: mesh_asset,
             });
         }
+        frame.epoch = t.event.frame;
 
         // Send the collected renderables to the renderer thread
-        renderer.renderables_buffer_input.publish();
+        renderer.data_stream.publish();
     }
 
     world.add_handler(monitoring_handler::<E>.low());
     world.add_handler(inputs_handler::<E>.high());
     world.add_handler(view_closed_handler::<E>.low());
-    world.add_handler(sync_renderables::<E>.low());
+    world.add_handler(sync_renderables::<E>.high());
     world.add_handler(render_pass_event_handler::<E>.high());
 }

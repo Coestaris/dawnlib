@@ -9,25 +9,24 @@ use crate::entities::Source;
 use crate::sample::MappedInterleavedBuffer;
 use crate::{ChannelsCount, SampleRate, SampleType, SamplesCount, BLOCK_SIZE, CHANNELS_COUNT};
 use crossbeam_queue::ArrayQueue;
-use dawn_ecs::Tick;
+use dawn_ecs::events::TickEvent;
+use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver, Sender};
 use evenio::fetch::Single;
 use evenio::handler::IntoHandler;
 use evenio::world::World;
-use log::{debug, info, warn};
+use log::{info, warn};
 use std::fmt::{Display, Formatter};
-use std::sync::{atomic::AtomicBool, Arc};
-use std::thread::Builder;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 
 const EVENTS_QUEUE_CAPACITY: usize = 1024;
 const MONITOR_QUEUE_CAPACITY: usize = 32;
 
 /// Event sent every second with profiling data about the audio player.
 #[derive(GlobalEvent)]
-pub struct PlayerMonitoring {
+pub struct PlayerMonitorEvent {
     /// Number of ticks per second the renderer was called
     pub render_tps: MonitorSample<f32>,
     /// Number of events processed per second
@@ -48,7 +47,7 @@ pub struct PlayerMonitoring {
 }
 
 trait PlayerMonitorTrait {
-    fn set_queue(&mut self, _queue: Arc<ArrayQueue<PlayerMonitoring>>) {}
+    fn set_queue(&mut self, _queue: Arc<ArrayQueue<PlayerMonitorEvent>>) {}
     fn events_start(&mut self) {}
     fn events_end(&mut self, _processed: usize) {}
     fn renderer_start(&mut self) {}
@@ -56,7 +55,7 @@ trait PlayerMonitorTrait {
 }
 
 struct PlayerMonitor {
-    queue: Option<Arc<ArrayQueue<PlayerMonitoring>>>,
+    queue: Option<Arc<ArrayQueue<PlayerMonitorEvent>>>,
     last_update: Instant,
     sample_rate: SampleRate,
     renderer_time: Stopwatch,
@@ -80,7 +79,7 @@ impl PlayerMonitor {
 }
 
 impl PlayerMonitorTrait for PlayerMonitor {
-    fn set_queue(&mut self, queue: Arc<ArrayQueue<PlayerMonitoring>>) {
+    fn set_queue(&mut self, queue: Arc<ArrayQueue<PlayerMonitorEvent>>) {
         self.queue = Some(queue);
     }
 
@@ -130,7 +129,7 @@ impl PlayerMonitorTrait for PlayerMonitor {
                     total_time_max.as_secs_f32() / allowed_time,
                 );
 
-                let frame = PlayerMonitoring {
+                let frame = PlayerMonitorEvent {
                     render: renderer_time,
                     render_tps,
                     events: events_time,
@@ -164,7 +163,7 @@ pub struct Player {
     // Event queue for processing audio events.
     events: Arc<ArrayQueue<AudioEvent>>,
     // Queue for transferring monitor frames to the main thread.
-    monitor_queue: Arc<ArrayQueue<PlayerMonitoring>>,
+    monitor_queue: Arc<ArrayQueue<PlayerMonitorEvent>>,
 }
 
 impl Drop for Player {
@@ -247,7 +246,7 @@ impl Player {
         }
 
         // Setup monitor
-        let monitor_queue = Arc::new(ArrayQueue::<PlayerMonitoring>::new(MONITOR_QUEUE_CAPACITY));
+        let monitor_queue = Arc::new(ArrayQueue::<PlayerMonitorEvent>::new(MONITOR_QUEUE_CAPACITY));
         monitor.set_queue(Arc::clone(&monitor_queue));
 
         // Should not be here, since DSP processing is not required
@@ -302,7 +301,7 @@ impl Player {
     /// After attaching the player to the ECS, it will automatically consume audio events
     /// of type `AudioEvent` and pass them to the sink for processing.
     /// Also, if you enabled profiling, it will send profiling data
-    /// as `PlayerMonitoring` events to the ECS every second.
+    /// as `PlayerMonitorEvent` events to the ECS every second.
     /// This function moves the player into the ECS world.
     pub fn attach_to_ecs(self, world: &mut World) {
         // Setup the audio player entity in the ECS
@@ -315,9 +314,9 @@ impl Player {
         }
 
         fn tick_handler(
-            _: Receiver<Tick>,
+            _: Receiver<TickEvent>,
             player: Single<&Player>,
-            mut sender: Sender<PlayerMonitoring>,
+            mut sender: Sender<PlayerMonitorEvent>,
         ) {
             // Check if there's any monitor frame to process.
             // If so, push them to the ECS
