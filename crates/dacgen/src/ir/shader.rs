@@ -1,31 +1,26 @@
 use crate::ir::PartialIR;
-use crate::user::UserShaderAsset;
+use crate::user::{ShaderOrigin, UserShaderAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::shader::IRShader;
 use dawn_assets::ir::IRAsset;
 use std::collections::HashMap;
-use log::debug;
+use std::path::Path;
 
 pub fn convert_shader(
     file: &UserAssetFile,
+    cache_dir: &Path,
+    cwd: &Path,
     user: &UserShaderAsset,
 ) -> Result<Vec<PartialIR>, String> {
-    debug!("Converting shader: {:?}", file);
-    
     let mut sources = HashMap::new();
-    for (source_type, path_part) in user.files.iter() {
-        // Try to find the file in the same directory as the shader
-        let directory = file.path.parent().unwrap();
-        let path = directory.join(path_part);
-
-        let content = std::fs::read(path.clone()).map_err(|e| {
-            format!(
-                "Failed to read shader source file '{}': {}",
-                path.to_string_lossy(),
-                e
-            )
-        })?;
-        sources.insert(source_type.clone(), content);
+    for source in user.sources.iter() {
+        sources.insert(
+            source.kind,
+            match &source.origin {
+                ShaderOrigin::Inline { code } => code.clone().as_bytes().to_vec(),
+                ShaderOrigin::External(source) => source.read(cache_dir, cwd)?,
+            },
+        );
     }
 
     Ok(vec![PartialIR::new_from_path(

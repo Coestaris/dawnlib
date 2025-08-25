@@ -30,6 +30,10 @@ impl AssetChecksum {
         checksum[..len].copy_from_slice(&bytes[..len]);
         AssetChecksum(checksum)
     }
+
+    pub fn hex_string(&self) -> String {
+        self.0.iter().map(|b| format!("{:02x}", b)).collect()
+    }
 }
 
 impl Default for AssetChecksum {
@@ -88,7 +92,7 @@ impl std::fmt::Display for AssetType {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct AssetID(String);
 
 impl AssetID {

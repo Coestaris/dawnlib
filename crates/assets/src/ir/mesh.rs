@@ -63,16 +63,25 @@ impl IRVertex {
         ]
     }
 
-    fn position(&self) -> Vec3 {
+    pub fn position(&self) -> Vec3 {
         Vec3::from(self.position)
     }
 
-    fn normal(&self) -> Vec3 {
+    pub fn normal(&self) -> Vec3 {
         Vec3::from(self.normal)
     }
 
-    fn tex_coord(&self) -> Vec2 {
+    pub fn tex_coord(&self) -> Vec2 {
         Vec2::from(self.tex_coord)
+    }
+
+    pub fn into_bytes<'a>(self) -> &'a [u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                (&self as *const IRVertex) as *const u8,
+                size_of::<IRVertex>(),
+            )
+        }
     }
 }
 
@@ -89,7 +98,9 @@ pub enum IRPrimitive {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct IRSubMesh {
-    pub vertices: Vec<IRVertex>,
+    // Raw bytes of vertices
+    // (should be multiple of size_of::<IRVertex>())
+    pub vertices: Vec<u8>,
     pub indices: Vec<u32>,
     pub material: AssetID,
     pub bounds: IRMeshBounds,
@@ -107,7 +118,7 @@ impl IRSubMesh {
     pub fn raw_vertices<'a>(&self) -> &'a [u8] {
         unsafe {
             std::slice::from_raw_parts(
-                self.vertices.as_ptr() as *const u8,
+                self.vertices.as_ptr(),
                 self.vertices.len() * size_of::<IRVertex>(),
             )
         }

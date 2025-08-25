@@ -1,15 +1,21 @@
+mod cache;
+mod deep_hash;
 mod ir;
+mod source;
 mod user;
 
-use crate::ir::user_to_ir;
+use crate::cache::Cache;
+use crate::deep_hash::{DeepHash, DeepHashCtx};
 use crate::user::UserAsset;
 use dawn_assets::ir::IRAsset;
-use dawn_assets::{AssetHeader, AssetID};
-use dawn_dac::container::writer::write_container;
-use dawn_dac::container::ContainerError;
+use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
+use dawn_dac::container::writer::{write_container, BinaryAsset};
+use dawn_dac::container::{CompressionMode, ContainerError};
+use dawn_dac::serialize_backend::serialize;
 use dawn_dac::{ChecksumAlgorithm, CompressionLevel, Manifest, ReadMode};
-use log::info;
+use log::{debug, info};
 use std::fs::File;
+use std::hash::Hasher;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -50,15 +56,52 @@ pub struct WriteConfig {
     pub license: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct UserAssetFile {
     asset: UserAsset,
     path: PathBuf,
 }
 
+impl DeepHash for UserAssetFile {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> Result<(), String> {
+        self.asset.deep_hash(state, ctx)?;
+        // We do not hash the path, as it is not relevant to the content
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 pub(crate) struct UserIRAsset {
     header: AssetHeader,
     ir: IRAsset,
+}
+
+impl UserIRAsset {
+    fn convert(self, compression_level: CompressionLevel) -> Result<BinaryAsset, WriterError> {
+        debug!("Converting {:?} into Binary", self);
+
+        let serialized =
+            serialize(&self.ir).map_err(|e| WriterError::SerializationError(e.to_string()))?;
+        let compressed = dawn_dac::compression_backend::compress(&serialized, compression_level)
+            .map_err(|e| WriterError::CompressionError(e))?;
+
+        // Check if the compression was effective
+        Ok(
+            if compressed.len() != 0 && compressed.len() < serialized.len() {
+                BinaryAsset {
+                    raw: compressed,
+                    compression: CompressionMode::None,
+                    header: self.header,
+                }
+            } else {
+                BinaryAsset {
+                    raw: serialized,
+                    compression: CompressionMode::None,
+                    header: self.header,
+                }
+            },
+        )
+    }
 }
 
 #[derive(Debug, Error)]
@@ -71,6 +114,8 @@ pub enum WriterError {
     DeserializationError(PathBuf, toml::de::Error),
     #[error("Failed to serialize: {0}")]
     SerializationError(String),
+    #[error("Failed to compress data: {0}")]
+    CompressionError(String),
     #[error("Failed to validate metadata: {0}")]
     ConvertingToIRFailed(String),
     #[error("Unsupported read mode: {0}")]
@@ -145,27 +190,13 @@ fn collect_user_assets(files: &[PathBuf]) -> Result<Vec<UserAssetFile>, WriterEr
     Ok(user_assets)
 }
 
-fn user_assets_to_irs(
-    files: Vec<UserAssetFile>,
-    checksum_algorithm: ChecksumAlgorithm,
-) -> Result<Vec<UserIRAsset>, WriterError> {
-    let mut result = Vec::new();
-    for file in files {
-        result.extend(
-            user_to_ir(file, checksum_algorithm)
-                .map_err(|e| WriterError::ConvertingToIRFailed(e))?,
-        );
-    }
-    Ok(result)
-}
-
-fn sanity_check(irs: &[UserIRAsset]) -> Result<(), WriterError> {
+fn sanity_check(headers: &[AssetHeader]) -> Result<(), WriterError> {
     // Check that all dependencies are present
-    for ir in irs {
-        for dep in &ir.header.dependencies {
-            if !irs.iter().any(|i| i.header.id == *dep) {
+    for header in headers {
+        for dep in &header.dependencies {
+            if !headers.iter().any(|i| i.id == *dep) {
                 return Err(WriterError::DependenciesMissing(
-                    ir.header.id.clone(),
+                    header.id.clone(),
                     dep.clone(),
                 ));
             }
@@ -173,13 +204,13 @@ fn sanity_check(irs: &[UserIRAsset]) -> Result<(), WriterError> {
     }
 
     // Check that there's no circular dependencies
-    for ir in irs {
-        for iir in irs {
-            if ir.header.id != iir.header.id && ir.header.dependencies.contains(&iir.header.id) {
-                if iir.header.dependencies.contains(&ir.header.id) {
+    for header_a in headers {
+        for header_b in headers {
+            if header_a.id != header_b.id && header_a.dependencies.contains(&header_b.id) {
+                if header_b.dependencies.contains(&header_a.id) {
                     return Err(WriterError::CircleDependency(
-                        ir.header.id.clone(),
-                        iir.header.id.clone(),
+                        header_a.id.clone(),
+                        header_b.id.clone(),
                     ));
                 }
             }
@@ -188,39 +219,60 @@ fn sanity_check(irs: &[UserIRAsset]) -> Result<(), WriterError> {
 
     // Check that all IDs are unique
     let mut ids = std::collections::HashSet::new();
-    for ir in irs {
-        if !ids.insert(ir.header.id.clone()) {
-            return Err(WriterError::NonUniqueID(ir.header.id.clone()));
+    for ir in headers {
+        if !ids.insert(ir.id.clone()) {
+            return Err(WriterError::NonUniqueID(ir.id.clone()));
         }
     }
 
     Ok(())
 }
 
-/// Implementation of creating a dac from a directory
-/// This will involve reading filezzs, normalizing names, and writing to a
-/// .tar or .tar.gz archive with the specified compression and checksum algorithm.
 pub fn write_from_directory<W: Write>(
     writer: &mut W,
     input_dir: PathBuf,
     options: WriteConfig,
 ) -> Result<(), WriterError> {
-    let input_files = collect_files(input_dir, options.read_mode)?;
-    let user_assets = collect_user_assets(&input_files)?;
-    let irs = user_assets_to_irs(user_assets, options.checksum_algorithm)?;
-    sanity_check(&irs)?;
-    let manifest = create_manifest(&options, irs.iter().map(|h| h.header.clone()).collect());
+    let input_files = collect_files(input_dir.clone(), options.read_mode)?;
+
+    let cache = Cache::new(
+        options.cache_dir.clone(),
+        input_dir.clone(),
+        options.checksum_algorithm,
+    );
+    let mut binaries = Vec::new();
+    for user_asset in collect_user_assets(&input_files)? {
+        if let Some(cached) = cache.get(&user_asset) {
+            binaries.extend(cached);
+        } else {
+            let mut file_binaries = Vec::new();
+            let user_clone = user_asset.clone();
+            for ir in user_asset
+                .convert(
+                    options.cache_dir.as_path(),
+                    input_dir.as_path(),
+                    options.checksum_algorithm.clone(),
+                )
+                .map_err(|e| WriterError::ConvertingToIRFailed(e))?
+            {
+                file_binaries.push(ir.convert(options.compression_level.clone())?);
+            }
+
+            cache.insert(&user_clone, &file_binaries)?;
+            binaries.extend(file_binaries);
+        }
+    }
+
+    let headers = binaries
+        .iter()
+        .map(|b| b.header.clone())
+        .collect::<Vec<_>>();
+    sanity_check(&headers)?;
+
+    let manifest = create_manifest(&options, headers);
 
     info!("Creating DAC container");
-    write_container(
-        writer,
-        manifest,
-        irs.into_iter()
-            .map(|h| (h.header.id.clone(), h.ir))
-            .collect(),
-        options.cache_dir,
-        options.compression_level,
-    )?;
+    write_container(writer, manifest, binaries)?;
 
     Ok(())
 }
@@ -251,9 +303,9 @@ mod tests {
         log::set_max_level(log::LevelFilter::Debug);
 
         // TODO: Do not commit me :(
-        let current_dir = "/home/taris/work/dawn/assets";
-        let target_dir = "/tmp/test.dac";
-        let cache_dir = "/tmp/cache";
+        let current_dir = r"D:\coding\dawn\assets";
+        let target_dir = r"D:\coding\output.dac";
+        let cache_dir = r"D:\coding\cache";
         let file = std::fs::File::create(target_dir).unwrap();
         let mut writer = std::io::BufWriter::new(file);
         write_from_directory(
@@ -262,7 +314,7 @@ mod tests {
             WriteConfig {
                 read_mode: ReadMode::Recursive,
                 checksum_algorithm: ChecksumAlgorithm::Blake3,
-                compression_level: CompressionLevel::Balanced,
+                compression_level: CompressionLevel::None,
                 cache_dir: cache_dir.into(),
                 author: Some("Coestaris <vk_vm@ukr.net>".to_string()),
                 description: Some("Test assets".to_string()),

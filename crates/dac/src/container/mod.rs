@@ -27,7 +27,7 @@ const MANIFEST_MAGIC: u8 = 0x1;
 const DATA_MAGIC: u8 = 0x2;
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
-enum CompressionMode {
+pub enum CompressionMode {
     None,
     Brotli,
 }

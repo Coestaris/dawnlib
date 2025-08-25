@@ -1,3 +1,4 @@
+use crate::deep_hash::deep_hash;
 use crate::ir::audio::convert_audio;
 use crate::ir::material::convert_material;
 use crate::ir::mesh::convert_mesh;
@@ -7,44 +8,14 @@ use crate::user::{UserAssetHeader, UserAssetProperties};
 use crate::{ChecksumAlgorithm, UserAssetFile, UserIRAsset, WriterError};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
-use std::path::PathBuf;
+use log::debug;
+use std::path::{Path, PathBuf};
 
 mod audio;
 mod material;
 mod mesh;
 mod shader;
 mod texture;
-
-fn checksum<T>(obj: &T, algorithm: ChecksumAlgorithm) -> Result<AssetChecksum, WriterError> {
-    // Transmute object to a byte slice
-    let slice =
-        unsafe { std::slice::from_raw_parts(obj as *const T as *const u8, size_of_val(obj)) };
-
-    let hash = match algorithm {
-        ChecksumAlgorithm::Blake3 => {
-            let mut hasher = blake3::Hasher::new();
-            hasher.update(slice);
-            hasher.finalize().as_bytes().to_owned()
-        }
-        #[cfg(feature = "hash_sha2")]
-        ChecksumAlgorithm::SHA256 => {
-            let mut hasher = sha2::Sha256::new();
-            hasher.update(slice);
-            hasher.finalize().to_vec()
-        }
-        #[cfg(feature = "hash_md5")]
-        ChecksumAlgorithm::Md5 => {
-            let mut hasher = md5::Context::new();
-            hasher.consume(slice);
-            hasher.finalize().0
-        }
-        _ => {
-            return Err(WriterError::UnsupportedChecksumAlgorithm(algorithm));
-        }
-    };
-
-    Ok(AssetChecksum::from_bytes(&hash))
-}
 
 /// Normalize the file name by removing the extension, converting to lowercase,
 /// replacing whitespace with underscores, and removing special characters.
@@ -63,25 +34,7 @@ pub fn normalize_name(path: PathBuf) -> AssetID {
         .into()
 }
 
-fn partial_to_ir(
-    partial_ir: PartialIR,
-    algorithm: ChecksumAlgorithm,
-) -> Result<UserIRAsset, String> {
-    Ok(UserIRAsset {
-        header: AssetHeader {
-            id: partial_ir.id,
-            tags: partial_ir.header.tags.clone(),
-            author: partial_ir.header.author.clone(),
-            asset_type: partial_ir.header.asset_type,
-            checksum: checksum(&partial_ir.ir, algorithm)
-                .map_err(|e| format!("Failed to compute checksum: {}", e))?,
-            dependencies: partial_ir.header.dependencies.clone(),
-            license: partial_ir.header.license.clone(),
-        },
-        ir: partial_ir.ir,
-    })
-}
-
+#[derive(Debug)]
 pub(crate) struct PartialIR {
     id: AssetID,
     header: UserAssetHeader,
@@ -100,24 +53,51 @@ impl PartialIR {
     pub fn new_from_id(ir: IRAsset, header: UserAssetHeader, id: AssetID) -> Self {
         Self { id, header, ir }
     }
+
+    pub fn convert(self, algorithm: ChecksumAlgorithm) -> Result<UserIRAsset, String> {
+        debug!("Converting {:?} into IR", self);
+
+        Ok(UserIRAsset {
+            header: AssetHeader {
+                id: self.id,
+                tags: self.header.tags.clone(),
+                author: self.header.author.clone(),
+                asset_type: self.header.asset_type,
+                checksum: AssetChecksum::default(), // TODO: Implement checksum calculation
+                dependencies: self.header.dependencies.clone(),
+                license: self.header.license.clone(),
+            },
+            ir: self.ir,
+        })
+    }
 }
 
-pub fn user_to_ir(
-    file: UserAssetFile,
-    algorithm: ChecksumAlgorithm,
-) -> Result<Vec<UserIRAsset>, String> {
-    let irs = match &file.asset.properties {
-        UserAssetProperties::Shader(shader) => convert_shader(&file, shader)?,
-        UserAssetProperties::Texture(texture) => convert_texture(&file, texture)?,
-        UserAssetProperties::Audio(audio) => convert_audio(&file, audio)?,
-        UserAssetProperties::Mesh(mesh) => convert_mesh(&file, mesh)?,
-        UserAssetProperties::Material(material) => convert_material(&file, material)?,
-    };
+impl UserAssetFile {
+    pub fn convert(
+        self,
+        cache_dir: &Path,
+        cwd: &Path,
+        algorithm: ChecksumAlgorithm,
+    ) -> Result<Vec<UserIRAsset>, String> {
+        debug!("Converting {:?} into IR", self);
 
-    let mut result = Vec::new();
-    for ir in irs {
-        result.push(partial_to_ir(ir, algorithm)?);
+        let irs = match &self.asset.properties {
+            UserAssetProperties::Shader(shader) => convert_shader(&self, cache_dir, cwd, shader)?,
+            UserAssetProperties::Texture(texture) => {
+                convert_texture(&self, cache_dir, cwd, texture)?
+            }
+            UserAssetProperties::Audio(audio) => convert_audio(&self, cache_dir, cwd, audio)?,
+            UserAssetProperties::Mesh(mesh) => convert_mesh(&self, cache_dir, cwd, mesh)?,
+            UserAssetProperties::Material(material) => {
+                convert_material(&self, cache_dir, cwd, material)?
+            }
+        };
+
+        let mut result = Vec::new();
+        for ir in irs {
+            result.push(ir.convert(algorithm)?);
+        }
+
+        Ok(result)
     }
-
-    Ok(result)
 }
