@@ -1,7 +1,7 @@
-use std::fmt::Debug;
 use crate::AssetID;
 use glam::{Vec2, Vec3};
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 use std::mem::offset_of;
 
 // pub const IR_MAX_BONE_INFLUENCES: usize = 4;
@@ -88,8 +88,7 @@ pub enum IRPrimitive {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct IRMesh {
-    // All the geometry hierarchy is baked into the single World-Space mesh.
+pub struct IRSubMesh {
     pub vertices: Vec<IRVertex>,
     pub indices: Vec<u32>,
     pub material: AssetID,
@@ -98,7 +97,13 @@ pub struct IRMesh {
     pub primitives_count: usize,
 }
 
-impl IRMesh {
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct IRMesh {
+    pub submesh: Vec<IRSubMesh>,
+    pub bounds: IRMeshBounds,
+}
+
+impl IRSubMesh {
     pub fn raw_vertices<'a>(&self) -> &'a [u8] {
         unsafe {
             std::slice::from_raw_parts(
@@ -118,7 +123,7 @@ impl IRMesh {
     }
 }
 
-impl Debug for IRMesh {
+impl Debug for IRSubMesh {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IRMesh")
             .field("vertices_count", &self.vertices.len())
@@ -131,7 +136,7 @@ impl Debug for IRMesh {
     }
 }
 
-impl Default for IRMesh {
+impl Default for IRSubMesh {
     fn default() -> Self {
         Self {
             vertices: Vec::new(),
@@ -173,9 +178,11 @@ pub struct IRMeshLayout {
 impl IRMesh {
     pub fn memory_usage(&self) -> usize {
         let mut sum = size_of::<IRMesh>();
-        sum += self.vertices.capacity() * size_of::<IRVertex>();
-        sum += self.indices.capacity() * size_of::<u32>();
-        
+        sum += self.submesh.capacity() * size_of::<IRSubMesh>();
+        for submesh in &self.submesh {
+            sum += submesh.vertices.capacity() * size_of::<IRVertex>();
+            sum += submesh.indices.capacity() * size_of::<u32>();
+        }
         sum
     }
 }

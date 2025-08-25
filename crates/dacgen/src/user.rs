@@ -1,13 +1,14 @@
+use std::collections::HashSet;
 use dawn_assets::ir::shader::IRShaderSourceType;
 use dawn_assets::ir::texture::{IRPixelFormat, IRTextureFilter, IRTextureType, IRTextureWrap};
 use dawn_assets::{AssetID, AssetType};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct UserAssetHeader {
     pub asset_type: AssetType,
     #[serde(default)]
-    pub dependencies: Vec<AssetID>,
+    pub dependencies: HashSet<AssetID>,
     #[serde(default)]
     pub tags: Vec<String>,
     pub author: Option<String>,
@@ -52,7 +53,7 @@ pub(crate) struct UserAudioAsset {
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct UserMeshAsset {
     pub file: String,
-    pub gen_material: Option<AssetID>,
+    pub gen_material: bool,
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]

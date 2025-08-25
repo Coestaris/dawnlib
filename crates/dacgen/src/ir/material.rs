@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::ir::texture::{
     convert_texture_from_memory, pixel_format_of_dynamic_image, texture_type_of_dynamic_image,
     UserTextureAssetInner,
@@ -27,7 +28,7 @@ pub(crate) struct UserMaterialAssetInner {
 
 fn convert_texture(id: AssetID, image: DynamicImage) -> Result<Vec<PartialIR>, String> {
     let header = UserAssetHeader {
-        dependencies: vec![],
+        dependencies: HashSet::new(),
         tags: vec![],
         author: Some("Auto-generated".to_string()),
         asset_type: AssetType::Texture,
@@ -60,8 +61,8 @@ pub fn convert_material_from_memory(
 ) -> Result<Vec<PartialIR>, String> {
     let mut result = Vec::new();
     let base_color_texture = if let Some(base_texture) = user.base_color_texture {
-        let id = AssetID::new(format!("{}_base_color", id.as_str()));
-        header.dependencies.push(id.clone());
+        let id = AssetID::new(format!("_{}_base_color", id.as_str()));
+        header.dependencies.insert(id.clone());
         result.extend(convert_texture(
             id.clone(),
             Arc::unwrap_or_clone(base_texture).into(),
@@ -71,8 +72,8 @@ pub fn convert_material_from_memory(
         None
     };
     let metallic_texture = if let Some(metallic_texture) = user.metallic_texture {
-        let id = AssetID::new(format!("{}_metallic", id.as_str()));
-        header.dependencies.push(id.clone());
+        let id = AssetID::new(format!("_{}_metallic", id.as_str()));
+        header.dependencies.insert(id.clone());
         result.extend(convert_texture(
             id.clone(),
             Arc::unwrap_or_clone(metallic_texture).into(),
@@ -82,12 +83,12 @@ pub fn convert_material_from_memory(
         None
     };
     let roughness_texture = if let Some(roughness_texture) = user.roughness_texture {
-        let id = AssetID::new(format!("{}_roughness", id.as_str()));
+        let id = AssetID::new(format!("_{}_roughness", id.as_str()));
         result.extend(convert_texture(
             id.clone(),
             Arc::unwrap_or_clone(roughness_texture).into(),
         )?);
-        header.dependencies.push(id.clone());
+        header.dependencies.insert(id.clone());
         Some(id)
     } else {
         None

@@ -94,7 +94,7 @@ impl MeshAssetFactory {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Mesh(mesh) = message.ir {
-                    Mesh::from_ir(mesh)
+                    Mesh::from_ir(mesh, message.dependencies)
                 } else {
                     Err("Expected mesh metadata".to_string())
                 }
