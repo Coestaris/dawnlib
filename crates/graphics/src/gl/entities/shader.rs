@@ -1,7 +1,7 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::GLuint;
 use log::{debug};
-use dawn_assets::ir::shader::IRShaderSourceType;
+use dawn_assets::ir::shader::IRShaderSourceKind;
 
 // RAII wrapper for OpenGL shader
 pub struct Shader {
@@ -9,13 +9,13 @@ pub struct Shader {
 }
 
 impl Shader {
-    pub(crate) fn new(source_type: IRShaderSourceType) -> Result<Shader, String> {
+    pub(crate) fn new(source_type: IRShaderSourceKind) -> Result<Shader, String> {
         let gl_type = match source_type {
-            IRShaderSourceType::Vertex => bindings::VERTEX_SHADER,
-            IRShaderSourceType::Fragment => bindings::FRAGMENT_SHADER,
-            IRShaderSourceType::Geometry => bindings::GEOMETRY_SHADER,
-            IRShaderSourceType::Compute => bindings::COMPUTE_SHADER,
-            IRShaderSourceType::TessellationControl => bindings::TESS_CONTROL_SHADER,
+            IRShaderSourceKind::Vertex => bindings::VERTEX_SHADER,
+            IRShaderSourceKind::Fragment => bindings::FRAGMENT_SHADER,
+            IRShaderSourceKind::Geometry => bindings::GEOMETRY_SHADER,
+            IRShaderSourceKind::Compute => bindings::COMPUTE_SHADER,
+            IRShaderSourceKind::TessellationControl => bindings::TESS_CONTROL_SHADER,
             _ => {
                 return Err("Unknown shader type".to_string());
             }

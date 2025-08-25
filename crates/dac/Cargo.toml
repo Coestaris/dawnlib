@@ -14,6 +14,16 @@ bincode = { version = "2.0.1", features = ["serde"] }
 # For compressing the binary data
 brotli = "8.0.2"
 
+# Always enable these optimizations for serializers and compressors
+[profile.dev.package.bincode]
+opt-level = 3
+[profile.release.package.bincode]
+opt-level = 3
+[profile.dev.package.brotli]
+opt-level = 3
+[profile.release.package.brotli]
+opt-level = 3
+
 [profile.release]
 lto = true
 opt-level = 3

@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use crate::ir::texture::{
     convert_texture_from_memory, pixel_format_of_dynamic_image, texture_type_of_dynamic_image,
     UserTextureAssetInner,
@@ -12,6 +11,8 @@ use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use image::{DynamicImage, GrayImage, RgbaImage};
 use log::debug;
+use std::collections::HashSet;
+use std::path::Path;
 use std::sync::Arc;
 
 pub(crate) struct UserMaterialAssetInner {
@@ -117,10 +118,10 @@ pub fn convert_material_from_memory(
 
 pub fn convert_material(
     file: &UserAssetFile,
+    cache_dir: &Path,
+    cwd: &Path,
     user: &UserMaterialAsset,
 ) -> Result<Vec<PartialIR>, String> {
-    debug!("Converting material: {:?}", file);
-
     todo!();
 
     // TODO: Read iamges from disk

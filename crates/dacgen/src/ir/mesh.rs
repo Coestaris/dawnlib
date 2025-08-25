@@ -9,24 +9,23 @@ use easy_gltf::model::Mode;
 use glam::Vec3;
 use log::{debug, info};
 use std::collections::HashSet;
-use std::os::linux::raw::stat;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-pub fn convert_mesh(file: &UserAssetFile, user: &UserMeshAsset) -> Result<Vec<PartialIR>, String> {
-    debug!("Converting mesh: {:?}", file);
-
+pub fn convert_mesh(
+    file: &UserAssetFile,
+    cache_dir: &Path,
+    cwd: &Path,
+    user: &UserMeshAsset,
+) -> Result<Vec<PartialIR>, String> {
     // Try to find the file in the same directory as the shader
-    let parent = file.path.parent().unwrap();
-    let mesh = PathBuf::from(user.file.clone());
-    let mesh = parent.join(mesh);
-
-    let scenes = easy_gltf::load(&mesh)
-        .map_err(|e| format!("Failed to load mesh file '{}': {}", mesh.display(), e))?;
+    let path = user.source.as_path(cache_dir, cwd)?;
+    let scenes = easy_gltf::load(&path)
+        .map_err(|e| format!("Failed to load mesh file '{}': {}", path.display(), e))?;
 
     let mut global_min = Vec3::splat(f32::MAX);
     let mut global_max = Vec3::splat(f32::MIN);
 
-    let mesh_id = normalize_name(mesh.clone());
+    let mesh_id = normalize_name(file.path.clone());
     let mut header = file.asset.header.clone();
     let mut result = Vec::new();
     let mut submesh = Vec::new();
@@ -38,8 +37,6 @@ pub fn convert_mesh(file: &UserAssetFile, user: &UserMeshAsset) -> Result<Vec<Pa
         }
 
         for (i, model) in scene.models.iter().enumerate() {
-            let mut vertices = Vec::new();
-            let mut indices = Vec::new();
             let mut min = global_min;
             let mut max = global_max;
 
@@ -99,25 +96,26 @@ pub fn convert_mesh(file: &UserAssetFile, user: &UserMeshAsset) -> Result<Vec<Pa
                 }
             };
 
+            let mut data = Vec::with_capacity(model.vertices().len() * size_of::<IRVertex>());
             for vertex in model.vertices() {
                 let position = vertex.position.as_ref();
                 let vec = Vec3::from(*position);
                 min = min.min(vec);
                 max = max.max(vec);
 
-                vertices.push(IRVertex {
-                    position: *position,
-                    normal: *vertex.normal.as_ref(),
-                    tex_coord: *vertex.tex_coords.as_ref(),
-                });
-            }
-            for index in model.indices().unwrap() {
-                indices.push(*index);
+                data.extend(
+                    IRVertex {
+                        position: *position,
+                        normal: *vertex.normal.as_ref(),
+                        tex_coord: *vertex.tex_coords.as_ref(),
+                    }
+                    .into_bytes(),
+                );
             }
 
             submesh.push(IRSubMesh {
-                vertices,
-                indices,
+                vertices: data,
+                indices: model.indices().unwrap().clone(),
                 material: material_id,
                 bounds: IRMeshBounds {
                     min: min.to_array(),

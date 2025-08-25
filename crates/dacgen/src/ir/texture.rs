@@ -7,8 +7,7 @@ use dawn_assets::ir::texture::{
 use dawn_assets::ir::IRAsset;
 use dawn_assets::AssetID;
 use image::{ColorType, DynamicImage, Rgba};
-use log::debug;
-use std::path::PathBuf;
+use std::path::Path;
 
 struct Stream {
     data: Vec<u8>,
@@ -122,14 +121,16 @@ pub fn convert_texture_from_memory(
 
 pub fn convert_texture(
     file: &UserAssetFile,
+    cache_dir: &Path,
+    cwd: &Path,
     user: &UserTextureAsset,
 ) -> Result<Vec<PartialIR>, String> {
-    debug!("Converting texture: {:?}", file);
+    // Assume for now, that the texture is always a single image file
+    if user.sources.len() != 1 {
+        return Err("Only single source textures are supported for now".to_string());
+    }
 
-    // Try to find the file in the same directory as the shader
-    let parent = file.path.parent().unwrap();
-    let texture = PathBuf::from(user.files[0].clone());
-    let texture = parent.join(texture);
+    let texture = user.sources.first().unwrap().as_path(cache_dir, cwd)?;
 
     let img = match image::open(&texture) {
         Ok(img) => img,

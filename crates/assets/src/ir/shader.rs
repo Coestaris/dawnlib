@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IRShaderSourceType {
+pub enum IRShaderSourceKind {
     Fragment,
     Geometry,
     Vertex,
@@ -18,9 +18,9 @@ pub enum IRShaderSourceType {
     PrecompiledTessellationControl,
 }
 
-impl Default for IRShaderSourceType {
+impl Default for IRShaderSourceKind {
     fn default() -> Self {
-        IRShaderSourceType::Fragment
+        IRShaderSourceKind::Fragment
     }
 }
 
@@ -28,7 +28,7 @@ impl Default for IRShaderSourceType {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct IRShader {
     pub compile_options: Vec<String>,
-    pub sources: HashMap<IRShaderSourceType, Vec<u8>>,
+    pub sources: HashMap<IRShaderSourceKind, Vec<u8>>,
 }
 
 impl Debug for IRShader {
