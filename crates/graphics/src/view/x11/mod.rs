@@ -1,7 +1,7 @@
 use crate::gl::ViewHandleOpenGL;
 use crate::input::InputEvent;
 use crate::view::{TickResult, ViewConfig, ViewTrait};
-use crossbeam_queue::ArrayQueue;
+use crossbeam_channel::Sender;
 use log::{debug, info, warn};
 use std::ffi::{c_char, c_int, c_uint};
 use std::ptr::addr_of_mut;
@@ -14,7 +14,15 @@ use x11::glx::{
     GLXContext, GLXFBConfig,
 };
 use x11::xlib;
-use x11::xlib::{Atom, ButtonPressMask, ButtonReleaseMask, CWColormap, CWEventMask, ClientMessage, ConfigureNotify, CopyFromParent, CurrentTime, Display, ExposureMask, InputOutput, KeyPressMask, KeyReleaseMask, NoEventMask, PointerMotionMask, StructureNotifyMask, Visual, XAutoRepeatOff, XAutoRepeatOn, XClearWindow, XCloseDisplay, XCreateColormap, XCreateWindow, XDefaultScreen, XDestroyWindow, XEvent, XFlush, XFree, XFreeColormap, XInternAtom, XMapRaised, XMapWindow, XNextEvent, XOpenDisplay, XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes, XStoreName, XSync, XVisualInfo};
+use x11::xlib::{
+    Atom, ButtonPressMask, ButtonReleaseMask, CWColormap, CWEventMask, ClientMessage,
+    ConfigureNotify, CopyFromParent, CurrentTime, Display, ExposureMask, InputOutput, KeyPressMask,
+    KeyReleaseMask, NoEventMask, PointerMotionMask, StructureNotifyMask, Visual, XAutoRepeatOff,
+    XAutoRepeatOn, XClearWindow, XCloseDisplay, XCreateColormap, XCreateWindow, XDefaultScreen,
+    XDestroyWindow, XEvent, XFlush, XFree, XFreeColormap, XInternAtom, XMapRaised, XMapWindow,
+    XNextEvent, XOpenDisplay, XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes,
+    XStoreName, XSync, XVisualInfo,
+};
 
 mod input;
 
@@ -62,7 +70,7 @@ pub(crate) struct View {
 fn process_events_sync(
     display: *mut Display,
     close_atom: Atom,
-    events_sender: &ArrayQueue<InputEvent>,
+    events_sender: &Sender<InputEvent>,
 ) -> Result<bool, ViewError> {
     let event = unsafe {
         let mut event: XEvent = std::mem::zeroed();
@@ -90,21 +98,21 @@ fn process_events_sync(
             let keycode = unsafe { event.key.keycode };
             let keystate = unsafe { event.key.state };
             let key = input::convert_key(display, keycode, keystate);
-            events_sender.push(InputEvent::KeyPress(key)).unwrap();
+            events_sender.send(InputEvent::KeyPress(key)).unwrap();
         }
 
         xlib::KeyRelease => {
             let keycode = unsafe { event.key.keycode };
             let keystate = unsafe { event.key.state };
             let key = input::convert_key(display, keycode, keystate);
-            events_sender.push(InputEvent::KeyRelease(key)).unwrap();
+            events_sender.send(InputEvent::KeyRelease(key)).unwrap();
         }
 
         xlib::ButtonPress => {
             let button = unsafe { event.button.button };
             let mouse_button = input::convert_mouse(button);
             events_sender
-                .push(InputEvent::MouseButtonPress(mouse_button))
+                .send(InputEvent::MouseButtonPress(mouse_button))
                 .unwrap();
         }
 
@@ -112,7 +120,7 @@ fn process_events_sync(
             let button = unsafe { event.button.button };
             let mouse_button = input::convert_mouse(button);
             events_sender
-                .push(InputEvent::MouseButtonRelease(mouse_button))
+                .send(InputEvent::MouseButtonRelease(mouse_button))
                 .unwrap();
         }
 
@@ -121,7 +129,7 @@ fn process_events_sync(
             let width = unsafe { event.configure.width };
             let height = unsafe { event.configure.height };
             events_sender
-                .push(InputEvent::Resize {
+                .send(InputEvent::Resize {
                     width: width as usize,
                     height: height as usize,
                 })
@@ -132,7 +140,7 @@ fn process_events_sync(
             let x = unsafe { event.motion.x };
             let y = unsafe { event.motion.y };
             events_sender
-                .push(InputEvent::MouseMove {
+                .send(InputEvent::MouseMove {
                     x: x as f32,
                     y: y as f32,
                 })
@@ -259,10 +267,7 @@ fn select_fb(display: *mut Display) -> Result<((GLXFBConfig, *mut XVisualInfo)),
 }
 
 impl ViewTrait for View {
-    fn open(
-        cfg: ViewConfig,
-        events_sender: Arc<ArrayQueue<InputEvent>>,
-    ) -> Result<Self, ViewError> {
+    fn open(cfg: ViewConfig, events_sender: Sender<InputEvent>) -> Result<Self, ViewError> {
         unsafe {
             debug!("Opening X11 display");
             let display = XOpenDisplay(std::ptr::null());
