@@ -13,7 +13,7 @@ dawn-util = { path = "../util" }
 dawn-ecs = { path = "../ecs" }
 log = "0.4.27"
 crossbeam-channel = "0.5.11"
-evenio = "0.6.0"
+evenio = { version = "0.6.0", features = ["rayon"] }
 glam = "0.30.5"
 triple_buffer = "8.1.1"
 

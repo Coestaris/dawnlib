@@ -10,7 +10,8 @@ serde = { version = "1.0.219", features = ["derive"] }
 log = "0.4.27"
 
 # For serializing/deserializing the object in binary form
-bincode = { version = "2.0.1", features = ["serde"] }
+bitcode = { version = "0.6.7", features = ["serde"] }
+# bincode = { version = "2.0.1", features = ["serde"] }
 # For compressing the binary data
 brotli = "8.0.2"
 

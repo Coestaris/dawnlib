@@ -1,5 +1,5 @@
 use crate::deep_hash::deep_hash;
-use crate::{UserAssetFile, WriterError};
+use crate::{InstantGuard, UserAssetFile, WriterError};
 use dawn_assets::AssetChecksum;
 use dawn_dac::container::writer::BinaryAsset;
 use dawn_dac::serialize_backend::deserialize;
@@ -27,6 +27,11 @@ impl Cache {
     }
 
     fn get_fn(&self, asset: &UserAssetFile) -> Result<PathBuf, WriterError> {
+        let _guard = InstantGuard::new(format!(
+            "Calculated deep hash of {} in",
+            asset.path.display()
+        ));
+
         let hash = deep_hash(
             asset,
             self.checksum_algorithm,
@@ -37,13 +42,21 @@ impl Cache {
     }
 
     pub fn get(&self, asset: &UserAssetFile) -> Option<Vec<BinaryAsset>> {
+        let _guard = InstantGuard::new(format!("Cache get {:?} computed in", asset.path));
+
         let cache_path = self.get_fn(asset).ok()?;
         if cache_path.exists() {
             debug!("Cache hit for asset {:?} at {:?}", asset.path, cache_path);
             // Read the cached binaries
-            let data = std::fs::read(&cache_path).ok()?;
+            let data = {
+                let _guard = InstantGuard::new(format!("Cached Read {:?} computed in", asset.path));
+                std::fs::read(&cache_path).ok()?
+            };
             // Deserialize the binaries
-            let binaries: Vec<BinaryAsset> = deserialize(&data).ok()?;
+            let binaries: Vec<BinaryAsset> =  {
+                let _guard = InstantGuard::new(format!("Deserialize {:?} computed in", asset.path));
+                deserialize(&data).ok()?
+            };
             Some(binaries)
         } else {
             debug!("Cache miss for asset {:?} at {:?}", asset.path, cache_path);
@@ -56,7 +69,8 @@ impl Cache {
         asset: &UserAssetFile,
         binaries: &Vec<BinaryAsset>,
     ) -> Result<(), WriterError> {
-        debug!("Inserting asset {:?} into cache", asset.path);
+        let _guard = InstantGuard::new(format!("Cache insert {:?} computed in", asset.path));
+
         let cache_path = self.get_fn(asset)?;
 
         // Ensure the cache directory exists

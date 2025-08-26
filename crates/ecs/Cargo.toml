@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 dawn-util = { path = "../util" }
-evenio = "0.6.0"
+evenio = { version = "0.6.0", features = ["rayon"] }
 glam = "0.30.5"
 log = "0.4.27"
 

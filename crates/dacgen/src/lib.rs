@@ -14,12 +14,27 @@ use dawn_dac::container::{CompressionMode, ContainerError};
 use dawn_dac::serialize_backend::serialize;
 use dawn_dac::{ChecksumAlgorithm, CompressionLevel, Manifest, ReadMode};
 use log::{debug, info};
+use rayon::prelude::*;
 use std::fs::File;
 use std::hash::Hasher;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::SystemTime;
 use thiserror::Error;
+
+struct InstantGuard(String, std::time::Instant);
+
+impl InstantGuard {
+    fn new(message: String) -> Self {
+        InstantGuard(message, std::time::Instant::now())
+    }
+}
+
+impl Drop for InstantGuard {
+    fn drop(&mut self) {
+        debug!("{} {:?}", self.0, self.1.elapsed());
+    }
+}
 
 fn generator_tool() -> String {
     "dawn-dac".to_string() // TODO: Get from Cargo.toml
@@ -77,30 +92,36 @@ pub(crate) struct UserIRAsset {
 }
 
 impl UserIRAsset {
-    fn convert(self, compression_level: CompressionLevel) -> Result<BinaryAsset, WriterError> {
-        debug!("Converting {:?} into Binary", self);
+    fn convert(&self, compression_level: CompressionLevel) -> Result<BinaryAsset, WriterError> {
+        let _guard = InstantGuard::new(format!(
+            "Compressed {} in",
+            self.header.id.clone().as_str().to_string()
+        ));
 
         let serialized =
             serialize(&self.ir).map_err(|e| WriterError::SerializationError(e.to_string()))?;
-        let compressed = dawn_dac::compression_backend::compress(&serialized, compression_level)
-            .map_err(|e| WriterError::CompressionError(e))?;
 
-        // Check if the compression was effective
-        Ok(
+        // Not worth compressing such small files
+        if serialized.len() > 256 {
+            let compressed =
+                dawn_dac::compression_backend::compress(&serialized, compression_level)
+                    .map_err(|e| WriterError::CompressionError(e))?;
+
+            // Check if the compression was effective
             if compressed.len() != 0 && compressed.len() < serialized.len() {
-                BinaryAsset {
+                return Ok(BinaryAsset {
                     raw: compressed,
-                    compression: CompressionMode::None,
-                    header: self.header,
-                }
-            } else {
-                BinaryAsset {
-                    raw: serialized,
-                    compression: CompressionMode::None,
-                    header: self.header,
-                }
-            },
-        )
+                    compression: CompressionMode::Brotli,
+                    header: self.header.clone(),
+                });
+            }
+        }
+
+        Ok(BinaryAsset {
+            raw: serialized,
+            compression: CompressionMode::None,
+            header: self.header.clone(),
+        })
     }
 }
 
@@ -240,33 +261,47 @@ pub fn write_from_directory<W: Write>(
         input_dir.clone(),
         options.checksum_algorithm,
     );
-    let mut binaries = Vec::new();
-    for user_asset in collect_user_assets(&input_files)? {
-        if let Some(cached) = cache.get(&user_asset) {
-            binaries.extend(cached);
-        } else {
-            let mut file_binaries = Vec::new();
-            let user_clone = user_asset.clone();
-            for ir in user_asset
-                .convert(
-                    options.cache_dir.as_path(),
-                    input_dir.as_path(),
-                    options.checksum_algorithm.clone(),
-                )
-                .map_err(|e| WriterError::ConvertingToIRFailed(e))?
-            {
-                file_binaries.push(ir.convert(options.compression_level.clone())?);
+    let user_assets = collect_user_assets(&input_files)?;
+
+    debug!("Converting User Assets");
+    let binaries = user_assets
+        .par_iter()
+        .map(|user_asset| {
+            if let Some(cached) = cache.get(&user_asset) {
+                Ok(cached)
+            } else {
+                let user_clone = user_asset.clone();
+
+                let instant = std::time::Instant::now();
+                let irs = user_asset
+                    .convert(
+                        options.cache_dir.as_path(),
+                        input_dir.as_path(),
+                        options.checksum_algorithm.clone(),
+                    )
+                    .map_err(|e| WriterError::ConvertingToIRFailed(e))?;
+                debug!("Converted {:?} in {:?}", user_asset.path, instant.elapsed());
+
+                let binaries = irs
+                    .par_iter()
+                    .map(|ir| ir.convert(options.compression_level.clone()))
+                    .collect::<Result<Vec<BinaryAsset>, WriterError>>()?;
+
+                cache.insert(&user_clone, &binaries)?;
+                Ok(binaries)
             }
+        })
+        .collect::<Result<Vec<Vec<BinaryAsset>>, WriterError>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<BinaryAsset>>();
 
-            cache.insert(&user_clone, &file_binaries)?;
-            binaries.extend(file_binaries);
-        }
-    }
-
+    debug!("Collected {} binaries", binaries.len());
     let headers = binaries
         .iter()
         .map(|b| b.header.clone())
         .collect::<Vec<_>>();
+
     sanity_check(&headers)?;
 
     let manifest = create_manifest(&options, headers);
@@ -303,9 +338,9 @@ mod tests {
         log::set_max_level(log::LevelFilter::Debug);
 
         // TODO: Do not commit me :(
-        let current_dir = r"D:\coding\dawn\assets";
-        let target_dir = r"D:\coding\output.dac";
-        let cache_dir = r"D:\coding\cache";
+        let current_dir = "/home/taris/work/dawn/assets";
+        let target_dir = "/tmp/cache/assets.dac";
+        let cache_dir = "/tmp/cache";
         let file = std::fs::File::create(target_dir).unwrap();
         let mut writer = std::io::BufWriter::new(file);
         write_from_directory(
@@ -325,11 +360,11 @@ mod tests {
         .unwrap();
         drop(writer.into_inner().unwrap());
 
-        let file = std::fs::File::open(target_dir).unwrap();
-        let mut reader = std::io::BufReader::new(file);
-        let manifest = read_manifest(&mut reader).unwrap();
-        println!("{:#?}", manifest);
-        let ir = read_asset(&mut reader, "sponza".into()).unwrap();
-        println!("{:#?}", ir);
+        // let file = std::fs::File::open(target_dir).unwrap();
+        // let mut reader = std::io::BufReader::new(file);
+        // let manifest = read_manifest(&mut reader).unwrap();
+        // println!("{:#?}", manifest);
+        // let ir = read_asset(&mut reader, "barrel".into()).unwrap();
+        // println!("{:#?}", ir);
     }
 }

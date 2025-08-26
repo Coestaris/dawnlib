@@ -8,8 +8,10 @@ use dawn_assets::{AssetHeader, AssetID, AssetType};
 use easy_gltf::model::Mode;
 use glam::Vec3;
 use log::{debug, info};
+use rayon::prelude::*;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 pub fn convert_mesh(
     file: &UserAssetFile,
@@ -22,23 +24,35 @@ pub fn convert_mesh(
     let scenes = easy_gltf::load(&path)
         .map_err(|e| format!("Failed to load mesh file '{}': {}", path.display(), e))?;
 
-    let mut global_min = Vec3::splat(f32::MAX);
-    let mut global_max = Vec3::splat(f32::MIN);
-
     let mesh_id = normalize_name(file.path.clone());
-    let mut header = file.asset.header.clone();
-    let mut result = Vec::new();
-    let mut submesh = Vec::new();
+    if scenes.len() > 1 {
+        return Err(format!(
+            "Mesh file '{}' contains multiple scenes",
+            path.display()
+        ));
+    }
+    let scene = &scenes[0];
 
     let mut all_extras = Vec::new();
-    for scene in &scenes {
-        if let Some(extras) = scene.extras.as_ref() {
-            all_extras.push(extras);
-        }
+    if let Some(extras) = scene.extras.as_ref() {
+        all_extras.push(extras);
+    }
 
-        for (i, model) in scene.models.iter().enumerate() {
-            let mut min = global_min;
-            let mut max = global_max;
+    let common_deps = Arc::new(Mutex::new(HashSet::new()));
+
+    struct ModelProcessResult {
+        irs: Vec<PartialIR>,
+        mesh: IRSubMesh,
+    }
+
+    let results = scene
+        .models
+        .par_iter()
+        .enumerate()
+        .map(|(i, model)| -> Result<ModelProcessResult, String> {
+            let mut min = Vec3::splat(f32::MAX);
+            let mut max = Vec3::splat(f32::MIN);
+            let mut irs = Vec::new();
 
             let material_id = if user.gen_material {
                 let material = model.material();
@@ -53,7 +67,7 @@ pub fn convert_mesh(
                 let material_id = AssetID::new(material_id);
 
                 // Mesh reuses material. Do not generate it again.
-                if header.dependencies.insert(material_id.clone()) {
+                if common_deps.lock().unwrap().insert(material_id.clone()) {
                     let material_header = UserAssetHeader {
                         asset_type: AssetType::Material,
                         dependencies: HashSet::new(),
@@ -70,7 +84,7 @@ pub fn convert_mesh(
                         roughness_texture: material.pbr.roughness_texture.clone(),
                         roughness_factor: material.pbr.roughness_factor,
                     };
-                    result.extend(
+                    irs.extend(
                         convert_material_from_memory(material_id.clone(), material_header, user)
                             .map_err(|e| format!("Failed to convert material: {}", e))?,
                     );
@@ -79,13 +93,6 @@ pub fn convert_mesh(
             } else {
                 AssetID::default()
             };
-
-            if let Some(primitive_extras) = model.primitive_extras().as_ref() {
-                all_extras.push(primitive_extras);
-            }
-            if let Some(mesh_extras) = model.mesh_extras().as_ref() {
-                all_extras.push(mesh_extras);
-            }
 
             let (primitive_type, primitives_count) = match model.mode() {
                 Mode::Points => (IRPrimitive::Points, model.indices().unwrap().len()),
@@ -113,37 +120,48 @@ pub fn convert_mesh(
                 );
             }
 
-            submesh.push(IRSubMesh {
-                vertices: data,
-                indices: model.indices().unwrap().clone(),
-                material: material_id,
-                bounds: IRMeshBounds {
-                    min: min.to_array(),
-                    max: max.to_array(),
+            Ok(ModelProcessResult {
+                irs,
+                mesh: IRSubMesh {
+                    vertices: data,
+                    indices: model.indices().unwrap().clone(),
+                    material: material_id,
+                    bounds: IRMeshBounds {
+                        min: min.to_array(),
+                        max: max.to_array(),
+                    },
+                    primitive: primitive_type,
+                    primitives_count,
                 },
-                primitive: primitive_type,
-                primitives_count,
-            });
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .collect::<Vec<_>>();
 
-            global_min = global_min.min(min);
-            global_max = global_max.max(max);
-        }
+    let header = file.asset.header.clone();
+    let mut irs = Vec::new();
+    let mut submesh = Vec::with_capacity(results.len());
+    let mut min_global = Vec3::splat(f32::MAX);
+    let mut max_global = Vec3::splat(f32::MIN);
+    for result in results {
+        irs.extend(result.irs);
+        min_global = min_global.min(result.mesh.bounds.min.into());
+        max_global = max_global.max(result.mesh.bounds.max.into());
+        submesh.push(result.mesh);
     }
 
-    // TODO: Handle extras
-    info!("Extras: {:?}", all_extras);
-
-    result.push(PartialIR::new_from_id(
+    irs.push(PartialIR::new_from_id(
         IRAsset::Mesh(IRMesh {
             submesh,
             bounds: IRMeshBounds {
-                min: global_min.to_array(),
-                max: global_max.to_array(),
+                min: min_global.to_array(),
+                max: max_global.to_array(),
             },
         }),
         header,
         mesh_id.clone(),
     ));
 
-    Ok(result)
+    Ok(irs)
 }

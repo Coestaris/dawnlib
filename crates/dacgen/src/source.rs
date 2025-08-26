@@ -1,9 +1,11 @@
 use crate::deep_hash::{deep_hash_bytes, with_std, DeepHash, DeepHashCtx};
+use crate::InstantGuard;
 use dawn_dac::ChecksumAlgorithm;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use url::Url;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -76,7 +78,7 @@ impl SourceRef {
 
                 // Download the file if it doesn't exist
                 if !filename.exists() {
-                    debug!("Downloading {} to {:?}", url, filename);
+                    let _guard = InstantGuard::new(format!("Downloaded {} in", url));
                     let response = reqwest::blocking::get(url.as_str())
                         .map_err(|e| format!("Failed to download {}: {}", url, e))?;
                     if !response.status().is_success() {
