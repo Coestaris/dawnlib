@@ -1,4 +1,3 @@
-use crate::deep_hash::deep_hash;
 use crate::ir::audio::convert_audio;
 use crate::ir::material::convert_material;
 use crate::ir::mesh::convert_mesh;

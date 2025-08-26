@@ -119,6 +119,7 @@ impl Default for IRTextureWrap {
 pub struct IRTexture {
     // Texture data is stored as an interleaved byte array,
     // in GPU-friendly format
+    #[serde(with = "serde_bytes")]
     pub data: Vec<u8>,
     pub texture_type: IRTextureType,
     pub pixel_format: IRPixelFormat,

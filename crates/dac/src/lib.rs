@@ -6,13 +6,13 @@ use std::time::SystemTime;
 pub mod container;
 pub mod reader;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash)]
 pub enum ReadMode {
     Flat,
     Recursive,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash)]
 pub enum ChecksumAlgorithm {
     Blake3,
     Md5,
@@ -29,7 +29,7 @@ impl Display for ChecksumAlgorithm {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 pub enum CompressionLevel {
     None,
     Fast,
@@ -72,16 +72,19 @@ pub mod serialize_backend {
 
 #[cfg(all())]
 pub mod serialize_backend {
-    use bitcode;
+    use bincode;
     use serde::de::DeserializeOwned;
     use serde::Serialize;
 
     pub fn serialize<T: Serialize>(object: &T) -> Result<Vec<u8>, String> {
-        bitcode::serialize(object).map_err(|e| e.to_string())
+        bincode::serde::encode_to_vec(object, bincode::config::standard())
+            .map_err(|e| e.to_string())
     }
 
     pub fn deserialize<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
-        bitcode::deserialize(bytes).map_err(|e| e.to_string())
+        bincode::serde::decode_from_slice(bytes, bincode::config::standard())
+            .map(|(obj, _)| obj)
+            .map_err(|e| e.to_string())
     }
 }
 

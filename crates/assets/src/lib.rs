@@ -31,6 +31,10 @@ impl AssetChecksum {
         AssetChecksum(checksum)
     }
 
+    pub fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+
     pub fn hex_string(&self) -> String {
         self.0.iter().map(|b| format!("{:02x}", b)).collect()
     }

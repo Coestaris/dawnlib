@@ -39,34 +39,52 @@ impl Blake3Hasher {
     }
 }
 
-pub(crate) fn deep_hash<T: DeepHash>(
-    obj: &T,
+pub struct DeepHasher {
     algorithm: ChecksumAlgorithm,
-    cache_dir: PathBuf,
-    cwd: PathBuf,
-) -> Result<AssetChecksum, WriterError> {
-    let mut ctx = DeepHashCtx::new(cache_dir, cwd);
-    match algorithm {
-        ChecksumAlgorithm::Blake3 => {
-            let hasher = blake3::Hasher::new();
-            let mut hasher = Blake3Hasher::new(hasher);
-            obj.deep_hash(&mut hasher, &mut ctx)
-                .map_err(|e| WriterError::SerializationError(e))?;
-            let hasher = hasher.into_inner();
-            let hash = hasher.finalize();
-            Ok(AssetChecksum::from_bytes(hash.as_bytes()))
+    hash: AssetChecksum,
+}
+
+impl DeepHasher {
+    pub fn new(algorithm: ChecksumAlgorithm) -> Self {
+        DeepHasher { algorithm, hash: Default::default() }
+    }
+
+    pub fn update_object<T: DeepHash>(
+        &mut self,
+        obj: &T,
+        cache_dir: PathBuf,
+        cwd: PathBuf,
+    ) -> Result<(), WriterError> {
+        let mut ctx = DeepHashCtx::new(cache_dir, cwd);
+        match self.algorithm {
+            ChecksumAlgorithm::Blake3 => {
+                let hasher = blake3::Hasher::new();
+                let mut hasher = Blake3Hasher::new(hasher);
+                hasher.write(self.hash.as_slice());
+                obj.deep_hash(&mut hasher, &mut ctx)
+                    .map_err(|e| WriterError::SerializationError(e))?;
+                let hasher = hasher.into_inner();
+                let hash = hasher.finalize();
+                self.hash = AssetChecksum::from_bytes(hash.as_bytes());
+                Ok(())
+            }
+            #[cfg(feature = "hash_md5")]
+            ChecksumAlgorithm::Md5 => {
+                unimplemented!()
+            }
+            #[cfg(feature = "hash_sha2")]
+            ChecksumAlgorithm::SHA256 => {
+                unimplemented!()
+            }
+            _ => Err(WriterError::UnsupportedChecksumAlgorithm(self.algorithm)),
         }
-        #[cfg(feature = "hash_md5")]
-        ChecksumAlgorithm::Md5 => {
-            unimplemented!()
-        }
-        #[cfg(feature = "hash_sha2")]
-        ChecksumAlgorithm::SHA256 => {
-            unimplemented!()
-        }
-        _ => Err(WriterError::UnsupportedChecksumAlgorithm(algorithm)),
+    }
+
+    pub(crate) fn finalize(self) -> AssetChecksum {
+        self.hash
     }
 }
+
 
 pub(crate) fn deep_hash_bytes(
     bytes: &[u8],

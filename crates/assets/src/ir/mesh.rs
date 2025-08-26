@@ -100,6 +100,7 @@ pub enum IRPrimitive {
 pub struct IRSubMesh {
     // Raw bytes of vertices
     // (should be multiple of size_of::<IRVertex>())
+    #[serde(with = "serde_bytes")]
     pub vertices: Vec<u8>,
     pub indices: Vec<u32>,
     pub material: AssetID,

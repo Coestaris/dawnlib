@@ -183,27 +183,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "bitcode"
-version = "0.6.7"
+name = "bincode"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "648bd963d2e5d465377acecfb4b827f9f553b6bc97a8f61715779e9ed9e52b74"
+checksum = "36eaf5d7b090263e8150820482d5d93cd964a81e4019913c972f4edcc6edb740"
 dependencies = [
- "arrayvec",
- "bitcode_derive",
- "bytemuck",
- "glam",
+ "bincode_derive",
  "serde",
+ "unty",
 ]
 
 [[package]]
-name = "bitcode_derive"
-version = "0.6.7"
+name = "bincode_derive"
+version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffebfc2d28a12b262c303cb3860ee77b91bd83b1f20f0bd2a9693008e2f55a9e"
+checksum = "bf95709a440f45e986983918d0e8a1f30a9b1df04918fc828670606804ac3c09"
 dependencies = [
- "proc-macro2",
- "quote",
- "syn",
+ "virtue",
 ]
 
 [[package]]
@@ -511,6 +507,7 @@ dependencies = [
  "glam",
  "log",
  "serde",
+ "serde_bytes",
  "smallvec",
  "thiserror 2.0.16",
 ]
@@ -535,11 +532,12 @@ dependencies = [
 name = "dawn-dac"
 version = "0.1.0"
 dependencies = [
- "bitcode",
+ "bincode",
  "brotli",
  "dawn-assets",
  "log",
  "serde",
+ "serde_bytes",
  "thiserror 2.0.16",
 ]
 
@@ -558,6 +556,7 @@ dependencies = [
  "rayon",
  "reqwest",
  "serde",
+ "serde_bytes",
  "sha2",
  "thiserror 2.0.16",
  "toml 0.9.5",
@@ -2146,6 +2145,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_bytes"
+version = "0.11.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8437fd221bde2d4ca316d61b90e337e9e702b3820b87d63caa9ba6c02bd06d96"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "serde_derive"
 version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2625,6 +2633,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
+name = "unty"
+version = "0.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
+
+[[package]]
 name = "url"
 version = "2.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2676,6 +2690,12 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "virtue"
+version = "0.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
 
 [[package]]
 name = "walkdir"
