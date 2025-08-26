@@ -1,5 +1,5 @@
-use crate::deep_hash::deep_hash;
-use crate::{InstantGuard, UserAssetFile, WriterError};
+use crate::deep_hash::DeepHasher;
+use crate::{InstantGuard, UserAssetFile, WriteConfig, WriterError};
 use dawn_assets::AssetChecksum;
 use dawn_dac::container::writer::BinaryAsset;
 use dawn_dac::serialize_backend::deserialize;
@@ -10,11 +10,13 @@ use std::path::PathBuf;
 pub struct Cache {
     cache_dir: PathBuf,
     cwd: PathBuf,
+    write_config: WriteConfig,
     checksum_algorithm: ChecksumAlgorithm,
 }
 
 impl Cache {
     pub(crate) fn new(
+        write_config: WriteConfig,
         cache_dir: PathBuf,
         cwd: PathBuf,
         checksum_algorithm: ChecksumAlgorithm,
@@ -22,6 +24,7 @@ impl Cache {
         Cache {
             cache_dir,
             cwd,
+            write_config,
             checksum_algorithm,
         }
     }
@@ -32,13 +35,11 @@ impl Cache {
             asset.path.display()
         ));
 
-        let hash = deep_hash(
-            asset,
-            self.checksum_algorithm,
-            self.cache_dir.clone(),
-            self.cwd.clone(),
-        )?;
-        Ok(self.cache_dir.join(hash.hex_string()))
+        let mut hasher = DeepHasher::new(self.checksum_algorithm);
+        hasher.update_object(&self.write_config, self.cache_dir.clone(), self.cwd.clone())?;
+        hasher.update_object(asset, self.cache_dir.clone(), self.cwd.clone())?;
+
+        Ok(self.cache_dir.join(hasher.finalize().hex_string()))
     }
 
     pub fn get(&self, asset: &UserAssetFile) -> Option<Vec<BinaryAsset>> {
@@ -53,7 +54,7 @@ impl Cache {
                 std::fs::read(&cache_path).ok()?
             };
             // Deserialize the binaries
-            let binaries: Vec<BinaryAsset> =  {
+            let binaries: Vec<BinaryAsset> = {
                 let _guard = InstantGuard::new(format!("Deserialize {:?} computed in", asset.path));
                 deserialize(&data).ok()?
             };

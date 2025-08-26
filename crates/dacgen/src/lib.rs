@@ -3,6 +3,7 @@ mod deep_hash;
 mod ir;
 mod source;
 mod user;
+mod config;
 
 use crate::cache::Cache;
 use crate::deep_hash::{DeepHash, DeepHashCtx};
@@ -16,11 +17,12 @@ use dawn_dac::{ChecksumAlgorithm, CompressionLevel, Manifest, ReadMode};
 use log::{debug, info};
 use rayon::prelude::*;
 use std::fs::File;
-use std::hash::Hasher;
+use std::hash::{Hash, Hasher};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::SystemTime;
 use thiserror::Error;
+use crate::config::WriteConfig;
 
 struct InstantGuard(String, std::time::Instant);
 
@@ -58,19 +60,6 @@ pub(crate) fn create_manifest(write_options: &WriteConfig, headers: Vec<AssetHea
         headers,
     }
 }
-
-#[derive(Debug, Clone)]
-pub struct WriteConfig {
-    pub read_mode: ReadMode,
-    pub checksum_algorithm: ChecksumAlgorithm,
-    pub compression_level: CompressionLevel,
-    pub cache_dir: PathBuf,
-    pub author: Option<String>,
-    pub description: Option<String>,
-    pub version: Option<String>,
-    pub license: Option<String>,
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct UserAssetFile {
     asset: UserAsset,
@@ -252,14 +241,15 @@ fn sanity_check(headers: &[AssetHeader]) -> Result<(), WriterError> {
 pub fn write_from_directory<W: Write>(
     writer: &mut W,
     input_dir: PathBuf,
-    options: WriteConfig,
+    config: WriteConfig,
 ) -> Result<(), WriterError> {
-    let input_files = collect_files(input_dir.clone(), options.read_mode)?;
+    let input_files = collect_files(input_dir.clone(), config.read_mode)?;
 
     let cache = Cache::new(
-        options.cache_dir.clone(),
+        config.clone(),
+        config.cache_dir.clone(),
         input_dir.clone(),
-        options.checksum_algorithm,
+        config.checksum_algorithm,
     );
     let user_assets = collect_user_assets(&input_files)?;
 
@@ -275,16 +265,16 @@ pub fn write_from_directory<W: Write>(
                 let instant = std::time::Instant::now();
                 let irs = user_asset
                     .convert(
-                        options.cache_dir.as_path(),
+                        config.cache_dir.as_path(),
                         input_dir.as_path(),
-                        options.checksum_algorithm.clone(),
+                        config.checksum_algorithm.clone(),
                     )
                     .map_err(|e| WriterError::ConvertingToIRFailed(e))?;
                 debug!("Converted {:?} in {:?}", user_asset.path, instant.elapsed());
 
                 let binaries = irs
                     .par_iter()
-                    .map(|ir| ir.convert(options.compression_level.clone()))
+                    .map(|ir| ir.convert(config.compression_level.clone()))
                     .collect::<Result<Vec<BinaryAsset>, WriterError>>()?;
 
                 cache.insert(&user_clone, &binaries)?;
@@ -304,7 +294,7 @@ pub fn write_from_directory<W: Write>(
 
     sanity_check(&headers)?;
 
-    let manifest = create_manifest(&options, headers);
+    let manifest = create_manifest(&config, headers);
 
     info!("Creating DAC container");
     write_container(writer, manifest, binaries)?;
@@ -315,7 +305,6 @@ pub fn write_from_directory<W: Write>(
 #[cfg(test)]
 mod tests {
     use crate::{write_from_directory, WriteConfig};
-    use dawn_dac::reader::{read_asset, read_manifest};
     use dawn_dac::{ChecksumAlgorithm, CompressionLevel, ReadMode};
 
     #[test]
@@ -337,20 +326,32 @@ mod tests {
         log::set_logger(&Logger).unwrap();
         log::set_max_level(log::LevelFilter::Debug);
 
-        // TODO: Do not commit me :(
-        let current_dir = "/home/taris/work/dawn/assets";
-        let target_dir = "/tmp/cache/assets.dac";
-        let cache_dir = "/tmp/cache";
-        let file = std::fs::File::create(target_dir).unwrap();
+        // I'll deal with it later
+        #[cfg(unix)]
+        mod dirs {
+            // TODO: Do not commit me :(
+            pub const CURRENT_DIR: &str = "/home/taris/work/dawn/assets";
+            pub const OUTPUT_FILE: &str = "/tmp/cache/assets.dac";
+            pub const CACHE_DIR: &str = "/tmp/cache";
+        }
+        #[cfg(windows)]
+        mod dirs {
+            // TODO: Do not commit me :(
+            pub const CURRENT_DIR: &str = r"D:\coding\dawn\assets";
+            pub const OUTPUT_FILE: &str = r"D:\coding\cache\output.dac";
+            pub const CACHE_DIR: &str = r"D:\coding\cache\";
+        }
+
+        let file = std::fs::File::create(dirs::OUTPUT_FILE).unwrap();
         let mut writer = std::io::BufWriter::new(file);
         write_from_directory(
             &mut writer,
-            current_dir.into(),
+            dirs::CURRENT_DIR.into(),
             WriteConfig {
                 read_mode: ReadMode::Recursive,
                 checksum_algorithm: ChecksumAlgorithm::Blake3,
-                compression_level: CompressionLevel::None,
-                cache_dir: cache_dir.into(),
+                compression_level: CompressionLevel::Default,
+                cache_dir: dirs::CACHE_DIR.into(),
                 author: Some("Coestaris <vk_vm@ukr.net>".to_string()),
                 description: Some("Test assets".to_string()),
                 version: Some("0.1.0".to_string()),

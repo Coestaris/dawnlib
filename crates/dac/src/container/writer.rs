@@ -15,9 +15,10 @@ struct Segment {
 
 #[derive(Serialize, Deserialize)]
 pub struct BinaryAsset {
+    #[serde(with = "serde_bytes")]
+    pub raw: Vec<u8>,
     pub header: AssetHeader,
     pub compression: CompressionMode,
-    pub raw: Vec<u8>,
 }
 
 fn write_container_from_segments<W: Write>(
