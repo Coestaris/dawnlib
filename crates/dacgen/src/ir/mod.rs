@@ -5,7 +5,7 @@ use crate::ir::mesh::convert_mesh;
 use crate::ir::shader::convert_shader;
 use crate::ir::texture::convert_texture;
 use crate::user::{UserAssetHeader, UserAssetProperties};
-use crate::{ChecksumAlgorithm, UserAssetFile, UserIRAsset, WriterError};
+use crate::{ChecksumAlgorithm, InstantGuard, UserAssetFile, UserIRAsset, WriterError};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
 use log::debug;
@@ -55,8 +55,6 @@ impl PartialIR {
     }
 
     pub fn convert(self, algorithm: ChecksumAlgorithm) -> Result<UserIRAsset, String> {
-        debug!("Converting {:?} into IR", self);
-
         Ok(UserIRAsset {
             header: AssetHeader {
                 id: self.id,
@@ -74,22 +72,25 @@ impl PartialIR {
 
 impl UserAssetFile {
     pub fn convert(
-        self,
+        &self,
         cache_dir: &Path,
         cwd: &Path,
         algorithm: ChecksumAlgorithm,
     ) -> Result<Vec<UserIRAsset>, String> {
-        debug!("Converting {:?} into IR", self);
+        let _guard = InstantGuard::new(format!(
+            "Converted user asset {} to IR in",
+            self.path.display()
+        ));
 
         let irs = match &self.asset.properties {
-            UserAssetProperties::Shader(shader) => convert_shader(&self, cache_dir, cwd, shader)?,
+            UserAssetProperties::Shader(shader) => convert_shader(self, cache_dir, cwd, shader)?,
             UserAssetProperties::Texture(texture) => {
-                convert_texture(&self, cache_dir, cwd, texture)?
+                convert_texture(self, cache_dir, cwd, texture)?
             }
-            UserAssetProperties::Audio(audio) => convert_audio(&self, cache_dir, cwd, audio)?,
-            UserAssetProperties::Mesh(mesh) => convert_mesh(&self, cache_dir, cwd, mesh)?,
+            UserAssetProperties::Audio(audio) => convert_audio(self, cache_dir, cwd, audio)?,
+            UserAssetProperties::Mesh(mesh) => convert_mesh(self, cache_dir, cwd, mesh)?,
             UserAssetProperties::Material(material) => {
-                convert_material(&self, cache_dir, cwd, material)?
+                convert_material(self, cache_dir, cwd, material)?
             }
         };
 
