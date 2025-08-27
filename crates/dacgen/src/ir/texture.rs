@@ -167,28 +167,3 @@ pub fn convert_texture(
         },
     )
 }
-
-pub fn texture_type_of_dynamic_image(image: &DynamicImage) -> Result<IRTextureType, String> {
-    Ok(IRTextureType::Texture2D {
-        width: image.width(),
-        height: image.height(),
-    })
-}
-
-pub fn pixel_format_of_dynamic_image(image: &DynamicImage) -> Result<IRPixelFormat, String> {
-    Ok(match image.color() {
-        ColorType::L8 => IRPixelFormat::R8,
-        ColorType::La8 => IRPixelFormat::RG8,
-        ColorType::Rgb8 => IRPixelFormat::RGB(IRPixelDataType::U8),
-        ColorType::Rgba8 => IRPixelFormat::RGBA(IRPixelDataType::U8),
-        ColorType::L16 => IRPixelFormat::R16,
-        ColorType::La16 => IRPixelFormat::RG16,
-        ColorType::Rgb16 => IRPixelFormat::RGB(IRPixelDataType::U16),
-        ColorType::Rgba16 => IRPixelFormat::RGBA(IRPixelDataType::U16),
-        ColorType::Rgb32F => IRPixelFormat::RGB(IRPixelDataType::F32),
-        ColorType::Rgba32F => IRPixelFormat::RGBA(IRPixelDataType::F32),
-        _ => {
-            return Err(format!("Unsupported image color type: {:?}", image.color()));
-        }
-    })
-}

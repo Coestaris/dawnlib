@@ -61,14 +61,13 @@ impl Mesh {
             drop(ebo_binding);
             drop(vao_binding);
 
-            let material = match deps.get(&submesh.material) {
-                None => {
-                    return Err(format!(
-                        "Material with ID '{}' not found for submesh",
-                        submesh.material
-                    ))
-                }
-                Some(mat) => Some(mat.clone()),
+            let material = match &submesh.material {
+                None => None,
+                Some(id) => match deps.get(id) {
+                    // None => return Err(format!("Material with ID '{}' not found for submesh", id)),
+                    None => None,
+                    Some(mat) => Some(mat.clone()),
+                },
             };
 
             submeshes.push(SubMesh {
