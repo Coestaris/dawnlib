@@ -338,7 +338,7 @@ mod tests {
             WriteConfig {
                 read_mode: ReadMode::Recursive,
                 checksum_algorithm: ChecksumAlgorithm::Blake3,
-                compression_level: CompressionLevel::Default,
+                compression_level: CompressionLevel::None,
                 cache_dir: dirs::CACHE_DIR.into(),
                 author: Some("Coestaris <vk_vm@ukr.net>".to_string()),
                 description: Some("Test assets".to_string()),

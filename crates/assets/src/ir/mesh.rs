@@ -37,6 +37,14 @@ pub struct IRVertex {
 
 #[allow(dead_code)]
 impl IRVertex {
+    pub fn new(pos: Vec3, norm: Vec3, tex: Vec2) -> Self {
+        Self {
+            position: pos.to_array(),
+            normal: norm.to_array(),
+            tex_coord: tex.to_array(),
+        }
+    }
+
     pub fn layout() -> [IRMeshLayout; 3] {
         [
             IRMeshLayout {
@@ -103,7 +111,7 @@ pub struct IRSubMesh {
     #[serde(with = "serde_bytes")]
     pub vertices: Vec<u8>,
     pub indices: Vec<u32>,
-    pub material: AssetID,
+    pub material: Option<AssetID>,
     pub bounds: IRMeshBounds,
     pub primitive: IRPrimitive,
     pub primitives_count: usize,
@@ -116,13 +124,8 @@ pub struct IRMesh {
 }
 
 impl IRSubMesh {
-    pub fn raw_vertices<'a>(&self) -> &'a [u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self.vertices.as_ptr(),
-                self.vertices.len() * size_of::<IRVertex>(),
-            )
-        }
+    pub fn raw_vertices(&self) -> &[u8] {
+        &self.vertices
     }
 
     pub fn raw_indices<'a>(&self) -> &'a [u8] {
@@ -153,7 +156,7 @@ impl Default for IRSubMesh {
         Self {
             vertices: Vec::new(),
             indices: Vec::new(),
-            material: AssetID::default(),
+            material: None,
             bounds: IRMeshBounds {
                 min: [0.0, 0.0, 0.0],
                 max: [0.0, 0.0, 0.0],

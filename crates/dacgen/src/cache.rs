@@ -44,6 +44,7 @@ impl Cache {
     }
 
     pub fn get(&self, asset: &UserAssetFile) -> Option<Vec<BinaryAsset>> {
+        return None;
         let _measure = Measure::new(format!("Cache get {:?} computed", asset.path));
 
         let cache_path = self.get_fn(asset).ok()?;
