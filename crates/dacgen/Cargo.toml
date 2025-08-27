@@ -15,6 +15,7 @@ image_webp = ["image/webp"]
 
 [dependencies]
 dawn-dac = { path = "../dac" }
+dawn-util = { path = "../util" }
 dawn-assets = { path = "../assets" }
 thiserror = "2.0.16"
 walkdir = "2.5.0"

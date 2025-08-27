@@ -4,10 +4,10 @@ use crate::ir::mesh::convert_mesh;
 use crate::ir::shader::convert_shader;
 use crate::ir::texture::convert_texture;
 use crate::user::{UserAssetHeader, UserAssetProperties};
-use crate::{ChecksumAlgorithm, InstantGuard, UserAssetFile, UserIRAsset, WriterError};
+use crate::{ChecksumAlgorithm, UserAssetFile, UserIRAsset};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
-use log::debug;
+use dawn_util::profile::Measure;
 use std::path::{Path, PathBuf};
 
 mod audio;
@@ -76,8 +76,8 @@ impl UserAssetFile {
         cwd: &Path,
         algorithm: ChecksumAlgorithm,
     ) -> Result<Vec<UserIRAsset>, String> {
-        let _guard = InstantGuard::new(format!(
-            "Converted user asset {} to IR in",
+        let _measure = Measure::new(format!(
+            "Converted user asset {} to IR",
             self.path.display()
         ));
 

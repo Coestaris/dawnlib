@@ -4,13 +4,13 @@ use crate::user::{UserAssetHeader, UserMeshAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::mesh::{IRMesh, IRMeshBounds, IRPrimitive, IRSubMesh, IRVertex};
 use dawn_assets::ir::IRAsset;
-use dawn_assets::{AssetHeader, AssetID, AssetType};
+use dawn_assets::{AssetID, AssetType};
+use dawn_util::profile::Measure;
 use easy_gltf::model::Mode;
 use glam::Vec3;
-use log::{debug, info};
 use rayon::prelude::*;
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 pub fn convert_mesh(
@@ -21,8 +21,11 @@ pub fn convert_mesh(
 ) -> Result<Vec<PartialIR>, String> {
     // Try to find the file in the same directory as the shader
     let path = user.source.as_path(cache_dir, cwd)?;
-    let scenes = easy_gltf::load(&path)
-        .map_err(|e| format!("Failed to load mesh file '{}': {}", path.display(), e))?;
+    let scenes = {
+        let _measure = Measure::new(format!("Loaded mesh file '{}'", path.display()));
+        easy_gltf::load(&path)
+            .map_err(|e| format!("Failed to load mesh file '{}': {}", path.display(), e))?
+    };
 
     let mesh_id = normalize_name(file.path.clone());
     if scenes.len() > 1 {

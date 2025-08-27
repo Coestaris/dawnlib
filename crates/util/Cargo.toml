@@ -10,3 +10,6 @@ opt-level = 3
 [profile.dev]
 lto = false
 opt-level = 1
+
+[dependencies]
+log = "0.4.27"

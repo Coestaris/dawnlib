@@ -1,10 +1,68 @@
-use dawn_assets::AssetHeader;
+use dawn_assets::{AssetHeader, AssetID};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::SystemTime;
+use thiserror::Error;
 
-pub mod container;
 pub mod reader;
+pub mod writer;
+
+// DAC file format (Dawn Asset Container):
+// - 3 bytes: "DAC" magic
+// - Repeated segments:
+//   - 1 byte: segment type magic
+//   - 4 bytes: segment length (u32 little-endian)
+//   - N bytes: segment data
+//
+// Segment types:
+// - 0x0: TOC (Table of contents) segment
+//   - Serialized TOC structure (HashMap<AssetID, Record>)
+// - 0x1: Manifest segment
+//   - Serialized Manifest structure
+// - 0x2: Data segment
+//   - Concatenated raw asset data
+
+pub(crate) const DAC_MAGIC: &[u8; 3] = b"DAC";
+pub(crate) const TOC_MAGIC: u8 = 0x0;
+pub(crate) const MANIFEST_MAGIC: u8 = 0x1;
+pub(crate) const DATA_MAGIC: u8 = 0x2;
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+pub enum CompressionMode {
+    None,
+    Brotli,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct Record {
+    offset: u32,
+    length: u32,
+    compression: CompressionMode,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct TOC(HashMap<AssetID, Record>);
+
+#[derive(Error, Debug)]
+pub enum ContainerError {
+    #[error("Compression error: {0}")]
+    CompressionError(String),
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+    #[error("IO error: {0}")]
+    IOError(#[from] std::io::Error),
+    #[error("Size overflow")]
+    SizeOverflow,
+    #[error("Invalid magic number")]
+    InvalidMagic,
+    #[error("Segment not found")]
+    SegmentNotFound,
+    #[error("Asset not found: {0}")]
+    AssetNotFound(AssetID),
+    #[error("Deserialization error: {0}")]
+    DeserializationError(String),
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash)]
 pub enum ReadMode {
