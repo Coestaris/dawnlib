@@ -1,4 +1,30 @@
+use log::debug;
 use std::time::{Duration, Instant};
+
+/// Utility struct to measure the time taken by a scope
+/// and log it when the struct is dropped.
+/// Usage:
+/// ```
+/// use dawn_util::profile::Measure;
+/// {
+///     let _measure = Measure::new("Some operation".to_string());
+///     // Some operation to measure
+/// }
+/// ```
+/// When the scope ends, the time taken by the operation will be logged.
+pub struct Measure(String, Instant);
+
+impl Measure {
+    pub fn new(message: String) -> Self {
+        Measure(message, Instant::now())
+    }
+}
+
+impl Drop for Measure {
+    fn drop(&mut self) {
+        debug!("{} in {:?}", self.0, self.1.elapsed());
+    }
+}
 
 pub trait MonitorSampleTrait = Clone + Sync + Sync;
 

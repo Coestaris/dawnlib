@@ -535,6 +535,7 @@ dependencies = [
  "bincode",
  "brotli",
  "dawn-assets",
+ "dawn-util",
  "log",
  "serde",
  "serde_bytes",
@@ -548,6 +549,7 @@ dependencies = [
  "blake3",
  "dawn-assets",
  "dawn-dac",
+ "dawn-util",
  "easy-gltf",
  "glam",
  "image",
@@ -594,6 +596,9 @@ dependencies = [
 [[package]]
 name = "dawn-util"
 version = "0.1.0"
+dependencies = [
+ "log",
+]
 
 [[package]]
 name = "digest"

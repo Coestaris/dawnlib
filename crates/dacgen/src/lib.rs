@@ -1,19 +1,22 @@
 mod cache;
+pub mod config;
 mod deep_hash;
 mod ir;
 mod source;
 mod user;
-mod config;
 
 use crate::cache::Cache;
+use crate::config::WriteConfig;
 use crate::deep_hash::{DeepHash, DeepHashCtx};
 use crate::user::UserAsset;
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
-use dawn_dac::container::writer::{write_container, BinaryAsset};
-use dawn_dac::container::{CompressionMode, ContainerError};
 use dawn_dac::serialize_backend::serialize;
-use dawn_dac::{ChecksumAlgorithm, CompressionLevel, Manifest, ReadMode};
+use dawn_dac::writer::{write_container, BinaryAsset};
+use dawn_dac::{
+    ChecksumAlgorithm, CompressionLevel, CompressionMode, ContainerError, Manifest, ReadMode,
+};
+use dawn_util::profile::Measure;
 use log::{debug, info};
 use rayon::prelude::*;
 use std::fs::File;
@@ -22,21 +25,6 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::SystemTime;
 use thiserror::Error;
-use crate::config::WriteConfig;
-
-struct InstantGuard(String, std::time::Instant);
-
-impl InstantGuard {
-    fn new(message: String) -> Self {
-        InstantGuard(message, std::time::Instant::now())
-    }
-}
-
-impl Drop for InstantGuard {
-    fn drop(&mut self) {
-        debug!("{} {:?}", self.0, self.1.elapsed());
-    }
-}
 
 fn generator_tool() -> String {
     "dawn-dac".to_string() // TODO: Get from Cargo.toml
@@ -82,8 +70,8 @@ pub(crate) struct UserIRAsset {
 
 impl UserIRAsset {
     fn convert(&self, compression_level: CompressionLevel) -> Result<BinaryAsset, WriterError> {
-        let _guard = InstantGuard::new(format!(
-            "Compressed {} in",
+        let _measure = Measure::new(format!(
+            "Compressed {}",
             self.header.id.clone().as_str().to_string()
         ));
 

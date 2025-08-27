@@ -1,9 +1,10 @@
 use crate::deep_hash::DeepHasher;
-use crate::{InstantGuard, UserAssetFile, WriteConfig, WriterError};
+use crate::{UserAssetFile, WriteConfig, WriterError};
 use dawn_assets::AssetChecksum;
-use dawn_dac::container::writer::BinaryAsset;
 use dawn_dac::serialize_backend::deserialize;
+use dawn_dac::writer::BinaryAsset;
 use dawn_dac::ChecksumAlgorithm;
+use dawn_util::profile::Measure;
 use log::debug;
 use std::path::PathBuf;
 
@@ -30,8 +31,8 @@ impl Cache {
     }
 
     fn get_fn(&self, asset: &UserAssetFile) -> Result<PathBuf, WriterError> {
-        let _guard = InstantGuard::new(format!(
-            "Calculated deep hash of {} in",
+        let _measure = Measure::new(format!(
+            "Calculated deep hash of {}",
             asset.path.display()
         ));
 
@@ -43,19 +44,19 @@ impl Cache {
     }
 
     pub fn get(&self, asset: &UserAssetFile) -> Option<Vec<BinaryAsset>> {
-        let _guard = InstantGuard::new(format!("Cache get {:?} computed in", asset.path));
+        let _measure = Measure::new(format!("Cache get {:?} computed", asset.path));
 
         let cache_path = self.get_fn(asset).ok()?;
         if cache_path.exists() {
             debug!("Cache hit for asset {:?} at {:?}", asset.path, cache_path);
             // Read the cached binaries
             let data = {
-                let _guard = InstantGuard::new(format!("Cached Read {:?} computed in", asset.path));
+                let _measure = Measure::new(format!("Cached Read {:?} computed", asset.path));
                 std::fs::read(&cache_path).ok()?
             };
             // Deserialize the binaries
             let binaries: Vec<BinaryAsset> = {
-                let _guard = InstantGuard::new(format!("Deserialize {:?} computed in", asset.path));
+                let _measure = Measure::new(format!("Deserialize {:?} computed", asset.path));
                 deserialize(&data).ok()?
             };
             Some(binaries)
@@ -70,7 +71,7 @@ impl Cache {
         asset: &UserAssetFile,
         binaries: &Vec<BinaryAsset>,
     ) -> Result<(), WriterError> {
-        let _guard = InstantGuard::new(format!("Cache insert {:?} computed in", asset.path));
+        let _measure = Measure::new(format!("Cache insert {:?} computed", asset.path));
 
         let cache_path = self.get_fn(asset)?;
 

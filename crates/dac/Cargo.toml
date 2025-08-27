@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 dawn-assets = { path = "../assets" }
+dawn-util = { path = "../util" }
 thiserror = "2.0.16"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = "0.11.17"

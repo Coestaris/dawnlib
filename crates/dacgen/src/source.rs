@@ -1,11 +1,9 @@
 use crate::deep_hash::{deep_hash_bytes, with_std, DeepHash, DeepHashCtx};
-use crate::InstantGuard;
 use dawn_dac::ChecksumAlgorithm;
-use log::debug;
+use dawn_util::profile::Measure;
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
-use std::time::Instant;
 use url::Url;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
@@ -74,11 +72,12 @@ impl SourceRef {
                 let hash = deep_hash_bytes(url.as_str().as_bytes(), ChecksumAlgorithm::Blake3)
                     .map_err(|e| format!("Hashing error: {}", e))?
                     .hex_string();
-                let filename = cache_dir.join(format!("{}_{}", hash, base_name));
+                let dl_dir = cache_dir.join("dl");
+                let filename = dl_dir.join(format!("{}_{}", hash, base_name));
 
                 // Download the file if it doesn't exist
                 if !filename.exists() {
-                    let _guard = InstantGuard::new(format!("Downloaded {} in", url));
+                    let _measure = Measure::new(format!("Downloaded {} in", url));
                     let response = reqwest::blocking::get(url.as_str())
                         .map_err(|e| format!("Failed to download {}: {}", url, e))?;
                     if !response.status().is_success() {
@@ -90,7 +89,7 @@ impl SourceRef {
                     }
 
                     let content = response.bytes().map_err(|e| e.to_string())?;
-                    std::fs::create_dir_all(cache_dir)
+                    std::fs::create_dir_all(dl_dir)
                         .map_err(|e| format!("Failed to create cache dir: {}", e))?;
                     std::fs::write(&filename, &content)
                         .map_err(|e| format!("Failed to write to cache file: {}", e))?;

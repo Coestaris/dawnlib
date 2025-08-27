@@ -1,9 +1,10 @@
-use crate::container::{
-    CompressionMode, ContainerError, Record, DAC_MAGIC, DATA_MAGIC, MANIFEST_MAGIC, TOC, TOC_MAGIC,
-};
 use crate::serialize_backend::serialize;
-use crate::Manifest;
+use crate::{
+    CompressionMode, ContainerError, Manifest, Record, DAC_MAGIC, DATA_MAGIC, MANIFEST_MAGIC, TOC,
+    TOC_MAGIC,
+};
 use dawn_assets::AssetHeader;
+use dawn_util::profile::Measure;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
@@ -25,6 +26,8 @@ fn write_container_from_segments<W: Write>(
     writer: &mut W,
     segments: Vec<Segment>,
 ) -> Result<(), ContainerError> {
+    let _measure = Measure::new("Write DAC container from segments".to_string());
+
     // Write DAC magic
     writer.write_all(DAC_MAGIC)?;
 
@@ -44,12 +47,36 @@ fn write_container_from_segments<W: Write>(
     Ok(())
 }
 
+// Having a separate function to write the data segment allows us to avoid
+// having to concatenate all binary data into a single Vec<u8> in memory.
+// This gives like a 100x speedup on dev profile builds for large containers.
+pub fn write_data_segment<W: Write>(
+    writer: &mut W,
+    total_len: u32,
+    binaries: Vec<BinaryAsset>,
+) -> Result<(), ContainerError> {
+    let _measure = Measure::new("Write DAC data segment".to_string());
+
+    // Write DAC magic
+    writer.write_all(DATA_MAGIC.to_le_bytes().as_slice())?;
+
+    // Calculate total length of data segment
+    writer.write_all(total_len.to_le_bytes().as_slice())?;
+
+    // Write concatenated binary data
+    for binary in binaries {
+        writer.write_all(binary.raw.as_slice())?;
+    }
+
+    Ok(())
+}
+
 pub fn write_container<W: Write>(
     writer: &mut W,
     manifest: Manifest,
     binaries: Vec<BinaryAsset>,
 ) -> Result<(), ContainerError> {
-    let manifest = serialize(&manifest).map_err(|e| ContainerError::SerializationError(e))?;
+    let _measure = Measure::new("Write DAC container".to_string());
 
     // Create TOC (Table of contents)
     // All the offsets are relative to the start of the data segment
@@ -70,28 +97,21 @@ pub fn write_container<W: Write>(
             .ok_or(ContainerError::SizeOverflow)?;
     }
 
-    // Serialize TOC and data
-    let toc = serialize(&toc).map_err(|e| ContainerError::SerializationError(e))?;
-    let data = binaries
-        .into_iter()
-        .flat_map(|d| d.raw)
-        .collect::<Vec<u8>>();
-
+    // Serialize and write control segments
     write_container_from_segments(
         writer,
         vec![
             Segment {
                 magic: TOC_MAGIC,
-                raw: toc,
+                raw: serialize(&toc).map_err(|e| ContainerError::SerializationError(e))?,
             },
             Segment {
                 magic: MANIFEST_MAGIC,
-                raw: manifest,
-            },
-            Segment {
-                magic: DATA_MAGIC,
-                raw: data,
+                raw: serialize(&manifest).map_err(|e| ContainerError::SerializationError(e))?,
             },
         ],
-    )
+    )?;
+    // Write data segment
+    write_data_segment(writer, offset, binaries)?;
+    Ok(())
 }
