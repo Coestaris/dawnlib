@@ -46,17 +46,23 @@ impl<'a> VertexArrayBinding<'a> {
     }
 
     #[inline(always)]
-    pub fn draw_elements(&self, count: usize, offset: usize) -> PassExecuteResult {
+    pub fn draw_elements_base_vertex(
+        &self,
+        index_count: usize,
+        index_offset: usize,
+        base_vertex: usize,
+    ) -> PassExecuteResult {
         unsafe {
-            bindings::DrawElements(
+            bindings::DrawElementsBaseVertex(
                 self.vertex_array.draw_mode,
-                count as GLsizei,
+                index_count as GLsizei,
                 self.vertex_array.index_type,
-                (offset * self.vertex_array.index_size) as *const _,
+                (index_offset * self.vertex_array.index_size) as *const _,
+                base_vertex as GLint,
             );
         }
 
-        PassExecuteResult::ok(1, count / self.vertex_array.topology_size)
+        PassExecuteResult::ok(1, index_count / self.vertex_array.topology_size)
     }
 }
 

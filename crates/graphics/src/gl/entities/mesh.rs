@@ -12,8 +12,9 @@ pub struct SubMesh {
     pub material: Option<Asset>,
     pub min: Vec3,
     pub max: Vec3,
-    pub index_offset: usize, // In units (u32 or u16)
-    pub index_count: usize,  // In units (u32 or u16)
+    pub index_offset: usize,  // In units (u32 or u16)
+    pub vertex_offset: usize, // In units (Vertex size)
+    pub index_count: usize,   // In units (u32 or u16)
 }
 
 pub struct TopologyBucket {
@@ -49,26 +50,16 @@ impl IRBucket {
         let vbo_binding = vbo.bind();
         let ebo_binding = ebo.bind();
 
-        let mut joined_vertices = Vec::new();
-        let mut joined_indices = Vec::new();
-        let mut index_offset = 0;
-
-        for submesh in &self.irs {
-            joined_vertices.extend_from_slice(&submesh.vertices);
-            match self.index_type {
-                IRIndexType::U16 => unimplemented!(),
-                IRIndexType::U32 => {
-                    for chunk in submesh.indices.chunks(4) {
-                        let array = slice_from_raw_parts(chunk.as_ptr(), 4);
-                        let array = unsafe { &*(array as *const [u8; 4]) };
-                        let index = u32::from_le_bytes(*array) + index_offset as u32;
-                        joined_indices.extend_from_slice(&index.to_le_bytes());
-                    }
-                }
-            }
-
-            index_offset += submesh.vertices.len() / std::mem::size_of::<IRVertex>();
-        }
+        let joined_vertices = self
+            .irs
+            .iter()
+            .flat_map(|submesh| submesh.raw_vertices().to_vec())
+            .collect::<Vec<u8>>();
+        let joined_indices = self
+            .irs
+            .iter()
+            .flat_map(|submesh| submesh.raw_indices().to_vec())
+            .collect::<Vec<u8>>();
 
         vbo_binding
             .feed(&joined_vertices, ArrayBufferUsage::StaticDraw)
@@ -93,7 +84,8 @@ impl IRBucket {
         };
 
         let mut submesh = Vec::with_capacity(self.irs.len());
-        let mut submesh_offset = 0;
+        let mut index_offset = 0;
+        let mut vertex_offset = 0;
         for submesh_ir in self.irs {
             let material = match &submesh_ir.material {
                 None => None,
@@ -107,18 +99,20 @@ impl IRBucket {
                 material,
                 min: submesh_ir.bounds.min(),
                 max: submesh_ir.bounds.max(),
-                index_offset: submesh_offset / divider,
+                index_offset: index_offset / divider,
+                vertex_offset: vertex_offset / size_of::<IRVertex>(),
                 index_count: submesh_ir.indices.len() / divider,
             });
 
-            submesh_offset += submesh_ir.indices.len();
+            index_offset += submesh_ir.indices.len();
+            vertex_offset += submesh_ir.vertices.len();
         }
 
         Ok(TopologyBucket {
             vao,
             vbo,
             ebo,
-            indices_count: submesh_offset / divider,
+            indices_count: index_offset / divider,
             submesh,
         })
     }
@@ -177,7 +171,12 @@ impl Mesh {
                 if skip {
                     continue;
                 }
-                result += binding.draw_elements(submesh.index_count, submesh.index_offset);
+
+                result += binding.draw_elements_base_vertex(
+                    submesh.index_count,
+                    submesh.index_offset,
+                    submesh.vertex_offset,
+                );
             }
         }
 
