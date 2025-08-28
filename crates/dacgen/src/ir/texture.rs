@@ -71,7 +71,7 @@ pub fn convert_texture_from_memory(
 ) -> Result<Vec<PartialIR>, String> {
     let data = match user.texture_type {
         IRTextureType::Texture2D { width, height } => match user.pixel_format {
-            IRPixelFormat::RGBA(IRPixelDataType::U8) => {
+            IRPixelFormat::R8G8B8A8 => {
                 pack_texture2d(user.data, width, height, |stream, pixel| {
                     stream.push(pixel[0]); // R
                     stream.push(pixel[1]); // G
@@ -79,7 +79,7 @@ pub fn convert_texture_from_memory(
                     stream.push(pixel[3]); // A
                 })?
             }
-            IRPixelFormat::RGB(IRPixelDataType::U8) => {
+            IRPixelFormat::R8G8B8 => {
                 pack_texture2d(user.data, width, height, |stream, pixel| {
                     stream.push(pixel[0]); // R
                     stream.push(pixel[1]); // G

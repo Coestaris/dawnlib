@@ -3,7 +3,7 @@ use crate::user::{UserAssetHeader, UserMeshAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::material::IRMaterial;
 use dawn_assets::ir::mesh::{IRMesh, IRMeshBounds, IRPrimitive, IRSubMesh, IRVertex};
-use dawn_assets::ir::texture::{IRPixelDataType, IRPixelFormat, IRTexture, IRTextureType};
+use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use dawn_util::profile::Measure;
@@ -210,15 +210,15 @@ pub fn process_texture(
                 },
                 pixel_format: match data.format {
                     Format::R8 => IRPixelFormat::R8,
-                    Format::R8G8 => IRPixelFormat::RG8,
-                    Format::R8G8B8 => IRPixelFormat::RGB(IRPixelDataType::U8),
-                    Format::R8G8B8A8 => IRPixelFormat::RGBA(IRPixelDataType::U8),
+                    Format::R8G8 => IRPixelFormat::R8G8,
+                    Format::R8G8B8 => IRPixelFormat::R8G8B8,
+                    Format::R8G8B8A8 => IRPixelFormat::R8G8B8A8,
                     Format::R16 => IRPixelFormat::R16,
-                    Format::R16G16 => IRPixelFormat::RG16,
-                    Format::R16G16B16 => IRPixelFormat::RGB(IRPixelDataType::U16),
-                    Format::R16G16B16A16 => IRPixelFormat::RGBA(IRPixelDataType::U16),
-                    Format::R32G32B32FLOAT => IRPixelFormat::RGB(IRPixelDataType::F32),
-                    Format::R32G32B32A32FLOAT => IRPixelFormat::RGBA(IRPixelDataType::F32),
+                    Format::R16G16 => IRPixelFormat::R16G16,
+                    Format::R16G16B16 => IRPixelFormat::R16G16B16,
+                    Format::R16G16B16A16 => IRPixelFormat::R16G16B16A16,
+                    Format::R32G32B32FLOAT => IRPixelFormat::R32G32B32FLOAT,
+                    Format::R32G32B32A32FLOAT => IRPixelFormat::R32G32B32A32FLOAT,
                 },
                 ..Default::default()
             }),

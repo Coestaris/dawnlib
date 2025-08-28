@@ -1,5 +1,5 @@
-use std::fmt::Debug;
 use serde::{Deserialize, Serialize};
+use std::fmt::Debug;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IRTextureType {
@@ -66,25 +66,31 @@ pub enum IRPixelDataType {
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IRPixelFormat {
     Unknown,
-    RGBA(IRPixelDataType),
-    RGB(IRPixelDataType),
-    BGRA(IRPixelDataType),
-    BGR(IRPixelDataType),
-    SRGB(IRPixelDataType),
-    SRGBA(IRPixelDataType),
+    /// Red only.
     R8,
+    /// Red, green.
+    R8G8,
+    /// Red, green, blue.
+    R8G8B8,
+    /// Red, green, blue, alpha.
+    R8G8B8A8,
+    /// Red only (16 bits).
     R16,
-    R32F,
-    R64,
-    RG8,
-    RG16,
-    RG32F,
-    // TODO: Compressed formats
+    /// Red, green (16 bits).
+    R16G16,
+    /// Red, green, blue (16 bits).
+    R16G16B16,
+    /// Red, green, blue, alpha (16 bits).
+    R16G16B16A16,
+    /// Red, green, blue (32 bits float)
+    R32G32B32FLOAT,
+    /// Red, green, blue, alpha (32 bits float)
+    R32G32B32A32FLOAT,
 }
 
 impl Default for IRPixelFormat {
     fn default() -> Self {
-        IRPixelFormat::RGB(IRPixelDataType::U8)
+        IRPixelFormat::R8G8B8
     }
 }
 

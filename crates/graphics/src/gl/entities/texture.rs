@@ -47,53 +47,47 @@ fn filter_to_gl(filter: &IRTextureFilter) -> Result<GLenum, String> {
 
 fn pixel_format_to_gl(format: &IRPixelFormat) -> Result<GLenum, String> {
     Ok(match format {
-        IRPixelFormat::RGBA(_) => bindings::RGBA,
-        IRPixelFormat::RGB(_) => bindings::RGB,
-        IRPixelFormat::BGRA(_) => bindings::BGRA,
-        IRPixelFormat::BGR(_) => bindings::BGR,
-        IRPixelFormat::SRGB(_) => bindings::SRGB,
         IRPixelFormat::R8 => bindings::R8,
+        IRPixelFormat::R8G8 => bindings::RG8,
+        IRPixelFormat::R8G8B8 => bindings::RGB8,
+        IRPixelFormat::R8G8B8A8 => bindings::RGBA8,
         IRPixelFormat::R16 => bindings::R16,
-        IRPixelFormat::R32F => bindings::R32F,
-        IRPixelFormat::RG8 => bindings::RG8,
-        IRPixelFormat::RG16 => bindings::RG16,
-        IRPixelFormat::RG32F => bindings::RG32F,
+        IRPixelFormat::R16G16 => bindings::RG16,
+        IRPixelFormat::R16G16B16 => bindings::RGB16,
+        IRPixelFormat::R16G16B16A16 => bindings::RGBA16,
+        IRPixelFormat::R32G32B32FLOAT => bindings::RGB32F,
+        IRPixelFormat::R32G32B32A32FLOAT => bindings::RGBA32F,
         _ => return Err("Unsupported pixel format".to_string()),
     })
 }
 
 fn pixel_format_to_gl_internal(format: &IRPixelFormat) -> Result<GLenum, String> {
     Ok(match format {
-        IRPixelFormat::RGBA(_) => bindings::RGBA,
-        IRPixelFormat::RGB(_) => bindings::RGB,
         IRPixelFormat::R8 => bindings::RED,
+        IRPixelFormat::R8G8 => bindings::RG,
+        IRPixelFormat::R8G8B8 => bindings::RGB,
+        IRPixelFormat::R8G8B8A8 => bindings::RGBA,
+        IRPixelFormat::R16 => bindings::RED,
+        IRPixelFormat::R16G16 => bindings::RG,
+        IRPixelFormat::R16G16B16 => bindings::RGB,
+        IRPixelFormat::R16G16B16A16 => bindings::RGBA,
+        IRPixelFormat::R32G32B32FLOAT => bindings::RGB,
+        IRPixelFormat::R32G32B32A32FLOAT => bindings::RGBA,
         _ => return Err("Unsupported pixel format".to_string()),
     })
 }
 
 fn pixel_format_to_gl_type(format: &IRPixelFormat) -> Result<GLenum, String> {
     Ok(match format {
-        IRPixelFormat::RGBA(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
-        IRPixelFormat::RGBA(IRPixelDataType::U16) => bindings::UNSIGNED_SHORT,
-        IRPixelFormat::RGBA(IRPixelDataType::F32) => bindings::FLOAT,
-        IRPixelFormat::RGB(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
-        IRPixelFormat::RGB(IRPixelDataType::U16) => bindings::UNSIGNED_SHORT,
-        IRPixelFormat::RGB(IRPixelDataType::F32) => bindings::FLOAT,
-        IRPixelFormat::BGRA(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
-        IRPixelFormat::BGRA(IRPixelDataType::U16) => bindings::UNSIGNED_SHORT,
-        IRPixelFormat::BGRA(IRPixelDataType::F32) => bindings::FLOAT,
-        IRPixelFormat::BGR(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
-        IRPixelFormat::BGR(IRPixelDataType::U16) => bindings::UNSIGNED_SHORT,
-        IRPixelFormat::BGR(IRPixelDataType::F32) => bindings::FLOAT,
-        IRPixelFormat::SRGB(IRPixelDataType::U8) => bindings::UNSIGNED_BYTE,
-        IRPixelFormat::SRGB(IRPixelDataType::U16) => bindings::UNSIGNED_SHORT,
-        IRPixelFormat::SRGB(IRPixelDataType::F32) => bindings::FLOAT,
-        IRPixelFormat::R8 => bindings::UNSIGNED_BYTE,
-        IRPixelFormat::R16 => bindings::UNSIGNED_SHORT,
-        IRPixelFormat::R32F => bindings::FLOAT,
-        IRPixelFormat::RG8 => bindings::UNSIGNED_BYTE,
-        IRPixelFormat::RG16 => bindings::UNSIGNED_SHORT,
-        IRPixelFormat::RG32F => bindings::FLOAT,
+        IRPixelFormat::R8
+        | IRPixelFormat::R8G8
+        | IRPixelFormat::R8G8B8
+        | IRPixelFormat::R8G8B8A8 => bindings::UNSIGNED_BYTE,
+        IRPixelFormat::R16
+        | IRPixelFormat::R16G16
+        | IRPixelFormat::R16G16B16
+        | IRPixelFormat::R16G16B16A16 => bindings::UNSIGNED_SHORT,
+        IRPixelFormat::R32G32B32FLOAT | IRPixelFormat::R32G32B32A32FLOAT => bindings::FLOAT,
         _ => return Err("Unsupported pixel format".to_string()),
     })
 }
