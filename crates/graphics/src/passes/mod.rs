@@ -1,9 +1,9 @@
+use crate::gl::entities::mesh::Mesh;
 use crate::passes::events::{PassEventTarget, PassEventTrait};
 use crate::passes::result::PassExecuteResult;
 use crate::renderable::Renderable;
 use crate::renderer::backend::RendererBackend;
 use std::time::Duration;
-use crate::gl::entities::mesh::Mesh;
 
 pub mod chain;
 pub mod events;
@@ -39,13 +39,6 @@ pub trait RenderPass<E: PassEventTrait>: Send + Sync + 'static {
         PassExecuteResult::default()
     }
 
-    /// End the render pass execution.
-    /// This method is called after processing all renderables and meshes.
-    #[inline(always)]
-    fn end(&mut self, _backend: &mut RendererBackend<E>) -> PassExecuteResult {
-        PassExecuteResult::default()
-    }
-
     /// Process a renderable object.
     #[inline(always)]
     fn on_renderable(
@@ -56,9 +49,10 @@ pub trait RenderPass<E: PassEventTrait>: Send + Sync + 'static {
         PassExecuteResult::default()
     }
 
-    /// This method is called for each mesh in the renderable.
+    /// End the render pass execution.
+    /// This method is called after processing all renderables and meshes.
     #[inline(always)]
-    fn on_mesh(&mut self, _backend: &mut RendererBackend<E>, _mesh: &Mesh) -> PassExecuteResult {
+    fn end(&mut self, _backend: &mut RendererBackend<E>) -> PassExecuteResult {
         PassExecuteResult::default()
     }
 }
@@ -93,10 +87,6 @@ impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
         result += pass.begin(self.backend);
         for renderable in self.renderables {
             result += pass.on_renderable(self.backend, renderable);
-
-            // TODO: Iterate over meshes when renderable has multiple meshes.
-            //       For now, we assume each renderable has only one mesh.
-            result += pass.on_mesh(self.backend, renderable.mesh.cast());
         }
         result += pass.end(self.backend);
 
