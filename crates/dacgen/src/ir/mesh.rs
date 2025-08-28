@@ -16,6 +16,7 @@ use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use thiserror::Error;
 
 pub fn transform_to_matrix(transform: Transform) -> Mat4 {
     let tr = transform.matrix();
@@ -45,86 +46,184 @@ struct PrimitiveProcessResult {
     mesh: IRSubMesh,
 }
 
-pub fn process_texture(
-    material_id: AssetID,
-    texture_type: usize,
-    texture: gltf::Texture,
-    ctx: &ProcessCtx,
-) -> Result<(AssetID, Vec<PartialIR>), String> {
-    let _measure = Measure::new(format!(
-        "Processed texture {}:{}",
-        material_id.as_str(),
-        texture_type
-    ));
+#[derive(Debug, Clone, Error)]
+enum MeshError {
+    #[error("Mesh asset source is not a file: {0}")]
+    NotAFile(String),
+    #[error("Failed to load GLTF or GLB file: {0}")]
+    LoadError(String),
+    #[error("Mesh file does not contain any scene")]
+    NoScene,
+    #[error("Mesh file contains multiple scenes")]
+    MultipleScenes(usize),
+    #[error("Material {material_id} is missing texture source for {texture_type:?} texture index {texture_index}")]
+    MissingTextureSource {
+        material_id: AssetID,
+        texture_type: MaterialTextureType,
+        texture_index: usize,
+    },
+    #[error("Primitive {mesh_index}:{primitive_index} is missing indices")]
+    MissingIndices {
+        mesh_index: usize,
+        primitive_index: usize,
+    },
+    #[error("Primitive {mesh_index}:{primitive_index} is missing positions")]
+    MissingPositions {
+        mesh_index: usize,
+        primitive_index: usize,
+    },
+    #[error("Primitive {mesh_index}:{primitive_index} is missing normals")]
+    MissingNormals {
+        mesh_index: usize,
+        primitive_index: usize,
+    },
+    #[error("Primitive {mesh_index}:{primitive_index} is missing texture coordinates")]
+    MissingTexCoords {
+        mesh_index: usize,
+        primitive_index: usize,
+    },
+    #[error("Primitive {mesh_index}:{primitive_index} has inconsistent attribute lengths: positions={positions_len}, normals={normals_len}, tex_coords={tex_coords_len}")]
+    InconsistentAttributeLengths {
+        mesh_index: usize,
+        primitive_index: usize,
+        positions_len: usize,
+        normals_len: usize,
+        tex_coords_len: usize,
+    },
+    #[error("Invalid primitive {mesh_index}:{primitive_index} mode {mode:?}: only Points, Lines and Triangles are supported")]
+    InvalidPrimitiveMode {
+        mesh_index: usize,
+        primitive_index: usize,
+        mode: Mode,
+    },
+}
 
-    {
-        // let mut processed_textures = ctx.processed_textures.lock().unwrap();
-        // if let Some(id) = processed_textures.get(&texture.index()) {
-        //     // Texture already processed. Just reuse it.
-        //     return Ok((id.clone(), vec![]));
-        // }
+#[derive(Clone, Debug)]
+enum MaterialTextureType {
+    BaseColor,
+    Metallic,
+    Roughness,
+    Normal,
+    Occlusion,
+    Emissive,
+}
+
+impl MaterialTextureType {
+    fn as_str(&self) -> &'static str {
+        match self {
+            MaterialTextureType::BaseColor => "base_color",
+            MaterialTextureType::Metallic => "metallic",
+            MaterialTextureType::Roughness => "roughness",
+            MaterialTextureType::Normal => "normal",
+            MaterialTextureType::Occlusion => "occlusion",
+            MaterialTextureType::Emissive => "emissive",
+        }
     }
+}
 
-    let id = AssetID::new(match texture.name() {
+fn texture_id(
+    material_id: &AssetID,
+    texture_type: MaterialTextureType,
+    texture: &gltf::Texture,
+) -> AssetID {
+    AssetID::new(match texture.name() {
         None => format!(
             "{}_{}_{}_texture",
             material_id.as_str(),
-            texture_type,
+            texture_type.as_str(),
             texture.index()
         ),
         Some(name) => format!(
             "{}_{}_{}",
             material_id.as_str(),
-            texture_type,
+            texture_type.as_str(),
             name.to_string()
         ),
-    });
+    })
+}
 
-    let data = &ctx.images.get(texture.source().index()).ok_or(format!(
-        "Texture {}:{} has invalid image source index {}",
-        material_id.as_str(),
-        texture_type,
-        texture.source().index()
-    ))?;
+fn material_id(
+    mesh_id: &AssetID,
+    mesh_index: usize,
+    primitive_index: usize,
+    material: &gltf::Material,
+) -> AssetID {
+    AssetID::new(match material.name() {
+        None => format!(
+            "{}_{}_{}_material",
+            mesh_id.as_str(),
+            mesh_index,
+            primitive_index
+        ),
+        Some(name) => format!("{}_{}_{}", mesh_id.as_str(), mesh_index, name),
+    })
+}
 
-    let mut irs = Vec::new();
-    irs.push(PartialIR {
-        id: id.clone(),
-        header: UserAssetHeader {
-            asset_type: AssetType::Texture,
-            dependencies: Default::default(),
-            tags: vec![],
-            author: Some("Auto-generated".to_string()),
-            license: None,
-        },
-        ir: IRAsset::Texture(IRTexture {
-            data: data.pixels.clone(),
-            texture_type: IRTextureType::Texture2D {
-                width: data.width,
-                height: data.height,
-            },
-            pixel_format: match data.format {
-                Format::R8 => IRPixelFormat::R8,
-                Format::R8G8 => IRPixelFormat::RG8,
-                Format::R8G8B8 => IRPixelFormat::RGB(IRPixelDataType::U8),
-                Format::R8G8B8A8 => IRPixelFormat::RGBA(IRPixelDataType::U8),
-                Format::R16 => IRPixelFormat::R16,
-                Format::R16G16 => IRPixelFormat::RG16,
-                Format::R16G16B16 => IRPixelFormat::RGB(IRPixelDataType::U16),
-                Format::R16G16B16A16 => IRPixelFormat::RGBA(IRPixelDataType::U16),
-                Format::R32G32B32FLOAT => IRPixelFormat::RGB(IRPixelDataType::F32),
-                Format::R32G32B32A32FLOAT => IRPixelFormat::RGBA(IRPixelDataType::F32),
-            },
-            ..Default::default()
-        }),
-    });
+pub fn process_texture(
+    material_id: AssetID,
+    texture_type: MaterialTextureType,
+    texture: gltf::Texture,
+    ctx: &ProcessCtx,
+) -> Result<(AssetID, Vec<PartialIR>), MeshError> {
+    let id = texture_id(&material_id, texture_type.clone(), &texture);
+    let _measure = Measure::new(format!("Processed texture {}", id.as_str()));
 
     {
         let mut processed_textures = ctx.processed_textures.lock().unwrap();
-        processed_textures.insert(texture.index(), id.clone());
+        if let Some(id) = processed_textures.get(&texture.index()) {
+            // Texture already processed. Just reuse it.
+            return Ok((id.clone(), vec![]));
+        } else {
+            // Mark as processed to avoid duplicate processing in parallel threads.
+            // We must do it when the mutex is locked, to avoid data races.
+            processed_textures.insert(texture.index(), id.clone());
+        }
+
+        // Drop the lock before doing any heavy processing,
+        // to avoid blocking other threads.
     }
 
-    Ok((id, irs))
+    let data = &ctx.images.get(texture.source().index()).ok_or_else(|| {
+        MeshError::MissingTextureSource {
+            material_id: material_id.clone(),
+            texture_type: texture_type.clone(),
+            texture_index: texture.index(),
+        }
+    })?;
+
+    Ok((
+        id.clone(),
+        vec![PartialIR {
+            id: id.clone(),
+            header: UserAssetHeader {
+                asset_type: AssetType::Texture,
+                dependencies: Default::default(),
+                tags: vec![],
+                author: Some("Auto-generated".to_string()),
+                license: None,
+            },
+            ir: IRAsset::Texture(IRTexture {
+                data: data.pixels.clone(),
+                texture_type: IRTextureType::Texture2D {
+                    width: data.width,
+                    height: data.height,
+                },
+                pixel_format: match data.format {
+                    Format::R8 => IRPixelFormat::R8,
+                    Format::R8G8 => IRPixelFormat::RG8,
+                    Format::R8G8B8 => IRPixelFormat::RGB(IRPixelDataType::U8),
+                    Format::R8G8B8A8 => IRPixelFormat::RGBA(IRPixelDataType::U8),
+                    Format::R16 => IRPixelFormat::R16,
+                    Format::R16G16 => IRPixelFormat::RG16,
+                    Format::R16G16B16 => IRPixelFormat::RGB(IRPixelDataType::U16),
+                    Format::R16G16B16A16 => IRPixelFormat::RGBA(IRPixelDataType::U16),
+                    Format::R32G32B32FLOAT => IRPixelFormat::RGB(IRPixelDataType::F32),
+                    Format::R32G32B32A32FLOAT => IRPixelFormat::RGBA(IRPixelDataType::F32),
+                },
+                ..Default::default()
+            }),
+        }],
+    ))
 }
 
 pub fn process_material(
@@ -132,26 +231,36 @@ pub fn process_material(
     primitive_index: usize,
     material: gltf::Material,
     ctx: &ProcessCtx,
-) -> Result<(AssetID, Vec<PartialIR>), String> {
-    let _measure = Measure::new(format!(
-        "Processed material {}:{}",
-        mesh_index, primitive_index
-    ));
-    let id = AssetID::new(match material.name() {
-        None => format!(
-            "{}_{}_{}_material",
-            ctx.mesh_id.as_str(),
-            mesh_index,
-            primitive_index
-        ),
-        Some(name) => format!("{}_{}_{}", ctx.mesh_id.as_str(), mesh_index, name),
-    });
+) -> Result<(AssetID, Vec<PartialIR>), MeshError> {
+    let id = material_id(&ctx.mesh_id, mesh_index, primitive_index, &material);
+    let _measure = Measure::new(format!("Processed material {}", id.as_str()));
+
+    {
+        let mut processed_materials = ctx.processed_materials.lock().unwrap();
+        let index = material.index().unwrap();
+        if let Some(id) = processed_materials.get(&index) {
+            // Material already processed. Just reuse it.
+            return Ok((id.clone(), vec![]));
+        } else {
+            // Mark as processed to avoid duplicate processing in parallel threads.
+            // We must do it when the mutex is locked, to avoid
+            processed_materials.insert(index, id.clone());
+        }
+
+        // Drop the lock before doing any heavy processing,
+        // to avoid blocking other threads.
+    }
 
     let mut irs = Vec::new();
     let mut dependencies = HashSet::new();
     let base_color_texture =
         if let Some(texture) = material.pbr_metallic_roughness().base_color_texture() {
-            let (tex_id, mut generated) = process_texture(id.clone(), 0, texture.texture(), ctx)?;
+            let (tex_id, generated) = process_texture(
+                id.clone(),
+                MaterialTextureType::BaseColor,
+                texture.texture(),
+                ctx,
+            )?;
             dependencies.insert(tex_id.clone());
             irs.extend(generated);
             Some(tex_id)
@@ -162,7 +271,12 @@ pub fn process_material(
         .pbr_metallic_roughness()
         .metallic_roughness_texture()
     {
-        let (tex_id, mut generated) = process_texture(id.clone(), 1, texture.texture(), ctx)?;
+        let (tex_id, generated) = process_texture(
+            id.clone(),
+            MaterialTextureType::Metallic,
+            texture.texture(),
+            ctx,
+        )?;
         dependencies.insert(tex_id.clone());
         irs.extend(generated);
         Some(tex_id)
@@ -173,7 +287,12 @@ pub fn process_material(
         .pbr_metallic_roughness()
         .metallic_roughness_texture()
     {
-        let (tex_id, mut generated) = process_texture(id.clone(), 2, texture.texture(), ctx)?;
+        let (tex_id, generated) = process_texture(
+            id.clone(),
+            MaterialTextureType::Roughness,
+            texture.texture(),
+            ctx,
+        )?;
         dependencies.insert(tex_id.clone());
         irs.extend(generated);
         Some(tex_id)
@@ -202,7 +321,6 @@ pub fn process_material(
     });
 
     // TODO: Normal, occlusion and emissive textures
-
     Ok((AssetID::from(id), irs))
 }
 
@@ -212,29 +330,18 @@ pub fn process_primitive(
     transform: Mat4,
     primitive: gltf::Primitive,
     ctx: &ProcessCtx,
-) -> Result<PrimitiveProcessResult, String> {
+) -> Result<PrimitiveProcessResult, MeshError> {
     let _measure = Measure::new(format!(
         "Processed primitive {}:{}",
         mesh_index, primitive_index
     ));
     let mut irs = Vec::new();
     let material = match primitive.material().index() {
-        Some(index) => {
-            let id = { ctx.processed_materials.lock().unwrap().get(&index).cloned() };
-            if let Some(id) = id {
-                // Material already processed. Just reuse it.
-                Some(id.clone())
-            } else {
-                // Process the material
-                let (id, mut generated) =
-                    process_material(mesh_index, primitive_index, primitive.material(), ctx)?;
-                ctx.processed_materials
-                    .lock()
-                    .unwrap()
-                    .insert(index, id.clone());
-                irs.extend(generated);
-                Some(id)
-            }
+        Some(_) => {
+            let (id, generated) =
+                process_material(mesh_index, primitive_index, primitive.material(), ctx)?;
+            irs.extend(generated);
+            Some(id)
         }
         None => None,
     };
@@ -242,19 +349,19 @@ pub fn process_primitive(
     let reader = primitive.reader(|buffer| Some(&ctx.buffers[buffer.index()]));
     let indices: Vec<_> = reader
         .read_indices()
-        .ok_or(format!(
-            "Primitive {}:{} is missing indices",
-            mesh_index, primitive_index
-        ))?
+        .ok_or(MeshError::MissingIndices {
+            mesh_index,
+            primitive_index,
+        })?
         .into_u32()
         .collect();
 
     let mut positions: Vec<_> = reader
         .read_positions()
-        .ok_or(format!(
-            "Primitive {}:{} is missing positions",
-            mesh_index, primitive_index
-        ))?
+        .ok_or(MeshError::MissingPositions {
+            mesh_index,
+            primitive_index,
+        })?
         .map(|p| transform.transform_point3(glam::Vec3::from(p)))
         .collect();
 
@@ -263,10 +370,10 @@ pub fn process_primitive(
             .map(|n| transform.transform_vector3(glam::Vec3::from(n)).normalize())
             .collect()
     } else {
-        Err(format!(
-            "Primitive {}:{} is missing normals",
-            mesh_index, primitive_index
-        ))?
+        Err(MeshError::MissingNormals {
+            mesh_index,
+            primitive_index,
+        })?
     };
 
     let mut tex_coords: Vec<_> = if let Some(tex_coords_iter) = reader.read_tex_coords(0) {
@@ -275,18 +382,21 @@ pub fn process_primitive(
             .map(|tc| glam::Vec2::from(tc))
             .collect()
     } else {
-        Err(format!(
-            "Primitive {}:{} is missing texture coordinates",
-            mesh_index, primitive_index
-        ))?
+        Err(MeshError::MissingTexCoords {
+            mesh_index,
+            primitive_index,
+        })?
     };
 
     // Check that all attributes have the same length
     if positions.len() != normals.len() || positions.len() != tex_coords.len() {
-        return Err(format!(
-            "Primitive {}:{} has inconsistent attribute lengths: positions={}, normals={}, tex_coords={}",
-            mesh_index, primitive_index, positions.len(), normals.len(), tex_coords.len()
-        ));
+        return Err(MeshError::InconsistentAttributeLengths {
+            mesh_index,
+            primitive_index,
+            positions_len: positions.len(),
+            normals_len: normals.len(),
+            tex_coords_len: tex_coords.len(),
+        });
     }
 
     let mut min = Vec3::splat(f32::MAX);
@@ -305,10 +415,11 @@ pub fn process_primitive(
         Mode::Lines => (IRPrimitive::Lines, indices.len() / 2),
         Mode::Triangles => (IRPrimitive::Triangles, indices.len() / 3),
         _ => {
-            return Err(format!(
-                "Primitive {}:{} has unsupported mode {:?}. Only Points, Lines and Triangles are supported.",
-                mesh_index, primitive_index, primitive.mode()
-            ));
+            return Err(MeshError::InvalidPrimitiveMode {
+                mesh_index,
+                primitive_index,
+                mode: primitive.mode(),
+            })
         }
     };
 
@@ -329,7 +440,7 @@ pub fn process_primitive(
 }
 
 impl<'a> MeshWrap<'a> {
-    pub fn process(&self, index: usize) -> Result<Vec<PrimitiveProcessResult>, String> {
+    pub fn process(&self, index: usize) -> Result<Vec<PrimitiveProcessResult>, MeshError> {
         let _measure = Measure::new(format!("Processed mesh {}", index));
         self.node
             .primitives()
@@ -340,36 +451,27 @@ impl<'a> MeshWrap<'a> {
     }
 }
 
-pub fn convert_mesh(
+pub fn convert_mesh_inner(
     file: &UserAssetFile,
     cache_dir: &Path,
     cwd: &Path,
     user: &UserMeshAsset,
-) -> Result<Vec<PartialIR>, String> {
+) -> Result<Vec<PartialIR>, MeshError> {
     // Load the GLTF file
-    let path = user.source.as_path(cache_dir, cwd)?;
+    let path = user
+        .source
+        .as_path(cache_dir, cwd)
+        .map_err(|e| MeshError::NotAFile(e.to_string()))?;
     let (document, buffers, images) = {
         let _measure = Measure::new(format!("Loaded mesh file '{}'", path.display()));
-        gltf::import(path.clone()).map_err(|e| {
-            format!(
-                "Failed to load mesh GLTF (or GLB) file '{}': {}",
-                path.display(),
-                e
-            )
-        })?
+        gltf::import(path.clone()).map_err(|e| MeshError::LoadError(e.to_string()))?
     };
 
     if document.scenes().count() == 0 {
-        return Err(format!(
-            "The mesh file '{}' does not contain any scene.",
-            path.display()
-        ));
+        return Err(MeshError::NoScene);
     }
     if document.scenes().count() > 1 {
-        return Err(format!(
-            "The mesh file '{}' contains multiple scenes. Only one scene is supported.",
-            path.display()
-        ));
+        return Err(MeshError::MultipleScenes(document.scenes().count()));
     }
 
     // The name of the mesh is based on the file name
@@ -386,6 +488,10 @@ pub fn convert_mesh(
 
     let scene = document.scenes().next().unwrap();
 
+    // Collect all nodes as a flat list of meshes with their transforms
+    // Since IR is not hierarchical, we need to flatten the scene graph.
+    // This is done in a single thread, since the scene graph is usually not very large.
+    // The actual mesh processing is done in parallel later.
     fn collect_nodes<'a>(
         node: gltf::Node<'a>,
         parent_transform: Mat4,
@@ -394,7 +500,6 @@ pub fn convert_mesh(
     ) {
         // Compute transform of the current node
         let transform = parent_transform * transform_to_matrix(node.transform());
-
         if let Some(mesh) = node.mesh() {
             nodes.push(MeshWrap {
                 transform,
@@ -424,6 +529,7 @@ pub fn convert_mesh(
         .collect::<Vec<_>>();
 
     // Add dependencies of the generated materials
+    // Textures are already added as dependencies of the materials.
     let mut header = file.asset.header.clone();
     for id in ctx.processed_materials.lock().unwrap().values() {
         header.dependencies.insert(id.clone());
@@ -453,4 +559,13 @@ pub fn convert_mesh(
     ));
 
     Ok(irs)
+}
+
+pub fn convert_mesh(
+    file: &UserAssetFile,
+    cache_dir: &Path,
+    cwd: &Path,
+    user: &UserMeshAsset,
+) -> Result<Vec<PartialIR>, String> {
+    convert_mesh_inner(file, cache_dir, cwd, user).map_err(|e| e.to_string())
 }
