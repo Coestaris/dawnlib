@@ -293,6 +293,7 @@ pub fn write_from_directory<W: Write>(
 #[cfg(test)]
 mod tests {
     use crate::{write_from_directory, WriteConfig};
+    use dawn_dac::reader::read_manifest;
     use dawn_dac::{ChecksumAlgorithm, CompressionLevel, ReadMode};
 
     #[test]
@@ -349,10 +350,19 @@ mod tests {
         .unwrap();
         drop(writer.into_inner().unwrap());
 
-        // let file = std::fs::File::open(target_dir).unwrap();
-        // let mut reader = std::io::BufReader::new(file);
-        // let manifest = read_manifest(&mut reader).unwrap();
-        // println!("{:#?}", manifest);
+        let file = std::fs::File::open(dirs::OUTPUT_FILE).unwrap();
+        let mut reader = std::io::BufReader::new(file);
+        let manifest = read_manifest(&mut reader).unwrap();
+        println!("{:#?}", manifest);
+        manifest.tree("sponza".into(), &|id, header, depth| {
+            println!(
+                "{}- {} (deps: {})",
+                "  ".repeat(depth),
+                id.as_str(),
+                header.dependencies.len()
+            );
+        });
+
         // let ir = read_asset(&mut reader, "barrel".into()).unwrap();
         // println!("{:#?}", ir);
     }

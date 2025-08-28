@@ -45,23 +45,23 @@ fn filter_to_gl(filter: &IRTextureFilter) -> Result<GLenum, String> {
     })
 }
 
-fn pixel_format_to_gl(format: &IRPixelFormat) -> Result<GLenum, String> {
+fn pf_to_format(format: &IRPixelFormat) -> Result<GLenum, String> {
     Ok(match format {
-        IRPixelFormat::R8 => bindings::R8,
-        IRPixelFormat::R8G8 => bindings::RG8,
-        IRPixelFormat::R8G8B8 => bindings::RGB8,
-        IRPixelFormat::R8G8B8A8 => bindings::RGBA8,
-        IRPixelFormat::R16 => bindings::R16,
-        IRPixelFormat::R16G16 => bindings::RG16,
-        IRPixelFormat::R16G16B16 => bindings::RGB16,
-        IRPixelFormat::R16G16B16A16 => bindings::RGBA16,
-        IRPixelFormat::R32G32B32FLOAT => bindings::RGB32F,
-        IRPixelFormat::R32G32B32A32FLOAT => bindings::RGBA32F,
+        IRPixelFormat::R8 => bindings::RED,
+        IRPixelFormat::R8G8 => bindings::RG,
+        IRPixelFormat::R8G8B8 => bindings::RGB,
+        IRPixelFormat::R8G8B8A8 => bindings::RGBA,
+        IRPixelFormat::R16 => bindings::RED,
+        IRPixelFormat::R16G16 => bindings::RG,
+        IRPixelFormat::R16G16B16 => bindings::RGB,
+        IRPixelFormat::R16G16B16A16 => bindings::RGBA,
+        IRPixelFormat::R32G32B32FLOAT => bindings::RGB,
+        IRPixelFormat::R32G32B32A32FLOAT => bindings::RGBA,
         _ => return Err("Unsupported pixel format".to_string()),
     })
 }
 
-fn pixel_format_to_gl_internal(format: &IRPixelFormat) -> Result<GLenum, String> {
+fn pf_to_internal(format: &IRPixelFormat) -> Result<GLenum, String> {
     Ok(match format {
         IRPixelFormat::R8 => bindings::RED,
         IRPixelFormat::R8G8 => bindings::RG,
@@ -188,9 +188,9 @@ impl Texture {
         pixel_format: IRPixelFormat,
         data: &[u8],
     ) -> Result<(), String> {
-        let format = pixel_format_to_gl(&pixel_format)?;
+        let internal = pf_to_internal(&pixel_format)?;
+        let format = pf_to_format(&pixel_format)?;
         let data_type = pixel_format_to_gl_type(&pixel_format)?;
-        let internal = pixel_format_to_gl_internal(&pixel_format)?;
         debug!(
             "Uploading texture ID: {} ({}x{}, format: {}, type: {}, level {})",
             self.id, width, height, format, data_type, level
@@ -199,7 +199,7 @@ impl Texture {
             bindings::TexImage2D(
                 self.texture_type,
                 level as GLint,
-                format as GLint,
+                internal as GLint,
                 width as GLsizei,
                 height as GLsizei,
                 if border { 1 } else { 0 } as GLint,

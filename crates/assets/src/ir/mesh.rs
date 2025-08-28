@@ -94,14 +94,16 @@ impl IRVertex {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
-pub enum IRPrimitive {
+pub enum IRTopology {
     Points,
     Lines,
-    LineLoop,
-    LineStrip,
     Triangles,
-    TriangleStrip,
-    TriangleFan,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub enum IRIndexType {
+    U16,
+    U32,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -110,17 +112,18 @@ pub struct IRSubMesh {
     // (should be multiple of size_of::<IRVertex>())
     #[serde(with = "serde_bytes")]
     pub vertices: Vec<u8>,
-    pub indices: Vec<u32>,
+    #[serde(with = "serde_bytes")]
+    pub indices: Vec<u8>,
     pub material: Option<AssetID>,
     pub bounds: IRMeshBounds,
-    pub primitive: IRPrimitive,
-    pub primitives_count: usize,
+    pub topology: IRTopology,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct IRMesh {
     pub submesh: Vec<IRSubMesh>,
     pub bounds: IRMeshBounds,
+    pub index_type: IRIndexType,
 }
 
 impl IRSubMesh {
@@ -128,13 +131,8 @@ impl IRSubMesh {
         &self.vertices
     }
 
-    pub fn raw_indices<'a>(&self) -> &'a [u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self.indices.as_ptr() as *const u8,
-                self.indices.len() * size_of::<u32>(),
-            )
-        }
+    pub fn raw_indices(&self) -> &[u8] {
+        &self.indices
     }
 }
 
@@ -145,8 +143,7 @@ impl Debug for IRSubMesh {
             .field("indices_count", &self.indices.len())
             .field("material", &self.material)
             .field("bounds", &self.bounds)
-            .field("primitive", &self.primitive)
-            .field("primitives_count", &self.primitives_count)
+            .field("topology", &self.topology)
             .finish()
     }
 }
@@ -161,8 +158,7 @@ impl Default for IRSubMesh {
                 min: [0.0, 0.0, 0.0],
                 max: [0.0, 0.0, 0.0],
             },
-            primitive: IRPrimitive::Points,
-            primitives_count: 0,
+            topology: IRTopology::Points,
         }
     }
 }

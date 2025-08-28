@@ -2,7 +2,7 @@ use crate::ir::{normalize_name, PartialIR};
 use crate::user::{UserAssetHeader, UserMeshAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::material::IRMaterial;
-use dawn_assets::ir::mesh::{IRMesh, IRMeshBounds, IRPrimitive, IRSubMesh, IRVertex};
+use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRMeshBounds, IRSubMesh, IRTopology, IRVertex};
 use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
@@ -10,6 +10,7 @@ use dawn_util::profile::Measure;
 use glam::{Mat4, Vec3};
 use gltf::buffer::Data;
 use gltf::image::Format;
+use gltf::mesh::util::ReadIndices;
 use gltf::mesh::Mode;
 use gltf::scene::Transform;
 use rayon::prelude::*;
@@ -29,6 +30,7 @@ pub fn transform_to_matrix(transform: Transform) -> Mat4 {
 #[derive(Clone)]
 struct ProcessCtx<'a> {
     buffers: &'a Vec<Data>,
+    index_type: IRIndexType,
     images: &'a Vec<gltf::image::Data>,
     processed_materials: Arc<Mutex<HashMap<usize, AssetID>>>,
     processed_textures: Arc<Mutex<HashMap<usize, AssetID>>>,
@@ -56,7 +58,8 @@ enum MeshError {
     NoScene,
     #[error("Mesh file contains multiple scenes")]
     MultipleScenes(usize),
-    #[error("Material {material_id} is missing texture source for {texture_type:?} texture index {texture_index}")]
+    #[error("Material {material_id} is missing texture source for {texture_type:?} texture index {texture_index}"
+    )]
     MissingTextureSource {
         material_id: AssetID,
         texture_type: MaterialTextureType,
@@ -82,7 +85,8 @@ enum MeshError {
         mesh_index: usize,
         primitive_index: usize,
     },
-    #[error("Primitive {mesh_index}:{primitive_index} has inconsistent attribute lengths: positions={positions_len}, normals={normals_len}, tex_coords={tex_coords_len}")]
+    #[error("Primitive {mesh_index}:{primitive_index} has inconsistent attribute lengths: positions={positions_len}, normals={normals_len}, tex_coords={tex_coords_len}"
+    )]
     InconsistentAttributeLengths {
         mesh_index: usize,
         primitive_index: usize,
@@ -90,12 +94,15 @@ enum MeshError {
         normals_len: usize,
         tex_coords_len: usize,
     },
-    #[error("Invalid primitive {mesh_index}:{primitive_index} mode {mode:?}: only Points, Lines and Triangles are supported")]
+    #[error("Invalid primitive {mesh_index}:{primitive_index} mode {mode:?}: only Points, Lines and Triangles are supported"
+    )]
     InvalidPrimitiveMode {
         mesh_index: usize,
         primitive_index: usize,
         mode: Mode,
     },
+    #[error("Cannot fit index into selected index type")]
+    IndexOverflow,
 }
 
 #[derive(Clone, Debug)]
@@ -347,7 +354,7 @@ pub fn process_primitive(
     };
 
     let reader = primitive.reader(|buffer| Some(&ctx.buffers[buffer.index()]));
-    let indices: Vec<_> = reader
+    let indices_u32: Vec<_> = reader
         .read_indices()
         .ok_or(MeshError::MissingIndices {
             mesh_index,
@@ -355,8 +362,26 @@ pub fn process_primitive(
         })?
         .into_u32()
         .collect();
+    let mut indices = Vec::new();
+    match ctx.index_type {
+        IRIndexType::U16 => {
+            indices.reserve(indices_u32.len() * 4);
+            if indices_u32.len() > u16::MAX as usize {
+                return Err(MeshError::IndexOverflow);
+            }
+            for i in indices_u32 {
+                indices.extend_from_slice((i as u16).to_le_bytes().as_slice());
+            }
+        }
+        IRIndexType::U32 => {
+            indices.reserve(indices_u32.len() * 4);
+            for i in indices_u32 {
+                indices.extend_from_slice(i.to_le_bytes().as_slice());
+            }
+        }
+    }
 
-    let mut positions: Vec<_> = reader
+    let positions: Vec<_> = reader
         .read_positions()
         .ok_or(MeshError::MissingPositions {
             mesh_index,
@@ -365,7 +390,7 @@ pub fn process_primitive(
         .map(|p| transform.transform_point3(glam::Vec3::from(p)))
         .collect();
 
-    let mut normals: Vec<_> = if let Some(normals_iter) = reader.read_normals() {
+    let normals: Vec<_> = if let Some(normals_iter) = reader.read_normals() {
         normals_iter
             .map(|n| transform.transform_vector3(glam::Vec3::from(n)).normalize())
             .collect()
@@ -376,7 +401,7 @@ pub fn process_primitive(
         })?
     };
 
-    let mut tex_coords: Vec<_> = if let Some(tex_coords_iter) = reader.read_tex_coords(0) {
+    let tex_coords: Vec<_> = if let Some(tex_coords_iter) = reader.read_tex_coords(0) {
         tex_coords_iter
             .into_f32()
             .map(|tc| glam::Vec2::from(tc))
@@ -401,40 +426,37 @@ pub fn process_primitive(
 
     let mut min = Vec3::splat(f32::MAX);
     let mut max = Vec3::splat(f32::MIN);
-    let mut data = Vec::with_capacity(positions.len() * size_of::<IRVertex>());
+    let mut vertices = Vec::with_capacity(positions.len() * size_of::<IRVertex>());
     for (position, (normal, tex_coord)) in
         positions.iter().zip(normals.iter().zip(tex_coords.iter()))
     {
         min = min.min(*position);
         max = max.max(*position);
-        data.extend_from_slice(IRVertex::new(*position, *normal, *tex_coord).into_bytes());
+        vertices.extend_from_slice(IRVertex::new(*position, *normal, *tex_coord).into_bytes());
     }
-
-    let (primitive, primitives_count) = match primitive.mode() {
-        Mode::Points => (IRPrimitive::Points, indices.len()),
-        Mode::Lines => (IRPrimitive::Lines, indices.len() / 2),
-        Mode::Triangles => (IRPrimitive::Triangles, indices.len() / 3),
-        _ => {
-            return Err(MeshError::InvalidPrimitiveMode {
-                mesh_index,
-                primitive_index,
-                mode: primitive.mode(),
-            })
-        }
-    };
 
     Ok(PrimitiveProcessResult {
         irs,
         mesh: IRSubMesh {
-            vertices: data,
+            vertices,
             indices,
             material,
             bounds: IRMeshBounds {
                 min: min.to_array(),
                 max: max.to_array(),
             },
-            primitive,
-            primitives_count,
+            topology: match primitive.mode() {
+                Mode::Points => IRTopology::Points,
+                Mode::Lines => IRTopology::Lines,
+                Mode::Triangles => IRTopology::Triangles,
+                _ => {
+                    return Err(MeshError::InvalidPrimitiveMode {
+                        mesh_index,
+                        primitive_index,
+                        mode: primitive.mode(),
+                    })
+                }
+            },
         },
     })
 }
@@ -451,7 +473,7 @@ impl<'a> MeshWrap<'a> {
     }
 }
 
-pub fn convert_mesh_inner(
+fn convert_mesh_inner(
     file: &UserAssetFile,
     cache_dir: &Path,
     cwd: &Path,
@@ -478,6 +500,7 @@ pub fn convert_mesh_inner(
     let mesh_id = normalize_name(file.path.clone());
     let ctx = ProcessCtx {
         buffers: &buffers,
+        index_type: IRIndexType::U32,
         images: &images,
         // Dependencies of the mesh.
         // This is shared between threads to avoid generating the same material multiple times.
@@ -553,6 +576,7 @@ pub fn convert_mesh_inner(
                 min: min_global.to_array(),
                 max: max_global.to_array(),
             },
+            index_type: ctx.index_type,
         }),
         header,
         mesh_id.clone(),
