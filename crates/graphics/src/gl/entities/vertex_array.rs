@@ -1,27 +1,19 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::{GLint, GLsizei, GLuint};
-use dawn_assets::ir::mesh::{IRMeshLayout, IRMeshLayoutSampleType, IRPrimitive};
+use crate::passes::result::PassExecuteResult;
+use dawn_assets::ir::mesh::{IRIndexType, IRMeshLayout, IRMeshLayoutSampleType, IRTopology};
 use log::debug;
 
 pub struct VertexArray {
     id: GLuint,
     draw_mode: GLuint,
+    topology_size: usize,
+    index_type: GLuint,
+    index_size: usize,
 }
 
 pub struct VertexArrayBinding<'a> {
     vertex_array: &'a VertexArray,
-}
-
-fn primitive_gl_type(primitive: IRPrimitive) -> GLuint {
-    match primitive {
-        IRPrimitive::Points => bindings::POINTS,
-        IRPrimitive::Lines => bindings::LINES,
-        IRPrimitive::LineStrip => bindings::LINE_STRIP,
-        IRPrimitive::LineLoop => bindings::LINE_LOOP,
-        IRPrimitive::Triangles => bindings::TRIANGLES,
-        IRPrimitive::TriangleStrip => bindings::TRIANGLE_STRIP,
-        IRPrimitive::TriangleFan => bindings::TRIANGLE_FAN,
-    }
 }
 
 impl<'a> VertexArrayBinding<'a> {
@@ -53,15 +45,18 @@ impl<'a> VertexArrayBinding<'a> {
         Ok(())
     }
 
-    pub fn draw_elements(&self, count: usize) {
+    #[inline(always)]
+    pub fn draw_elements(&self, count: usize, offset: usize) -> PassExecuteResult {
         unsafe {
             bindings::DrawElements(
                 self.vertex_array.draw_mode,
                 count as GLsizei,
-                bindings::UNSIGNED_INT,
-                std::ptr::null(),
+                self.vertex_array.index_type,
+                (offset * self.vertex_array.index_size) as *const _,
             );
         }
+
+        PassExecuteResult::ok(1, count / self.vertex_array.topology_size)
     }
 }
 
@@ -75,7 +70,7 @@ impl<'a> Drop for VertexArrayBinding<'a> {
 }
 
 impl VertexArray {
-    pub fn new(primitive: IRPrimitive) -> Result<Self, String> {
+    pub fn new(primitive: IRTopology, index: IRIndexType) -> Result<Self, String> {
         let mut id: GLuint = 0;
         unsafe {
             bindings::GenVertexArrays(1, &mut id);
@@ -87,7 +82,24 @@ impl VertexArray {
         debug!("Allocated VBO ID: {}", id);
         Ok(VertexArray {
             id,
-            draw_mode: primitive_gl_type(primitive),
+            draw_mode: match primitive {
+                IRTopology::Points => bindings::POINTS,
+                IRTopology::Lines => bindings::LINES,
+                IRTopology::Triangles => bindings::TRIANGLES,
+            },
+            topology_size: match primitive {
+                IRTopology::Points => 1,
+                IRTopology::Lines => 2,
+                IRTopology::Triangles => 3,
+            },
+            index_type: match index {
+                IRIndexType::U16 => bindings::UNSIGNED_SHORT,
+                IRIndexType::U32 => bindings::UNSIGNED_INT,
+            },
+            index_size: match index {
+                IRIndexType::U16 => 2,
+                IRIndexType::U32 => 4,
+            },
         })
     }
 

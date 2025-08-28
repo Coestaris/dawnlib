@@ -1,6 +1,6 @@
 use dawn_assets::{AssetHeader, AssetID};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::time::SystemTime;
 use thiserror::Error;
@@ -110,6 +110,28 @@ pub struct Manifest {
     pub read_mode: ReadMode,
     pub checksum_algorithm: ChecksumAlgorithm,
     pub headers: Vec<AssetHeader>,
+}
+
+impl Manifest {
+    pub fn tree(&self, id: AssetID, callback: &impl Fn(&AssetID, &AssetHeader, usize)) {
+        pub fn tree_inner(
+            manifest: &Manifest,
+            depth: usize,
+            id: &AssetID,
+            callback: &impl Fn(&AssetID, &AssetHeader, usize),
+        ) {
+            let asset = manifest.headers.iter().find(|h| h.id == id.clone());
+            if let Some(asset) = asset {
+                callback(id, asset, depth);
+
+                for dep in &asset.dependencies {
+                    tree_inner(manifest, depth + 1, dep, callback);
+                }
+            }
+        }
+
+        tree_inner(self, 0, &id, callback)
+    }
 }
 
 #[cfg(any())]

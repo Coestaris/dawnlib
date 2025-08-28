@@ -2,7 +2,7 @@ use crate::registry::{AssetRegistry, AssetState, RegistryError};
 use crate::requests::task::{AssetTaskID, TaskCommand};
 use crate::requests::{AssetRequest, AssetRequestID, AssetRequestQuery};
 use crate::AssetID;
-use log::{debug, error};
+use log::{debug, error, info};
 use std::collections::HashSet;
 use thiserror::Error;
 
@@ -85,7 +85,7 @@ impl Scheduler {
         aid: AssetID,
         registry: &AssetRegistry,
         deps: bool,
-        processed: &mut HashSet<AssetID>,
+        stack: &mut Vec<AssetID>,
         constructor: &impl Fn(
             AssetRequestID,
             &AssetRegistry,
@@ -94,16 +94,16 @@ impl Scheduler {
         ) -> Result<Vec<Task>, PeekError>,
     ) -> Result<Vec<Task>, PeekError> {
         // Prevent circular dependencies.
-        if processed.contains(&aid) {
+        if stack.contains(&aid) {
             return Err(PeekError::CircularDependency(aid));
         }
 
-        processed.insert(aid.clone());
         // If deps is true, we need to load dependencies first.
         let mut tasks = Vec::new();
 
         let mut dependencies = HashSet::new();
         if deps {
+            stack.push(aid.clone());
             let header = registry.get_header(&aid)?;
             for dep in &header.dependencies {
                 let deps = Self::collect_tasks_for_asset(
@@ -111,7 +111,7 @@ impl Scheduler {
                     dep.clone(),
                     registry,
                     true,
-                    processed,
+                    stack,
                     constructor,
                 )?;
 
@@ -123,11 +123,29 @@ impl Scheduler {
                 // Add dependencies to the task list.
                 tasks.extend(deps);
             }
+            stack.pop();
         }
 
         // Finally, add the task for the current asset.
         tasks.extend(constructor(rid, registry, aid.clone(), dependencies)?);
         Ok(tasks)
+    }
+
+    fn print_task_tree(tasks: &Vec<Task>, task: &Task, depth: usize) {
+        println!(
+            "{} Task ID: {}, Command: {:?}, State: {:?}",
+            " ".repeat(depth),
+            task.id,
+            task.command,
+            task.state
+        );
+        for dep in task.dependencies.iter() {
+            if let Some(dep_task) = tasks.iter().find(|t| &t.id == dep) {
+                Self::print_task_tree(tasks, &dep_task, depth + 2);
+            } else {
+                error!("Dependency task {:?} not found in task list", dep);
+            }
+        }
     }
 
     fn collect_tasks_for_query(
@@ -182,30 +200,46 @@ impl Scheduler {
 
         let mut all_tasks = Vec::new();
         for id in ids {
-            let mut processed = HashSet::new();
-            let tasks = Self::collect_tasks_for_asset(
-                rid,
-                id,
-                registry,
-                deps,
-                &mut processed,
-                constructor,
-            )?;
+            let mut stack = Vec::new();
+            let tasks =
+                Self::collect_tasks_for_asset(rid, id.clone(), registry, deps, &mut stack, constructor)?;
             all_tasks.extend(tasks);
         }
 
-        // Merge tasks with the same AssetID, joining their dependencies.
+        // Merge tasks with the same AssetID and command, joining their dependencies.
+        // If any other task is dependent on the merged task, we should replace it with the merged task.
         let mut task_map = std::collections::HashMap::new();
-        for task in all_tasks {
+        for task in &all_tasks {
             task_map
                 .entry(task.command.clone())
                 .and_modify(|existing_task: &mut Task| {
+                    debug!("Merging: {:?} and {:?}", existing_task, task);
                     existing_task.dependencies.extend(task.dependencies.clone());
                 })
-                .or_insert(task);
+                .or_insert(task.clone());
+        }
+        // Update the task dependencies to point to the merged task.
+        let mut merged_map = task_map.clone();
+        for task in merged_map.values_mut() {
+            let mut new_dependencies = HashSet::new();
+            for dependency in &task.dependencies {
+                // Find the merged task for the dependency.
+                let old_command = all_tasks
+                    .iter()
+                    .find(|t| t.id == dependency.clone())
+                    .unwrap();
+                // Replace the dependency with the merged task.
+                new_dependencies.insert(task_map.get(&old_command.command).unwrap().id.clone());
+            }
+            task.dependencies = new_dependencies;
         }
 
-        Ok(task_map.into_values().collect())
+        // let all_tasks= all_tasks.into_iter().collect();
+        // for task in merged_map.values() {
+        //     Self::print_task_tree(&all_tasks, &task, 0);
+        // }
+
+        Ok(merged_map.values().cloned().collect())
     }
 
     fn read_constructor(
