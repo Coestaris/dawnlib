@@ -2,12 +2,11 @@ use crate::ir::{normalize_name, PartialIR};
 use crate::user::{UserAssetHeader, UserFontAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::font::{IRFont, IRGlyph, IRGlyphVertex};
-use dawn_assets::ir::mesh::IRTopology;
+use dawn_assets::ir::mesh::{IRIndexType, IRTopology};
 use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use glam::Vec2;
-use image::DynamicImage;
 use rusttype::{point, Font, Scale};
 use std::collections::HashMap;
 use std::path::Path;
@@ -93,11 +92,22 @@ pub fn convert_font(
             .unwrap();
         (max_x - min_x) as u32
     };
-    let width = glyphs_width + 2 * HORIZONTAL_SPACING as u32;
-    let height = glyphs_height + 2 * VERTICAL_SPACING as u32;
+    let width = glyphs_width as f32 + 2.0 * HORIZONTAL_SPACING;
+    let height = glyphs_height as f32 + 2.0 * VERTICAL_SPACING;
 
     let mut ir_glyphs = HashMap::new();
-    let mut vertices = Vec::with_capacity(glyphs.len() * 6 * size_of::<IRGlyphVertex>());
+
+    let vertex_count = glyphs.len() * 4;
+    let index_count = glyphs.len() * 6;
+    if vertex_count > u16::MAX as usize {
+        return Err(anyhow::anyhow!(
+            "Font has too many glyphs to fit in a single atlas (max {} glyphs)",
+            u16::MAX as usize / 6
+        ));
+    }
+
+    let mut vertices = Vec::with_capacity(vertex_count * size_of::<IRGlyphVertex>());
+    let mut indices = Vec::with_capacity(index_count * size_of::<u16>());
     let mut current_vertex = 0;
     for (char, positioned) in text.chars().zip(&glyphs) {
         let bounding_box = positioned.pixel_bounding_box().unwrap();
@@ -108,34 +118,54 @@ pub fn convert_font(
         let x = bounding_box.min.x as f32 - HORIZONTAL_SPACING;
         let y = bounding_box.min.y as f32 - VERTICAL_SPACING;
 
-        let a = Vec2::new(x, y);
-        let b = Vec2::new(x + w, y);
-        let c = Vec2::new(x, y + h);
-        let d = Vec2::new(x + w, y + h);
+        // Texture coordinates
+        let tc_a = Vec2::new(x / width, y / height);
+        let tc_b = Vec2::new((x + w) / width, y / height);
+        let tc_c = Vec2::new(x / width, (y + h) / height);
+        let tc_d = Vec2::new((x + w) / width, (y + h) / height);
 
-        // Insert two triangles
-        // (A, B, C)
-        vertices.extend_from_slice(IRGlyphVertex::new(a).into_bytes());
-        vertices.extend_from_slice(IRGlyphVertex::new(b).into_bytes());
-        vertices.extend_from_slice(IRGlyphVertex::new(c).into_bytes());
+        // Vertex positions
+        let a = Vec2::new(0.0, 0.0) / user.size as f32;
+        let b = Vec2::new(w, 0.0) / user.size as f32;
+        let c = Vec2::new(0.0, h) / user.size as f32;
+        let d = Vec2::new(w, h) / user.size as f32;
 
-        // (A, C, D)
-        vertices.extend_from_slice(IRGlyphVertex::new(a).into_bytes());
-        vertices.extend_from_slice(IRGlyphVertex::new(d).into_bytes());
-        vertices.extend_from_slice(IRGlyphVertex::new(c).into_bytes());
+        // A  ---- B
+        // |    /  |
+        // |  /    |
+        // C  ---- D
+        // Since we're using default CCW winding, we need to
+        // make sure the triangles are defined in that order.
+        // A, C, B and B, C, D
+
+        // Insert four vertices
+        vertices.extend_from_slice(IRGlyphVertex::new(a, tc_a).into_bytes());
+        vertices.extend_from_slice(IRGlyphVertex::new(b, tc_b).into_bytes());
+        vertices.extend_from_slice(IRGlyphVertex::new(c, tc_c).into_bytes());
+        vertices.extend_from_slice(IRGlyphVertex::new(d, tc_d).into_bytes());
+
+        // Insert (A, C, B) triangle
+        indices.extend_from_slice((current_vertex as u16).to_le_bytes().as_slice());
+        indices.extend_from_slice((current_vertex as u16 + 2).to_le_bytes().as_slice());
+        indices.extend_from_slice((current_vertex as u16 + 1).to_le_bytes().as_slice());
+
+        // Insert (B, C, D) triangle
+        indices.extend_from_slice((current_vertex as u16 + 1).to_le_bytes().as_slice());
+        indices.extend_from_slice((current_vertex as u16 + 2).to_le_bytes().as_slice());
+        indices.extend_from_slice((current_vertex as u16 + 3).to_le_bytes().as_slice());
 
         ir_glyphs.insert(
             char,
             IRGlyph {
-                vertex_offset: current_vertex,
-                vertex_count: 6,
+                index_offset: current_vertex,
+                index_count: 6,
                 x_advance: unpositioned.h_metrics().advance_width,
                 y_offset: 0.0,
                 x_offset: unpositioned.h_metrics().left_side_bearing,
             },
         );
 
-        current_vertex += 6;
+        current_vertex += 4;
     }
 
     // Render the glyphs into a buffer
@@ -149,7 +179,7 @@ pub fn convert_font(
                 let y = y + bounding_box.min.y as u32;
                 // Turn the coverage into an alpha value
                 let color = (v * 255.0) as u8;
-                let idx = (x + y * width) as usize;
+                let idx = (x + y * width as u32) as usize;
                 if idx < raw.len() {
                     raw[idx] = color;
                 } else {
@@ -166,7 +196,7 @@ pub fn convert_font(
     // }));
     // image.save("/tmp/output_font.png")?;
 
-    let (mut irs, atlas) = convert_texture(font_id.clone(), width, height, raw)?;
+    let (mut irs, atlas) = convert_texture(font_id.clone(), width as u32, height as u32, raw)?;
     let mut header = file.asset.header.clone();
     header.dependencies.insert(atlas.clone());
     irs.push(PartialIR {
@@ -178,6 +208,8 @@ pub fn convert_font(
             atlas,
             vertices,
             topology: IRTopology::Triangles,
+            indices,
+            index_type: IRIndexType::U16,
         }),
     });
 

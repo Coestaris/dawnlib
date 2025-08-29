@@ -77,7 +77,7 @@ impl SourceRef {
             SourceRef::File(path) => Ok(if path.is_absolute() {
                 path.clone()
             } else {
-                cwd.join(path)
+                std::path::absolute(cwd.join(path))?
             }),
             SourceRef::Url { url, .. } => {
                 let segments: PathBuf = url.path().into();

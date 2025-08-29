@@ -35,10 +35,10 @@ macro_rules! define_target(
 
 #[rustfmt::skip]
 mod targets {
-use crate::gl::raii::shader_program::UniformLocation;
-use crate::gl::raii::shader_program::UniformTarget;
 use crate::gl::bindings;
 use crate::gl::bindings::types::GLint;
+use crate::gl::raii::shader_program::UniformLocation;
+use crate::gl::raii::shader_program::UniformTarget;
 use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 
     define_target!(u32, |l, v| bindings::Uniform1ui(l, v));
@@ -132,9 +132,9 @@ impl ShaderProgram {
     }
 
     #[inline(always)]
-    pub fn bind(&self) {
+    pub fn bind(shader: &Self) {
         unsafe {
-            bindings::UseProgram(self.id);
+            bindings::UseProgram(shader.id);
         }
     }
 

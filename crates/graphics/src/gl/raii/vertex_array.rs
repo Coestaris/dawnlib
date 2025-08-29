@@ -4,6 +4,7 @@ use crate::passes::result::RenderResult;
 use dawn_assets::ir::mesh::{IRIndexType, IRLayout, IRLayoutSampleType, IRTopology};
 use log::debug;
 
+#[derive(Debug)]
 pub struct VertexArray {
     id: GLuint,
     draw_mode: GLuint,
@@ -63,17 +64,17 @@ impl<'a> VertexArrayBinding<'a> {
         RenderResult::ok(1, index_count / self.vertex_array.topology_size)
     }
 
-    #[inline(always)]
-    pub fn draw_arrays(&self, vertex_offset: usize, vertex_count: usize) -> RenderResult {
+    pub fn draw_elements(&self, index_count: usize, index_offset: usize) -> RenderResult {
         unsafe {
-            bindings::DrawArrays(
+            bindings::DrawElements(
                 self.vertex_array.draw_mode,
-                vertex_offset as GLint,
-                vertex_count as GLsizei,
+                index_count as GLsizei,
+                self.vertex_array.index_type,
+                (index_offset * self.vertex_array.index_size) as *const _,
             );
         }
 
-        RenderResult::ok(1, vertex_count / self.vertex_array.topology_size)
+        RenderResult::ok(1, index_count / self.vertex_array.topology_size)
     }
 }
 

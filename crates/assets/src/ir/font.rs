@@ -1,6 +1,4 @@
-use crate::ir::mesh::{
-    IRIndexType, IRLayout, IRLayoutField, IRLayoutSampleType, IRMeshVertex, IRTopology,
-};
+use crate::ir::mesh::{IRIndexType, IRLayout, IRLayoutField, IRLayoutSampleType, IRTopology};
 use crate::AssetID;
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
@@ -11,27 +9,38 @@ use std::mem::offset_of;
 #[repr(C)]
 #[repr(packed)]
 pub struct IRGlyphVertex {
+    /// Zero based position in the bounding quad for the glyph.
+    /// This is used to calculate the final position in the vertex shader.
     pub position: [f32; 2],
-    // The Tex coord can be calculated from the
-    // position by dividing by the atlas size.
-    // So omitting it here to save space.
+    /// Texture coordinate in the font atlas.
+    pub tex_coord: [f32; 2],
 }
 
 impl IRGlyphVertex {
-    pub fn new(pos: Vec2) -> Self {
+    pub fn new(pos: Vec2, tex: Vec2) -> Self {
         Self {
             position: pos.to_array(),
+            tex_coord: tex.to_array(),
         }
     }
 
-    pub fn layout() -> [IRLayout; 1] {
-        [IRLayout {
-            field: IRLayoutField::Position,
-            sample_type: IRLayoutSampleType::Float,
-            samples: 2, // floats
-            stride_bytes: size_of::<IRGlyphVertex>(),
-            offset_bytes: offset_of!(IRGlyphVertex, position),
-        }]
+    pub fn layout() -> [IRLayout; 2] {
+        [
+            IRLayout {
+                field: IRLayoutField::Position,
+                sample_type: IRLayoutSampleType::Float,
+                samples: 2, // floats
+                stride_bytes: size_of::<IRGlyphVertex>(),
+                offset_bytes: offset_of!(IRGlyphVertex, position),
+            },
+            IRLayout {
+                field: IRLayoutField::TexCoord,
+                sample_type: IRLayoutSampleType::Float,
+                samples: 2, // floats
+                stride_bytes: size_of::<IRGlyphVertex>(),
+                offset_bytes: offset_of!(IRGlyphVertex, tex_coord),
+            },
+        ]
     }
 
     pub fn into_bytes<'a>(self) -> &'a [u8] {
@@ -46,9 +55,8 @@ impl IRGlyphVertex {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct IRGlyph {
-    pub vertex_offset: usize,
-    pub vertex_count: usize,
-
+    pub index_offset: usize,
+    pub index_count: usize,
     pub x_advance: f32,
     pub y_offset: f32,
     pub x_offset: f32,
@@ -63,11 +71,14 @@ pub struct IRFont {
     #[serde(with = "serde_bytes")]
     pub vertices: Vec<u8>,
     pub topology: IRTopology,
-    // Since for each glyph we only need to draw two triangles.
-    // Index array can save 1 vertex per glyph that is 2 floats - 8 bytes.
-    // Having 6 vertices per glyph is 24 bytes (when using 32 bit indices)
-    // and 12 bytes (when using 16 bit indices).
-    // Having the indices is not beneficial.
+
+    // For each glyph we only need to draw two triangles.
+    // Index array can save 2 vertex per glyph that is 2*4 floats - 32 bytes.
+    // Having 6 indices per glyph adds 12 bytes (when using 16 bit indices)
+    // So having index buffer saves 20 bytes per glyph.
+    #[serde(with = "serde_bytes")]
+    pub indices: Vec<u8>,
+    pub index_type: IRIndexType,
 }
 
 impl IRFont {

@@ -24,7 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     PostQuitMessage, RegisterClassW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, WINDOW_EX_STYLE,
     WM_APP, WM_CLOSE, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
     WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONDOWN,
-    WM_RBUTTONUP, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    WM_RBUTTONUP, WM_SIZE, WM_WINDOWPOSCHANGED, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 
 #[derive(Clone, Debug)]
@@ -135,6 +135,14 @@ impl ViewTrait for View {
                 Err(_) => Err(ViewError::CreateWindowError(get_last_error())),
             }?;
 
+            // Send fake resize event to initialize the viewport
+            events_sender
+                .send(InputEvent::Resize {
+                    width: cfg.width,
+                    height: cfg.height,
+                })
+                .unwrap();
+
             info!("WIN32 Window created successfully");
             Ok(View {
                 hwnd,
@@ -170,6 +178,15 @@ impl ViewTrait for View {
                     debug!("WM_APP_QUIT_REQUESTED received, closing the window");
                     closed = true;
                     continue;
+                }
+                // Catch resize event
+                WM_SIZE => {
+                    let width = (msg.lParam.0 & 0xFFFF) as u32;
+                    let height = (msg.lParam.0 >> 16) as u32;
+                    event = InputEvent::Resize {
+                        width: width as usize,
+                        height: height as usize,
+                    };
                 }
                 WM_KEYDOWN => {
                     event = InputEvent::KeyPress(convert_key(VIRTUAL_KEY(msg.wParam.0 as u16)));

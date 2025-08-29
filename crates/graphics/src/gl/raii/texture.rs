@@ -114,7 +114,7 @@ impl Texture {
     ) -> Result<(Self, AssetMemoryUsage), TextureError> {
         let texture = Self::new(ir.texture_type.clone())?;
 
-        texture.bind(0);
+        Texture::bind(texture.texture_type, &texture, 0);
         texture.set_wrap_s(ir.wrap_s.clone())?;
         texture.set_wrap_t(ir.wrap_t.clone())?;
         texture.set_wrap_r(ir.wrap_r.clone())?;
@@ -142,14 +142,17 @@ impl Texture {
         Ok((texture, AssetMemoryUsage::new(size_of::<Texture>(), 0)))
     }
 
-    pub fn bind(&self, texture_index: usize) {
+    pub fn bind(texture_type: GLenum, texture: &Self, texture_index: usize) {
+        assert!(texture_index < 32);
+        assert_eq!(texture_type, texture.texture_type);
         unsafe {
             bindings::ActiveTexture(bindings::TEXTURE0 + texture_index as GLenum);
-            bindings::BindTexture(self.texture_type, self.id);
+            bindings::BindTexture(texture_type, texture.id);
         }
     }
 
     pub fn unbind(texture_type: GLenum, texture_index: usize) {
+        assert!(texture_index < 32);
         unsafe {
             bindings::ActiveTexture(bindings::TEXTURE0 + texture_index as GLenum);
             bindings::BindTexture(texture_type, 0);
