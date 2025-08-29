@@ -1,11 +1,11 @@
 use crate::gl::raii::array_buffer::{ArrayBuffer, ArrayBufferUsage};
-use crate::gl::raii::element_array_buffer::ElementArrayBufferUsage;
+use crate::gl::raii::element_array_buffer::{ElementArrayBuffer, ElementArrayBufferUsage};
 use crate::gl::raii::vertex_array::VertexArray;
 use crate::passes::events::PassEventTrait;
 use crate::passes::result::RenderResult;
 use dawn_assets::ir::font::{IRFont, IRGlyph, IRGlyphVertex};
 use dawn_assets::ir::mesh::IRIndexType;
-use dawn_assets::{Asset, AssetID, AssetMemoryUsage};
+use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage};
 use log::debug;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -22,6 +22,7 @@ pub enum FontError {
     ElementArrayBufferAllocationFailed,
 }
 
+#[derive(Debug)]
 pub struct Font {
     pub glyphs: HashMap<char, IRGlyph>,
     pub atlas: Asset,
@@ -31,6 +32,8 @@ pub struct Font {
     pub vbo: ArrayBuffer,
 }
 
+impl AssetCastable for Font {}
+
 impl Font {
     pub(crate) fn from_ir<E: PassEventTrait>(
         ir: IRFont,
@@ -38,14 +41,18 @@ impl Font {
     ) -> Result<(Self, AssetMemoryUsage), FontError> {
         debug!("Creating Font from IR: {ir:?}");
 
-        let vao = VertexArray::new(ir.topology, IRIndexType::U32)
+        let vao = VertexArray::new(ir.topology, ir.index_type)
             .ok_or(FontError::VertexArrayAllocationFailed)?;
         let mut vbo = ArrayBuffer::new().ok_or(FontError::ArrayBufferAllocationFailed)?;
+        let mut ebo =
+            ElementArrayBuffer::new().ok_or(FontError::ElementArrayBufferAllocationFailed)?;
 
         let vao_binding = vao.bind();
         let vbo_binding = vbo.bind();
+        let ebo_binding = ebo.bind();
 
         vbo_binding.feed(&ir.vertices, ArrayBufferUsage::StaticDraw);
+        ebo_binding.feed(&ir.indices, ElementArrayBufferUsage::StaticDraw);
 
         for (i, layout) in IRGlyphVertex::layout().iter().enumerate() {
             vao_binding.setup_attribute(i, layout);
@@ -71,10 +78,10 @@ impl Font {
         ))
     }
 
-    fn render_string(
+    pub fn render_string(
         &self,
         string: &str,
-        on_glyph: impl Fn(&IRGlyph) -> (bool, RenderResult),
+        mut on_glyph: impl FnMut(&IRGlyph) -> (bool, RenderResult),
     ) -> RenderResult {
         let mut result = RenderResult::default();
 
@@ -88,7 +95,7 @@ impl Font {
                 continue;
             }
 
-            result += biding.draw_arrays(glyph.vertex_offset, glyph.vertex_count);
+            result += biding.draw_elements(glyph.index_count, glyph.index_offset);
         }
 
         result

@@ -7,9 +7,7 @@ pub mod mesh;
 mod probe;
 pub mod raii;
 
-use crate::gl::assets::{
-    MaterialAssetFactory, MeshAssetFactory, ShaderAssetFactory, TextureAssetFactory,
-};
+use crate::gl::assets::{FontAssetFactory, MaterialAssetFactory, MeshAssetFactory, ShaderAssetFactory, TextureAssetFactory};
 use crate::gl::debug::{Debugger, MessageType};
 use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
@@ -29,6 +27,7 @@ pub struct GLRenderer<E: PassEventTrait> {
     shader_factory: Option<ShaderAssetFactory>,
     mesh_factory: Option<MeshAssetFactory>,
     material_factory: Option<MaterialAssetFactory>,
+    font_factory: Option<FontAssetFactory>,
 }
 
 pub struct GLRendererConfig {
@@ -153,6 +152,13 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         } else {
             None
         };
+        let font_factory = if let Some(binding) = cfg.font_factory_binding {
+            let mut factory = FontAssetFactory::new();
+            factory.bind(binding);
+            Some(factory)
+        } else {
+            None
+        };
 
         // Setup the debug output for OpenGL.
         let debugger = Debugger::new(|source, rtype, severity, message| match rtype {
@@ -175,6 +181,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             shader_factory,
             mesh_factory,
             material_factory,
+            font_factory,
         })
     }
 
@@ -193,7 +200,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         if let Some(factory) = &mut self.material_factory {
             factory.process_events::<E>();
         }
-        if let Some(factory) = &mut self.material_factory {
+        if let Some(factory) = &mut self.font_factory {
             factory.process_events::<E>();
         }
 

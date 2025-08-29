@@ -51,6 +51,7 @@ impl Drop for ArrayBufferBinding<'_> {
     }
 }
 
+#[derive(Debug)]
 pub struct ArrayBuffer {
     id: GLuint,
 }
