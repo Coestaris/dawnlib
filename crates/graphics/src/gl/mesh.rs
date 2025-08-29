@@ -1,8 +1,8 @@
 use crate::gl::raii::array_buffer::{ArrayBuffer, ArrayBufferUsage};
 use crate::gl::raii::element_array_buffer::{ElementArrayBuffer, ElementArrayBufferUsage};
 use crate::gl::raii::vertex_array::VertexArray;
-use crate::passes::result::PassExecuteResult;
-use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRSubMesh, IRTopology, IRVertex};
+use crate::passes::result::RenderResult;
+use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRMeshVertex, IRSubMesh, IRTopology};
 use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage};
 use glam::Vec3;
 use log::debug;
@@ -53,10 +53,10 @@ struct IRBucket {
 impl IRBucket {
     pub fn into_bucket(self, deps: &HashMap<AssetID, Asset>) -> Result<TopologyBucket, MeshError> {
         let vao = VertexArray::new(self.topology, self.index_type.clone())
-            .ok_or_else(|| MeshError::VertexArrayAllocationFailed)?;
-        let mut vbo = ArrayBuffer::new().ok_or_else(|| MeshError::ArrayBufferAllocationFailed)?;
-        let mut ebo = ElementArrayBuffer::new()
-            .ok_or_else(|| MeshError::ElementArrayBufferAllocationFailed)?;
+            .ok_or(MeshError::VertexArrayAllocationFailed)?;
+        let mut vbo = ArrayBuffer::new().ok_or(MeshError::ArrayBufferAllocationFailed)?;
+        let mut ebo =
+            ElementArrayBuffer::new().ok_or(MeshError::ElementArrayBufferAllocationFailed)?;
 
         let vao_binding = vao.bind();
         let vbo_binding = vbo.bind();
@@ -76,7 +76,7 @@ impl IRBucket {
         vbo_binding.feed(&joined_vertices, ArrayBufferUsage::StaticDraw);
         ebo_binding.feed(&joined_indices, ElementArrayBufferUsage::StaticDraw);
 
-        for (i, layout) in IRVertex::layout().iter().enumerate() {
+        for (i, layout) in IRMeshVertex::layout().iter().enumerate() {
             vao_binding.setup_attribute(i, layout);
         }
 
@@ -106,7 +106,7 @@ impl IRBucket {
                 min: submesh_ir.bounds.min(),
                 max: submesh_ir.bounds.max(),
                 index_offset: index_offset / divider,
-                vertex_offset: vertex_offset / size_of::<IRVertex>(),
+                vertex_offset: vertex_offset / size_of::<IRMeshVertex>(),
                 index_count: submesh_ir.indices.len() / divider,
             });
 
@@ -166,9 +166,9 @@ impl Mesh {
     #[inline(always)]
     pub fn draw(
         &self,
-        on_submesh: impl Fn(&SubMesh) -> (bool, PassExecuteResult),
-    ) -> PassExecuteResult {
-        let mut result = PassExecuteResult::default();
+        on_submesh: impl Fn(&SubMesh) -> (bool, RenderResult),
+    ) -> RenderResult {
+        let mut result = RenderResult::default();
 
         for bucket in &self.buckets {
             let binding = bucket.vao.bind();

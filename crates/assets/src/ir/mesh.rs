@@ -25,7 +25,7 @@ impl IRMeshBounds {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[repr(C)]
 #[repr(packed)]
-pub struct IRVertex {
+pub struct IRMeshVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub tex_coord: [f32; 2],
@@ -36,7 +36,7 @@ pub struct IRVertex {
 }
 
 #[allow(dead_code)]
-impl IRVertex {
+impl IRMeshVertex {
     pub fn new(pos: Vec3, norm: Vec3, tex: Vec2) -> Self {
         Self {
             position: pos.to_array(),
@@ -45,28 +45,28 @@ impl IRVertex {
         }
     }
 
-    pub fn layout() -> [IRMeshLayout; 3] {
+    pub fn layout() -> [IRLayout; 3] {
         [
-            IRMeshLayout {
-                field: IRMeshField::Position,
-                sample_type: IRMeshLayoutSampleType::Float,
+            IRLayout {
+                field: IRLayoutField::Position,
+                sample_type: IRLayoutSampleType::Float,
                 samples: 3, // floats
-                stride_bytes: size_of::<IRVertex>(),
-                offset_bytes: offset_of!(IRVertex, position),
+                stride_bytes: size_of::<IRMeshVertex>(),
+                offset_bytes: offset_of!(IRMeshVertex, position),
             },
-            IRMeshLayout {
-                field: IRMeshField::Normal,
-                sample_type: IRMeshLayoutSampleType::Float,
+            IRLayout {
+                field: IRLayoutField::Normal,
+                sample_type: IRLayoutSampleType::Float,
                 samples: 3, // floats
-                stride_bytes: size_of::<IRVertex>(),
-                offset_bytes: offset_of!(IRVertex, normal),
+                stride_bytes: size_of::<IRMeshVertex>(),
+                offset_bytes: offset_of!(IRMeshVertex, normal),
             },
-            IRMeshLayout {
-                field: IRMeshField::TexCoord,
-                sample_type: IRMeshLayoutSampleType::Float,
+            IRLayout {
+                field: IRLayoutField::TexCoord,
+                sample_type: IRLayoutSampleType::Float,
                 samples: 2, // floats
-                stride_bytes: size_of::<IRVertex>(),
-                offset_bytes: offset_of!(IRVertex, tex_coord),
+                stride_bytes: size_of::<IRMeshVertex>(),
+                offset_bytes: offset_of!(IRMeshVertex, tex_coord),
             },
         ]
     }
@@ -86,8 +86,8 @@ impl IRVertex {
     pub fn into_bytes<'a>(self) -> &'a [u8] {
         unsafe {
             std::slice::from_raw_parts(
-                (&self as *const IRVertex) as *const u8,
-                size_of::<IRVertex>(),
+                (&self as *const IRMeshVertex) as *const u8,
+                size_of::<IRMeshVertex>(),
             )
         }
     }
@@ -163,7 +163,7 @@ impl Default for IRSubMesh {
     }
 }
 
-pub enum IRMeshField {
+pub enum IRLayoutField {
     Position,
     Normal,
     Tangent,
@@ -173,14 +173,14 @@ pub enum IRMeshField {
     BoneWeights,
 }
 
-pub enum IRMeshLayoutSampleType {
+pub enum IRLayoutSampleType {
     Float,
     U32,
 }
 
-pub struct IRMeshLayout {
-    pub field: IRMeshField,
-    pub sample_type: IRMeshLayoutSampleType,
+pub struct IRLayout {
+    pub field: IRLayoutField,
+    pub sample_type: IRLayoutSampleType,
     pub samples: usize,
     pub stride_bytes: usize,
     pub offset_bytes: usize,
@@ -191,7 +191,7 @@ impl IRMesh {
         let mut sum = size_of::<IRMesh>();
         sum += self.submesh.capacity() * size_of::<IRSubMesh>();
         for submesh in &self.submesh {
-            sum += submesh.vertices.capacity() * size_of::<IRVertex>();
+            sum += submesh.vertices.capacity() * size_of::<IRMeshVertex>();
             sum += submesh.indices.capacity() * size_of::<u32>();
         }
         sum

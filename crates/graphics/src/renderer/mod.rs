@@ -6,7 +6,7 @@ use crate::input::InputEvent;
 use crate::passes::chain::RenderChain;
 use crate::passes::events::{PassEventTrait, RenderPassEvent};
 use crate::passes::pipeline::RenderPipeline;
-use crate::passes::result::PassExecuteResult;
+use crate::passes::result::RenderResult;
 use crate::passes::ChainExecuteCtx;
 use crate::renderable::Renderable;
 use crate::renderer::backend::{RendererBackendError, RendererBackendTrait};
@@ -392,7 +392,7 @@ impl<E: PassEventTrait> Renderer<E> {
         let mut ctx = ChainExecuteCtx::new(frame.renderables.as_slice(), backend);
 
         let pass_result = pipeline.execute(&mut ctx);
-        if let PassExecuteResult::Failed = pass_result {
+        if let RenderResult::Failed = pass_result {
             return Err(RendererError::PipelineExecuteError());
         }
 

@@ -1,4 +1,4 @@
-use crate::passes::result::PassExecuteResult;
+use crate::passes::result::RenderResult;
 use crate::passes::MAX_RENDER_PASSES;
 use evenio::event::GlobalEvent;
 use log::{debug, warn};
@@ -47,7 +47,7 @@ pub(crate) trait RendererMonitorTrait: Send + Sync + 'static + UnwindSafe {
     fn events_stop(&mut self) {}
 
     fn render_start(&mut self) {}
-    fn render_stop(&mut self, _result: PassExecuteResult, _passes: &[Duration; MAX_RENDER_PASSES]) {
+    fn render_stop(&mut self, _result: RenderResult, _passes: &[Duration; MAX_RENDER_PASSES]) {
     }
 }
 
@@ -105,10 +105,10 @@ impl RendererMonitorTrait for RendererMonitor {
         self.render.start();
     }
 
-    fn render_stop(&mut self, result: PassExecuteResult, passes: &[Duration; MAX_RENDER_PASSES]) {
+    fn render_stop(&mut self, result: RenderResult, passes: &[Duration; MAX_RENDER_PASSES]) {
         self.render.stop();
 
-        if let PassExecuteResult::Ok { primitives, calls } = result {
+        if let RenderResult::Ok { primitives, calls } = result {
             // Update the monitor with the number of primitives and draw calls
             self.drawn_primitives.count(primitives);
             self.draw_calls.count(calls);

@@ -1,22 +1,96 @@
+use crate::gl::raii::array_buffer::{ArrayBuffer, ArrayBufferUsage};
+use crate::gl::raii::element_array_buffer::ElementArrayBufferUsage;
+use crate::gl::raii::vertex_array::VertexArray;
 use crate::passes::events::PassEventTrait;
-use dawn_assets::ir::font::IRFont;
+use crate::passes::result::RenderResult;
+use dawn_assets::ir::font::{IRFont, IRGlyph, IRGlyphVertex};
+use dawn_assets::ir::mesh::IRIndexType;
 use dawn_assets::{Asset, AssetID, AssetMemoryUsage};
 use log::debug;
 use std::collections::HashMap;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum FontError {}
+pub enum FontError {
+    #[error("Atlas with ID '{0}' not found for font")]
+    AtlasNoFound(AssetID),
+    #[error("Failed to allocate VertexArray")]
+    VertexArrayAllocationFailed,
+    #[error("Failed to allocate ArrayBuffer")]
+    ArrayBufferAllocationFailed,
+    #[error("Failed to allocate ElementArrayBuffer")]
+    ElementArrayBufferAllocationFailed,
+}
 
-pub struct Font {}
+pub struct Font {
+    pub glyphs: HashMap<char, IRGlyph>,
+    pub atlas: Asset,
+    pub y_advance: f32,
+
+    pub vao: VertexArray,
+    pub vbo: ArrayBuffer,
+}
 
 impl Font {
     pub(crate) fn from_ir<E: PassEventTrait>(
         ir: IRFont,
         deps: HashMap<AssetID, Asset>,
     ) -> Result<(Self, AssetMemoryUsage), FontError> {
-        debug!("Creating Font from IR: {:?}", ir);
+        debug!("Creating Font from IR: {ir:?}");
 
-        Ok((Font {}, AssetMemoryUsage::new(0, 0)))
+        let vao = VertexArray::new(ir.topology, IRIndexType::U32)
+            .ok_or(FontError::VertexArrayAllocationFailed)?;
+        let mut vbo = ArrayBuffer::new().ok_or(FontError::ArrayBufferAllocationFailed)?;
+
+        let vao_binding = vao.bind();
+        let vbo_binding = vbo.bind();
+
+        vbo_binding.feed(&ir.vertices, ArrayBufferUsage::StaticDraw);
+
+        for (i, layout) in IRGlyphVertex::layout().iter().enumerate() {
+            vao_binding.setup_attribute(i, layout);
+        }
+
+        drop(vbo_binding);
+        drop(vao_binding);
+
+        let atlas = deps
+            .get(&ir.atlas)
+            .cloned()
+            .ok_or_else(|| FontError::AtlasNoFound(ir.atlas.clone()))?;
+
+        Ok((
+            Font {
+                glyphs: ir.glyphs,
+                atlas,
+                y_advance: ir.y_advance,
+                vao,
+                vbo,
+            },
+            AssetMemoryUsage::new(0, 0),
+        ))
+    }
+
+    fn render_string(
+        &self,
+        string: &str,
+        on_glyph: impl Fn(&IRGlyph) -> (bool, RenderResult),
+    ) -> RenderResult {
+        let mut result = RenderResult::default();
+
+        let biding = self.vao.bind();
+        for c in string.chars() {
+            let glyph = self.glyphs.get(&c).unwrap();
+            let (skip, new_result) = on_glyph(glyph);
+            result += new_result;
+
+            if skip {
+                continue;
+            }
+
+            result += biding.draw_arrays(glyph.vertex_offset, glyph.vertex_count);
+        }
+
+        result
     }
 }

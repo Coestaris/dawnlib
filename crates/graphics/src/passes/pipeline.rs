@@ -1,6 +1,6 @@
 use crate::passes::chain::RenderChain;
 use crate::passes::events::{PassEventTarget, PassEventTrait, RenderPassEvent};
-use crate::passes::result::PassExecuteResult;
+use crate::passes::result::RenderResult;
 use crate::passes::{ChainExecuteCtx, MAX_RENDER_PASSES};
 use std::mem::MaybeUninit;
 
@@ -88,7 +88,7 @@ where
     }
 
     #[inline(always)]
-    pub(crate) fn execute(&mut self, ctx: &mut ChainExecuteCtx<E>) -> PassExecuteResult {
+    pub(crate) fn execute(&mut self, ctx: &mut ChainExecuteCtx<E>) -> RenderResult {
         // Execute the chain of render passes.
         self.chain.execute(0, ctx)
     }

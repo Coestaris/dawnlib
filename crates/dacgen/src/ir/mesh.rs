@@ -2,7 +2,7 @@ use crate::ir::{normalize_name, PartialIR};
 use crate::user::{UserAssetHeader, UserMeshAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::material::IRMaterial;
-use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRMeshBounds, IRSubMesh, IRTopology, IRVertex};
+use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRMeshBounds, IRSubMesh, IRTopology, IRMeshVertex};
 use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
@@ -425,13 +425,13 @@ fn process_primitive(
 
     let mut min = Vec3::splat(f32::MAX);
     let mut max = Vec3::splat(f32::MIN);
-    let mut vertices = Vec::with_capacity(positions.len() * size_of::<IRVertex>());
+    let mut vertices = Vec::with_capacity(positions.len() * size_of::<IRMeshVertex>());
     for (position, (normal, tex_coord)) in
         positions.iter().zip(normals.iter().zip(tex_coords.iter()))
     {
         min = min.min(*position);
         max = max.max(*position);
-        vertices.extend_from_slice(IRVertex::new(*position, *normal, *tex_coord).into_bytes());
+        vertices.extend_from_slice(IRMeshVertex::new(*position, *normal, *tex_coord).into_bytes());
     }
 
     Ok(PrimitiveProcessResult {

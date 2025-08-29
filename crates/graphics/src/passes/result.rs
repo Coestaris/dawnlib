@@ -4,7 +4,7 @@ use std::ops;
 /// It can be used to indicate whether the pass execution was successful or not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
-pub enum PassExecuteResult {
+pub enum RenderResult {
     /// Represents a successful pass execution.
     Ok {
         // Number of any draw calls made during the pass execution.
@@ -19,25 +19,25 @@ pub enum PassExecuteResult {
     Failed,
 }
 
-impl PassExecuteResult {
+impl RenderResult {
     #[inline(always)]
     pub fn ok(calls: usize, primitives: usize) -> Self {
-        PassExecuteResult::Ok { calls, primitives }
+        RenderResult::Ok { calls, primitives }
     }
 
     #[inline(always)]
     pub fn failed() -> Self {
-        PassExecuteResult::Failed
+        RenderResult::Failed
     }
 }
 
-impl Default for PassExecuteResult {
+impl Default for RenderResult {
     #[inline(always)]
     fn default() -> Self {
-        PassExecuteResult::ok(0, 0)
+        RenderResult::ok(0, 0)
     }
 }
-impl ops::Add for PassExecuteResult {
+impl ops::Add for RenderResult {
     type Output = Self;
 
     #[inline(always)]
@@ -45,21 +45,21 @@ impl ops::Add for PassExecuteResult {
         // If any of the results is None, return None.
         match (self, other) {
             (
-                PassExecuteResult::Ok { calls, primitives },
-                PassExecuteResult::Ok {
+                RenderResult::Ok { calls, primitives },
+                RenderResult::Ok {
                     calls: oc,
                     primitives: op,
                 },
-            ) => PassExecuteResult::Ok {
+            ) => RenderResult::Ok {
                 calls: calls + oc,
                 primitives: primitives + op,
             },
-            _ => PassExecuteResult::Failed,
+            _ => RenderResult::Failed,
         }
     }
 }
 
-impl ops::AddAssign for PassExecuteResult {
+impl ops::AddAssign for RenderResult {
     #[inline(always)]
     fn add_assign(&mut self, other: Self) {
         let other = other.clone();

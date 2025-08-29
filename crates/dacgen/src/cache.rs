@@ -36,12 +36,18 @@ impl Cache {
         let mut hasher = DeepHasher::new(self.checksum_algorithm);
         hasher
             .update_object(&self.write_config, self.cache_dir.clone(), self.cwd.clone())
-            .map_err(|e| WriterError::HashError(e))?;
+            .map_err(WriterError::HashError)?;
         hasher
             .update_object(asset, self.cache_dir.clone(), self.cwd.clone())
-            .map_err(|e| WriterError::HashError(e))?;
+            .map_err(WriterError::HashError)?;
 
-        Ok(self.cache_dir.join(hasher.finalize().hex_string()))
+        let hash = hasher.finalize().hex_string();
+
+        // Add basename to the cache name, to make debugging easier.
+        let basename = asset.path.file_stem().unwrap().to_str().unwrap();
+        let filename = format!("{basename}_{hash}");
+
+        Ok(self.cache_dir.join(filename))
     }
 
     pub fn get(&self, asset: &UserAssetFile) -> Option<Vec<BinaryAsset>> {
@@ -83,7 +89,7 @@ impl Cache {
 
         // Serialize the binaries
         let data = dawn_dac::serialize_backend::serialize(binaries)
-            .map_err(|e| WriterError::SerializationError(e))?;
+            .map_err(WriterError::SerializationError)?;
 
         // Write to the cache file
         std::fs::write(&cache_path, data)?;
