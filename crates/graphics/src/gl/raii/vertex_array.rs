@@ -1,7 +1,7 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::{GLint, GLsizei, GLuint};
-use crate::passes::result::PassExecuteResult;
-use dawn_assets::ir::mesh::{IRIndexType, IRMeshLayout, IRMeshLayoutSampleType, IRTopology};
+use crate::passes::result::RenderResult;
+use dawn_assets::ir::mesh::{IRIndexType, IRLayout, IRLayoutSampleType, IRTopology};
 use log::debug;
 
 pub struct VertexArray {
@@ -25,10 +25,10 @@ impl<'a> VertexArrayBinding<'a> {
         Self { vertex_array }
     }
 
-    pub fn setup_attribute(&self, index: usize, attribute: &IRMeshLayout) {
+    pub fn setup_attribute(&self, index: usize, attribute: &IRLayout) {
         let gl_format = match attribute.sample_type {
-            IRMeshLayoutSampleType::Float => bindings::FLOAT,
-            IRMeshLayoutSampleType::U32 => bindings::UNSIGNED_INT,
+            IRLayoutSampleType::Float => bindings::FLOAT,
+            IRLayoutSampleType::U32 => bindings::UNSIGNED_INT,
         };
         unsafe {
             bindings::EnableVertexAttribArray(index as GLuint);
@@ -49,7 +49,7 @@ impl<'a> VertexArrayBinding<'a> {
         index_count: usize,
         index_offset: usize,
         base_vertex: usize,
-    ) -> PassExecuteResult {
+    ) -> RenderResult {
         unsafe {
             bindings::DrawElementsBaseVertex(
                 self.vertex_array.draw_mode,
@@ -60,7 +60,20 @@ impl<'a> VertexArrayBinding<'a> {
             );
         }
 
-        PassExecuteResult::ok(1, index_count / self.vertex_array.topology_size)
+        RenderResult::ok(1, index_count / self.vertex_array.topology_size)
+    }
+
+    #[inline(always)]
+    pub fn draw_arrays(&self, vertex_offset: usize, vertex_count: usize) -> RenderResult {
+        unsafe {
+            bindings::DrawArrays(
+                self.vertex_array.draw_mode,
+                vertex_offset as GLint,
+                vertex_count as GLsizei,
+            );
+        }
+
+        RenderResult::ok(1, vertex_count / self.vertex_array.topology_size)
     }
 }
 

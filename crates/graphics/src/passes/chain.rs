@@ -1,5 +1,5 @@
 use crate::passes::events::{PassEventTarget, PassEventTrait};
-use crate::passes::result::PassExecuteResult;
+use crate::passes::result::RenderResult;
 use crate::passes::{ChainExecuteCtx, RenderPass};
 use std::marker::PhantomData;
 
@@ -37,8 +37,8 @@ impl<E: PassEventTrait, H, T> ChainCons<E, H, T> {
 pub trait RenderChain<E: PassEventTrait> {
     /// Sequentially execute the chain of render passes.
     #[inline(always)]
-    fn execute(&mut self, _: usize, _: &mut ChainExecuteCtx<E>) -> PassExecuteResult {
-        PassExecuteResult::default()
+    fn execute(&mut self, _: usize, _: &mut ChainExecuteCtx<E>) -> RenderResult {
+        RenderResult::default()
     }
 
     /// Get the length of the chain.
@@ -71,7 +71,7 @@ where
     T: RenderChain<E>,
 {
     #[inline(always)]
-    fn execute(&mut self, idx: usize, ctx: &mut ChainExecuteCtx<E>) -> PassExecuteResult {
+    fn execute(&mut self, idx: usize, ctx: &mut ChainExecuteCtx<E>) -> RenderResult {
         // Execute the head pass.
         // This will handle all required operations for the head pass
         let mut result = ctx.execute::<H>(idx, &mut self.head);

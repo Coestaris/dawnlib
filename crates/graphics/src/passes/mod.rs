@@ -1,5 +1,5 @@
 use crate::passes::events::{PassEventTarget, PassEventTrait};
-use crate::passes::result::PassExecuteResult;
+use crate::passes::result::RenderResult;
 use crate::renderable::Renderable;
 use crate::renderer::backend::RendererBackend;
 use std::time::Duration;
@@ -34,8 +34,8 @@ pub trait RenderPass<E: PassEventTrait>: Send + Sync + 'static {
     /// Begin the render pass execution.
     /// This method is called before processing any renderables or meshes.
     #[inline(always)]
-    fn begin(&mut self, _backend: &RendererBackend<E>) -> PassExecuteResult {
-        PassExecuteResult::default()
+    fn begin(&mut self, _backend: &RendererBackend<E>) -> RenderResult {
+        RenderResult::default()
     }
 
     /// Process a renderable object.
@@ -44,15 +44,15 @@ pub trait RenderPass<E: PassEventTrait>: Send + Sync + 'static {
         &mut self,
         _backend: &mut RendererBackend<E>,
         _renderable: &Renderable,
-    ) -> PassExecuteResult {
-        PassExecuteResult::default()
+    ) -> RenderResult {
+        RenderResult::default()
     }
 
     /// End the render pass execution.
     /// This method is called after processing all renderables and meshes.
     #[inline(always)]
-    fn end(&mut self, _backend: &mut RendererBackend<E>) -> PassExecuteResult {
-        PassExecuteResult::default()
+    fn end(&mut self, _backend: &mut RendererBackend<E>) -> RenderResult {
+        RenderResult::default()
     }
 }
 
@@ -75,14 +75,14 @@ impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
     }
 
     /// Executes the render pass on using the current context.
-    pub fn execute<P>(&mut self, idx: usize, pass: &mut P) -> PassExecuteResult
+    pub fn execute<P>(&mut self, idx: usize, pass: &mut P) -> RenderResult
     where
         E: PassEventTrait,
         P: RenderPass<E>,
     {
         let start = std::time::Instant::now();
 
-        let mut result = PassExecuteResult::default();
+        let mut result = RenderResult::default();
         result += pass.begin(self.backend);
         for renderable in self.renderables {
             result += pass.on_renderable(self.backend, renderable);

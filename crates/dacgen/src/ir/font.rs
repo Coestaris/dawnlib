@@ -1,10 +1,12 @@
 use crate::ir::{normalize_name, PartialIR};
 use crate::user::{UserAssetHeader, UserFontAsset};
 use crate::UserAssetFile;
-use dawn_assets::ir::font::{IRFont, IRGlyph};
+use dawn_assets::ir::font::{IRFont, IRGlyph, IRGlyphVertex};
+use dawn_assets::ir::mesh::IRTopology;
 use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
+use glam::Vec2;
 use image::DynamicImage;
 use rusttype::{point, Font, Scale};
 use std::collections::HashMap;
@@ -91,35 +93,52 @@ pub fn convert_font(
             .unwrap();
         (max_x - min_x) as u32
     };
+    let width = glyphs_width + 2 * HORIZONTAL_SPACING as u32;
+    let height = glyphs_height + 2 * VERTICAL_SPACING as u32;
 
     let mut ir_glyphs = HashMap::new();
-    for c in text.chars() {
-        let g = font.glyph(c).scaled(scale);
-        let h_metrics = g.h_metrics();
-        let advance_width = h_metrics.advance_width;
-        let left_side_bearing = h_metrics.left_side_bearing;
-        let bounding_box = g
-            .exact_bounding_box()
-            .map(|bb| (bb.min.x, bb.min.y, bb.max.x - bb.min.x, bb.max.y - bb.min.y));
+    let mut vertices = Vec::with_capacity(glyphs.len() * 6 * size_of::<IRGlyphVertex>());
+    let mut current_vertex = 0;
+    for (char, positioned) in text.chars().zip(&glyphs) {
+        let bounding_box = positioned.pixel_bounding_box().unwrap();
+        let unpositioned = positioned.unpositioned();
+
+        let w = (bounding_box.max.x - bounding_box.min.x) as f32;
+        let h = (bounding_box.max.y - bounding_box.min.y) as f32;
+        let x = bounding_box.min.x as f32 - HORIZONTAL_SPACING;
+        let y = bounding_box.min.y as f32 - VERTICAL_SPACING;
+
+        let a = Vec2::new(x, y);
+        let b = Vec2::new(x + w, y);
+        let c = Vec2::new(x, y + h);
+        let d = Vec2::new(x + w, y + h);
+
+        // Insert two triangles
+        // (A, B, C)
+        vertices.extend_from_slice(IRGlyphVertex::new(a).into_bytes());
+        vertices.extend_from_slice(IRGlyphVertex::new(b).into_bytes());
+        vertices.extend_from_slice(IRGlyphVertex::new(c).into_bytes());
+
+        // (A, C, D)
+        vertices.extend_from_slice(IRGlyphVertex::new(a).into_bytes());
+        vertices.extend_from_slice(IRGlyphVertex::new(d).into_bytes());
+        vertices.extend_from_slice(IRGlyphVertex::new(c).into_bytes());
 
         ir_glyphs.insert(
-            c,
+            char,
             IRGlyph {
-                width: 0,
-                height: 0,
-                x: 0,
-                y: 0,
-                x_advance: 0,
-                y_offset: 0,
-                x_offset: 0,
-                page: 0,
+                vertex_offset: current_vertex,
+                vertex_count: 6,
+                x_advance: unpositioned.h_metrics().advance_width,
+                y_offset: 0.0,
+                x_offset: unpositioned.h_metrics().left_side_bearing,
             },
         );
+
+        current_vertex += 6;
     }
 
     // Render the glyphs into a buffer
-    let width = glyphs_width + 2 * HORIZONTAL_SPACING as u32;
-    let height = glyphs_height + 2 * VERTICAL_SPACING as u32;
     let mut raw = vec![0; (width * height) as usize];
     for glyph in glyphs {
         if let Some(bounding_box) = glyph.pixel_bounding_box() {
@@ -141,21 +160,24 @@ pub fn convert_font(
     }
 
     // Test the image
-    let image = DynamicImage::ImageRgb8(image::ImageBuffer::from_fn(width, height, |x, y| {
-        let alpha = raw[(x + y * width) as usize];
-        image::Rgb([alpha, alpha, alpha])
-    }));
-    image.save("/tmp/output_font.png")?;
+    // let image = DynamicImage::ImageRgb8(image::ImageBuffer::from_fn(width, height, |x, y| {
+    //     let alpha = raw[(x + y * width) as usize];
+    //     image::Rgb([alpha, alpha, alpha])
+    // }));
+    // image.save("/tmp/output_font.png")?;
 
-    let (mut irs, texture_id) = convert_texture(font_id.clone(), width, height, raw)?;
+    let (mut irs, atlas) = convert_texture(font_id.clone(), width, height, raw)?;
     let mut header = file.asset.header.clone();
-    header.dependencies.insert(texture_id.clone());
+    header.dependencies.insert(atlas.clone());
     irs.push(PartialIR {
         id: font_id,
         header,
         ir: IRAsset::Font(IRFont {
             glyphs: ir_glyphs,
-            atlases: vec![texture_id],
+            y_advance: 0.0,
+            atlas,
+            vertices,
+            topology: IRTopology::Triangles,
         }),
     });
 
