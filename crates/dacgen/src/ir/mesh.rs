@@ -10,7 +10,6 @@ use dawn_util::profile::Measure;
 use glam::{Mat4, Vec3};
 use gltf::buffer::Data;
 use gltf::image::Format;
-use gltf::mesh::util::ReadIndices;
 use gltf::mesh::Mode;
 use gltf::scene::Transform;
 use rayon::prelude::*;
@@ -166,7 +165,7 @@ fn material_id(
     })
 }
 
-pub fn process_texture(
+fn process_texture(
     material_id: AssetID,
     texture_type: MaterialTextureType,
     texture: gltf::Texture,
@@ -233,7 +232,7 @@ pub fn process_texture(
     ))
 }
 
-pub fn process_material(
+fn process_material(
     mesh_index: usize,
     primitive_index: usize,
     material: gltf::Material,
@@ -331,7 +330,7 @@ pub fn process_material(
     Ok((AssetID::from(id), irs))
 }
 
-pub fn process_primitive(
+fn process_primitive(
     mesh_index: usize,
     primitive_index: usize,
     transform: Mat4,
@@ -590,6 +589,6 @@ pub fn convert_mesh(
     cache_dir: &Path,
     cwd: &Path,
     user: &UserMeshAsset,
-) -> Result<Vec<PartialIR>, String> {
-    convert_mesh_inner(file, cache_dir, cwd, user).map_err(|e| e.to_string())
+) -> anyhow::Result<Vec<PartialIR>> {
+    convert_mesh_inner(file, cache_dir, cwd, user).map_err(|e| anyhow::anyhow!(e))
 }

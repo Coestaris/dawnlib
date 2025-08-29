@@ -1,6 +1,6 @@
 use dawn_assets::{AssetHeader, AssetID};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::time::SystemTime;
 use thiserror::Error;
@@ -47,9 +47,9 @@ pub(crate) struct TOC(HashMap<AssetID, Record>);
 #[derive(Error, Debug)]
 pub enum ContainerError {
     #[error("Compression error: {0}")]
-    CompressionError(String),
+    CompressionError(anyhow::Error),
     #[error("Serialization error: {0}")]
-    SerializationError(String),
+    SerializationError(anyhow::Error),
     #[error("IO error: {0}")]
     IOError(#[from] std::io::Error),
     #[error("Size overflow")]
@@ -61,7 +61,7 @@ pub enum ContainerError {
     #[error("Asset not found: {0}")]
     AssetNotFound(AssetID),
     #[error("Deserialization error: {0}")]
-    DeserializationError(String),
+    DeserializationError(anyhow::Error),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, Hash)]
@@ -156,15 +156,14 @@ pub mod serialize_backend {
     use serde::de::DeserializeOwned;
     use serde::Serialize;
 
-    pub fn serialize<T: Serialize>(object: &T) -> Result<Vec<u8>, String> {
-        bincode::serde::encode_to_vec(object, bincode::config::standard())
-            .map_err(|e| e.to_string())
+    pub fn serialize<T: Serialize>(object: &T) -> anyhow::Result<Vec<u8>> {
+        let data = bincode::serde::encode_to_vec(object, bincode::config::standard())?;
+        Ok(data)
     }
 
-    pub fn deserialize<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, String> {
-        bincode::serde::decode_from_slice(bytes, bincode::config::standard())
-            .map(|(obj, _)| obj)
-            .map_err(|e| e.to_string())
+    pub fn deserialize<T: DeserializeOwned>(bytes: &[u8]) -> anyhow::Result<T> {
+        let (object, _) = bincode::serde::decode_from_slice(bytes, bincode::config::standard())?;
+        Ok(object)
     }
 }
 
@@ -182,7 +181,7 @@ pub mod compression_backend {
     use std::io::{Read, Write};
     use std::sync::Arc;
 
-    pub fn compress(data: &[u8], level: CompressionLevel) -> Result<Vec<u8>, String> {
+    pub fn compress(data: &[u8], level: CompressionLevel) -> anyhow::Result<Vec<u8>> {
         // Why bother compressing if the level is None?
         if matches!(level, CompressionLevel::None) {
             return Ok(data.to_vec());
@@ -226,7 +225,7 @@ pub mod compression_backend {
         // It's faster to use a single thread.
         if data.len() <= THRESHOLD {
             let mut w = CompressorWriter::with_params(Vec::new(), 64 * 1024, &params);
-            w.write_all(data).map_err(|e| e.to_string())?;
+            w.write_all(data)?;
             return Ok(w.into_inner());
         }
 
@@ -260,18 +259,16 @@ pub mod compression_backend {
 
         // Call the multi-threaded compression function
         let written = compress_multi(&params, &mut owned_input, &mut out[..], &mut per_thread[..])
-            .map_err(|e| format!("brotli compress_multi failed: {:?}", e))?;
+            .map_err(|e| anyhow::anyhow!("Compress multi failed {:?}", e))?;
 
         out.truncate(written);
         Ok(out)
     }
 
-    pub fn decompress(data: &[u8]) -> Result<Vec<u8>, String> {
+    pub fn decompress(data: &[u8]) -> anyhow::Result<Vec<u8>> {
         let mut decompressed = Vec::new();
         let mut reader = brotli::Decompressor::new(data, 4096);
-        reader
-            .read_to_end(&mut decompressed)
-            .map_err(|e| e.to_string())?;
+        reader.read_to_end(&mut decompressed)?;
         Ok(decompressed)
     }
 }

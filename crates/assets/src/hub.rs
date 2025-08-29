@@ -5,6 +5,7 @@ use crate::requests::scheduler::{PeekResult, Scheduler, TaskDoneResult};
 use crate::requests::task::{AssetTaskID, TaskCommand};
 use crate::requests::{AssetRequest, AssetRequestID};
 use crate::{Asset, AssetCastable, AssetHeader, AssetID, AssetMemoryUsage, AssetType, TypedAsset};
+use dawn_ecs::events::TickEvent;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver, Sender};
 use evenio::fetch::Single;
@@ -14,14 +15,13 @@ use log::{debug, error, info};
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
 use thiserror::Error;
-use dawn_ecs::events::TickEvent;
 
 /// AssetHub events are used to notify the ECS world about asset-related events.
 /// These events can be used to track the status
 /// of asset requests, loading, and freeing operations
 #[derive(GlobalEvent)]
 pub enum AssetHubEvent {
-    RequestFinished(AssetRequestID, Result<(), String>), // Request ID and success status
+    RequestFinished(AssetRequestID, anyhow::Result<()>), // Request ID and success status
     AssetRead(AssetID),
     AssetLoaded(AssetID),
     AssetFreed(AssetID),
@@ -268,7 +268,7 @@ impl AssetHub {
         mut hub: Single<&mut AssetHub>,
         mut sender: Sender<AssetHubEvent>,
     ) {
-        // Peek tasks and route the to the factories
+        // Peek tasks and route to the the factories
         loop {
             let next = {
                 // TODO: Temporary workaround to satisfy the borrow checker.
@@ -284,8 +284,8 @@ impl AssetHub {
                         TaskCommand::Load(aid) => hub.send_load(task.id.clone(), aid),
                         TaskCommand::Free(aid) => hub.send_free(task.id.clone(), aid),
                     };
-                    if let Err(e) = result {
-                        hub.task_finished(task.id.clone(), Err(e.to_string()), &mut sender);
+                    if let Err(err) = result {
+                        hub.task_finished(task.id.clone(), Err(err.into()), &mut sender);
                     }
                 }
                 PeekResult::NoPendingTasks => break,
@@ -293,13 +293,13 @@ impl AssetHub {
                     // This should never happen, but just in case
                     hub.task_finished(tid, Ok(()), &mut sender);
                 }
-                PeekResult::UnwrapFailed(tid, message) => {
-                    hub.task_finished(tid, Err(message.to_string()), &mut sender);
+                PeekResult::UnwrapFailed(tid, err) => {
+                    hub.task_finished(tid, Err(err.into()), &mut sender);
                 }
             }
         }
 
-        // Process events from reader
+        // Process events from the reader
         while let Some(message) = ReadStorage::try_recv(hub.reader.as_ref()) {
             hub.recv_reader(message, &mut sender);
         }
@@ -323,7 +323,7 @@ impl AssetHub {
     fn task_finished(
         &mut self,
         tid: AssetTaskID,
-        result: Result<(), String>,
+        result: anyhow::Result<()>,
         sender: &mut Sender<AssetHubEvent>,
     ) {
         // Update the task pool with the completed task
@@ -332,8 +332,8 @@ impl AssetHub {
                 // Notify the ECS world about the completed request
                 sender.send(AssetHubEvent::RequestFinished(
                     rid,
-                    result.map_err(|e| e.to_string()),
-                ));
+                    result.map_err(|e| e.into()),
+                ))
             }
             _ => {}
         }
@@ -348,8 +348,8 @@ impl AssetHub {
                 self.registry.enumerate(headers);
                 self.task_finished(tid, Ok(()), &mut sender);
             }
-            FromReaderMessage::Enumerate(tid, Err(message)) => {
-                self.task_finished(tid, Err(message), &mut sender);
+            FromReaderMessage::Enumerate(tid, Err(err)) => {
+                self.task_finished(tid, Err(err), &mut sender);
             }
             FromReaderMessage::Read(tid, aid, Ok(ir)) => {
                 // Save the IR asset to the registry
@@ -360,8 +360,8 @@ impl AssetHub {
                 sender.send(AssetHubEvent::AssetRead(aid.clone()));
                 self.task_finished(tid, Ok(()), &mut sender);
             }
-            FromReaderMessage::Read(tid, _, Err(message)) => {
-                self.task_finished(tid, Err(message), &mut sender);
+            FromReaderMessage::Read(tid, _, Err(err)) => {
+                self.task_finished(tid, Err(err), &mut sender);
             }
         };
     }
@@ -389,8 +389,8 @@ impl AssetHub {
                 sender.send(AssetHubEvent::AssetLoaded(aid.clone()));
                 self.task_finished(tid, Ok(()), &mut sender);
             }
-            FromFactoryMessage::Load(tid, _aid, Err(message)) => {
-                self.task_finished(tid, Err(message), &mut sender);
+            FromFactoryMessage::Load(tid, _aid, Err(err)) => {
+                self.task_finished(tid, Err(err), &mut sender);
             }
             FromFactoryMessage::Free(tid, aid, Ok(())) => {
                 self.registry
@@ -400,8 +400,8 @@ impl AssetHub {
                 sender.send(AssetHubEvent::AssetFreed(aid.clone()));
                 self.task_finished(tid, Ok(()), &mut sender);
             }
-            FromFactoryMessage::Free(tid, _aid, Err(message)) => {
-                self.task_finished(tid, Err(message), &mut sender);
+            FromFactoryMessage::Free(tid, _aid, Err(err)) => {
+                self.task_finished(tid, Err(err), &mut sender);
             }
         };
     }

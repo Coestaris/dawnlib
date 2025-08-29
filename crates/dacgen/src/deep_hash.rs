@@ -46,7 +46,10 @@ pub struct DeepHasher {
 
 impl DeepHasher {
     pub fn new(algorithm: ChecksumAlgorithm) -> Self {
-        DeepHasher { algorithm, hash: Default::default() }
+        DeepHasher {
+            algorithm,
+            hash: Default::default(),
+        }
     }
 
     pub fn update_object<T: DeepHash>(
@@ -54,15 +57,14 @@ impl DeepHasher {
         obj: &T,
         cache_dir: PathBuf,
         cwd: PathBuf,
-    ) -> Result<(), WriterError> {
+    ) -> anyhow::Result<()> {
         let mut ctx = DeepHashCtx::new(cache_dir, cwd);
         match self.algorithm {
             ChecksumAlgorithm::Blake3 => {
                 let hasher = blake3::Hasher::new();
                 let mut hasher = Blake3Hasher::new(hasher);
                 hasher.write(self.hash.as_slice());
-                obj.deep_hash(&mut hasher, &mut ctx)
-                    .map_err(|e| WriterError::SerializationError(e))?;
+                obj.deep_hash(&mut hasher, &mut ctx)?;
                 let hasher = hasher.into_inner();
                 let hash = hasher.finalize();
                 self.hash = AssetChecksum::from_bytes(hash.as_bytes());
@@ -76,7 +78,7 @@ impl DeepHasher {
             ChecksumAlgorithm::SHA256 => {
                 unimplemented!()
             }
-            _ => Err(WriterError::UnsupportedChecksumAlgorithm(self.algorithm)),
+            _ => Err(WriterError::UnsupportedChecksumAlgorithm(self.algorithm).into()),
         }
     }
 
@@ -85,8 +87,7 @@ impl DeepHasher {
     }
 }
 
-
-pub(crate) fn deep_hash_bytes(
+pub(crate) fn hash_bytes(
     bytes: &[u8],
     algorithm: ChecksumAlgorithm,
 ) -> Result<AssetChecksum, WriterError> {
@@ -108,7 +109,7 @@ pub(crate) fn deep_hash_bytes(
 }
 
 pub trait DeepHash {
-    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> Result<(), String>;
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()>;
 }
 
 pub fn with_std<T: Hash, H: Hasher>(value: &T, state: &mut H) {
@@ -120,7 +121,7 @@ macro_rules! impl_basic {
         $(
             impl DeepHash for $t {
                 #[inline]
-                fn deep_hash<H: Hasher>(&self, state: &mut H, _: &mut DeepHashCtx) -> Result<(), String> {
+                fn deep_hash<H: Hasher>(&self, state: &mut H, _: &mut DeepHashCtx) -> anyhow::Result<()> {
                     self.hash(state);
                     Ok(())
                 }
@@ -132,7 +133,7 @@ macro_rules! impl_basic {
 impl_basic!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize, String, char, bool);
 
 impl<T: DeepHash> DeepHash for Vec<T> {
-    fn deep_hash<H: Hasher>(&self, state: &mut H, ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<H: Hasher>(&self, state: &mut H, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         for item in self {
             item.deep_hash(state, ctx)?;
         }
@@ -141,7 +142,7 @@ impl<T: DeepHash> DeepHash for Vec<T> {
 }
 
 impl<K: DeepHash + Ord> DeepHash for HashSet<K> {
-    fn deep_hash<H: Hasher>(&self, state: &mut H, ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<H: Hasher>(&self, state: &mut H, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         // Sort keys for consistent hashing
         let mut keys: Vec<&K> = self.iter().collect();
         keys.sort();
@@ -153,7 +154,7 @@ impl<K: DeepHash + Ord> DeepHash for HashSet<K> {
 }
 
 impl<K: DeepHash + Ord + Hash, V: DeepHash> DeepHash for HashMap<K, V> {
-    fn deep_hash<H: Hasher>(&self, state: &mut H, ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<H: Hasher>(&self, state: &mut H, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         // Sort keys for consistent hashing
         let mut keys: Vec<&K> = self.keys().collect();
         keys.sort();
@@ -169,7 +170,7 @@ impl<K: DeepHash + Ord + Hash, V: DeepHash> DeepHash for HashMap<K, V> {
 }
 
 impl DeepHash for f32 {
-    fn deep_hash<T: Hasher>(&self, state: &mut T, _: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, _: &mut DeepHashCtx) -> anyhow::Result<()> {
         // Hash the bit representation of the float
         self.to_bits().hash(state);
         Ok(())
@@ -177,7 +178,7 @@ impl DeepHash for f32 {
 }
 
 impl DeepHash for f64 {
-    fn deep_hash<T: Hasher>(&self, state: &mut T, _: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, _: &mut DeepHashCtx) -> anyhow::Result<()> {
         // Hash the bit representation of the float
         self.to_bits().hash(state);
         Ok(())
@@ -185,13 +186,13 @@ impl DeepHash for f64 {
 }
 
 impl<'a, T: DeepHash> DeepHash for &'a T {
-    fn deep_hash<H: Hasher>(&self, state: &mut H, ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<H: Hasher>(&self, state: &mut H, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         (*self).deep_hash(state, ctx)
     }
 }
 
 impl<const N: usize> DeepHash for [f32; N] {
-    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         for v in self {
             (*v).deep_hash(state, ctx)?;
         }
@@ -200,7 +201,7 @@ impl<const N: usize> DeepHash for [f32; N] {
 }
 
 impl<T: DeepHash> DeepHash for Option<T> {
-    fn deep_hash<H: Hasher>(&self, state: &mut H, ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<H: Hasher>(&self, state: &mut H, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         match self {
             Some(value) => {
                 state.write_u8(1);

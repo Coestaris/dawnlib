@@ -16,28 +16,28 @@ pub struct WriteConfig {
 }
 
 impl DeepHash for ChecksumAlgorithm {
-    fn deep_hash<T: Hasher>(&self, state: &mut T, _ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, _ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         self.hash(state);
         Ok(())
     }
 }
 
 impl DeepHash for ReadMode {
-    fn deep_hash<T: Hasher>(&self, state: &mut T, _ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, _ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         self.hash(state);
         Ok(())
     }
 }
 
 impl DeepHash for CompressionLevel {
-    fn deep_hash<T: Hasher>(&self, state: &mut T, _ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, _ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         self.hash(state);
         Ok(())
     }
 }
 
 impl DeepHash for WriteConfig {
-    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         self.read_mode.deep_hash(state, ctx)?;
         self.checksum_algorithm.deep_hash(state, ctx)?;
         self.compression_level.deep_hash(state, ctx)?;

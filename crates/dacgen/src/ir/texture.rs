@@ -1,12 +1,13 @@
 use crate::ir::{normalize_name, PartialIR};
 use crate::user::{UserAssetHeader, UserTextureAsset};
 use crate::UserAssetFile;
+use anyhow::anyhow;
 use dawn_assets::ir::texture::{
-    IRPixelDataType, IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap,
+    IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap,
 };
 use dawn_assets::ir::IRAsset;
 use dawn_assets::AssetID;
-use image::{ColorType, DynamicImage, Rgba};
+use image::{DynamicImage, Rgba};
 use std::path::Path;
 
 struct Stream {
@@ -36,7 +37,7 @@ fn pack_texture2d(
     width: u32,
     height: u32,
     pack: impl Fn(&mut Stream, &Rgba<u8>) -> (),
-) -> Result<Vec<u8>, String> {
+) -> anyhow::Result<Vec<u8>> {
     let resized =
         DynamicImage::resize_exact(&image, width, height, image::imageops::FilterType::Nearest);
     let resized = resized.to_rgba8();
@@ -68,7 +69,7 @@ pub fn convert_texture_from_memory(
     id: AssetID,
     header: UserAssetHeader,
     user: UserTextureAssetInner,
-) -> Result<Vec<PartialIR>, String> {
+) -> anyhow::Result<Vec<PartialIR>> {
     let data = match user.texture_type {
         IRTextureType::Texture2D { width, height } => match user.pixel_format {
             IRPixelFormat::R8G8B8A8 => {
@@ -91,15 +92,19 @@ pub fn convert_texture_from_memory(
                     stream.push(pixel[0]); // R
                 })?
             }
-            _ => Err(format!(
-                "Unsupported pixel format for user asset: {:?}",
-                user.pixel_format
-            ))?,
+            _ => {
+                return Err(anyhow!(
+                    "Unsupported pixel format for user asset: {:?}",
+                    user.pixel_format
+                ));
+            }
         },
-        _ => Err(format!(
-            "Unsupported texture type for user asset: {:?}",
-            user.texture_type
-        ))?,
+        _ => {
+            return Err(anyhow!(
+                "Unsupported texture type for user asset: {:?}",
+                user.texture_type
+            ));
+        }
     };
 
     Ok(vec![PartialIR::new_from_id(
@@ -124,24 +129,17 @@ pub fn convert_texture(
     cache_dir: &Path,
     cwd: &Path,
     user: &UserTextureAsset,
-) -> Result<Vec<PartialIR>, String> {
+) -> anyhow::Result<Vec<PartialIR>> {
     // Assume for now, that the texture is always a single image file
     if user.sources.len() != 1 {
-        return Err("Only single source textures are supported for now".to_string());
+        return Err(anyhow!(
+            "Only single source textures are supported for user asset: {}",
+            file.path.display()
+        ));
     }
 
     let texture = user.sources.first().unwrap().as_path(cache_dir, cwd)?;
-
-    let img = match image::open(&texture) {
-        Ok(img) => img,
-        Err(e) => {
-            return Err(format!(
-                "Failed to load texture image '{}': {}",
-                texture.display(),
-                e
-            ))
-        }
-    };
+    let img = image::open(&texture)?;
 
     let texture_type = match user.texture_type {
         IRTextureType::Unknown => IRTextureType::Texture2D {

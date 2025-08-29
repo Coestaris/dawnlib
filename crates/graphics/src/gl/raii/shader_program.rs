@@ -1,13 +1,13 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::GLuint;
-use crate::gl::entities::shader::Shader;
 use crate::passes::events::PassEventTrait;
+use anyhow::Context;
 use dawn_assets::ir::shader::IRShader;
 use dawn_assets::{AssetCastable, AssetMemoryUsage};
 use log::debug;
 
-#[derive(Debug)]
 // RAII wrapper for OpenGL shader program
+#[derive(Debug)]
 pub struct ShaderProgram {
     id: GLuint,
 }
@@ -35,10 +35,10 @@ macro_rules! define_target(
 
 #[rustfmt::skip]
 mod targets {
-    use crate::gl::bindings;
+use crate::gl::raii::shader_program::UniformLocation;
+use crate::gl::raii::shader_program::UniformTarget;
+use crate::gl::bindings;
 use crate::gl::bindings::types::GLint;
-use crate::gl::entities::shader_program::UniformLocation;
-use crate::gl::entities::shader_program::UniformTarget;
 use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 
     define_target!(u32, |l, v| bindings::Uniform1ui(l, v));
@@ -60,32 +60,24 @@ use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
     define_target!(glam::Quat, |l, v: glam::Quat| { bindings::Uniform4fv(l, 1, v.as_ref().as_ptr()) });
 }
 
+use crate::gl::raii::shader::{Shader, ShaderError};
 pub use targets::*;
 
 impl ShaderProgram {
     pub(crate) fn from_ir<E: PassEventTrait>(
         ir: IRShader,
-    ) -> Result<(Self, AssetMemoryUsage), String> {
-        // TODO: Cache the compilation result
-        // TODO: Try load SPIRV instead of compiling from source
-        let program = ShaderProgram::new().ok_or("Failed to create shader program")?;
+    ) -> Result<(Self, AssetMemoryUsage), ShaderError> {
+        let program = ShaderProgram::new()?;
 
         for (source_type, source) in &ir.sources {
             let shader = Shader::new(*source_type)?;
-            let source = String::from_utf8(source.clone())
-                .map_err(|e| format!("Failed to convert shader source to UTF-8: {}", e))?;
-            shader
-                .set_source(source)
-                .map_err(|e| format!("Failed to set shader source: {}", e))?;
-            shader
-                .compile()
-                .map_err(|e| format!("Failed to compile shader: {}", e))?;
+            let source = String::from_utf8(source.clone())?;
+            shader.set_source(source)?;
+            shader.compile()?;
             program.attach_shader(shader);
         }
 
-        program
-            .link()
-            .map_err(|e| format!("Failed to link shader program: {}", e))?;
+        program.link()?;
 
         debug!("Allocated shader program ID: {}", program.id);
         // TODO: Approximate memory usage
@@ -95,13 +87,14 @@ impl ShaderProgram {
         ))
     }
 
-    fn new() -> Option<ShaderProgram> {
+    fn new() -> Result<ShaderProgram, ShaderError> {
         debug!("Creating program");
         let id = unsafe { bindings::CreateProgram() };
         if id == 0 {
-            return None;
+            return Err(ShaderError::ProgramCreationError);
         }
-        Some(ShaderProgram { id })
+
+        Ok(ShaderProgram { id })
     }
 
     fn attach_shader(&self, shader: Shader) {
@@ -110,7 +103,7 @@ impl ShaderProgram {
         }
     }
 
-    fn link(&self) -> Result<(), String> {
+    fn link(&self) -> Result<(), ShaderError> {
         unsafe {
             bindings::LinkProgram(self.id);
             let mut status = 0;
@@ -125,7 +118,9 @@ impl ShaderProgram {
                     std::ptr::null_mut(),
                     log.as_mut_ptr() as *mut i8,
                 );
-                return Err(String::from_utf8_lossy(&log).to_string());
+                return Err(ShaderError::LinkError {
+                    message: String::from_utf8(log).unwrap(),
+                });
             }
         }
         Ok(())
@@ -156,12 +151,11 @@ impl ShaderProgram {
     }
 
     #[inline(always)]
-    pub fn get_uniform_location(&self, name: &str) -> Result<UniformLocation, String> {
-        let c_name = std::ffi::CString::new(name)
-            .map_err(|e| format!("Failed to create CString for uniform name: {}", e))?;
+    pub fn get_uniform_location(&self, name: &str) -> Result<UniformLocation, ShaderError> {
+        let c_name = std::ffi::CString::new(name)?;
         let location = unsafe { bindings::GetUniformLocation(self.id, c_name.as_ptr()) };
         if location == -1 {
-            Err(format!("Uniform '{}' not found in shader program", name))
+            Err(ShaderError::UnknownUniformLocation(name.to_string()))
         } else {
             Ok(location as UniformLocation)
         }

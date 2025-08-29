@@ -4,6 +4,17 @@ use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage};
 use glam::Vec4;
 use log::debug;
 use std::collections::HashMap;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum MaterialError {
+    #[error("Requested texture for base color not found: {0}")]
+    BaseColorTextureNotFound(AssetID),
+    #[error("Requested texture for metallic not found: {0}")]
+    MetallicTextureNotFound(AssetID),
+    #[error("Requested texture for roughness not found: {0}")]
+    RoughnessTextureNotFound(AssetID),
+}
 
 pub struct Material {
     pub base_color_factor: Vec4,
@@ -39,22 +50,23 @@ impl Material {
     pub(crate) fn from_ir<E: PassEventTrait>(
         ir: IRMaterial,
         deps: HashMap<AssetID, Asset>,
-    ) -> Result<(Self, AssetMemoryUsage), String> {
+    ) -> Result<(Self, AssetMemoryUsage), MaterialError> {
         debug!("Creating Material from IR: {:?}", ir);
 
-        let base_color_texture =
-            if let Some(texture_id) = ir.base_color_texture {
-                Some(deps.get(&texture_id).cloned().ok_or_else(|| {
-                    format!("Base color texture with ID {} not found", texture_id)
-                })?)
-            } else {
-                None
-            };
+        let base_color_texture = if let Some(texture_id) = ir.base_color_texture {
+            Some(
+                deps.get(&texture_id)
+                    .cloned()
+                    .ok_or_else(|| MaterialError::BaseColorTextureNotFound(texture_id))?,
+            )
+        } else {
+            None
+        };
         let metallic_texture = if let Some(texture_id) = ir.metallic_texture {
             Some(
                 deps.get(&texture_id)
                     .cloned()
-                    .ok_or_else(|| format!("Metallic texture with ID {} not found", texture_id))?,
+                    .ok_or_else(|| MaterialError::MetallicTextureNotFound(texture_id))?,
             )
         } else {
             None
@@ -63,7 +75,7 @@ impl Material {
             Some(
                 deps.get(&texture_id)
                     .cloned()
-                    .ok_or_else(|| format!("Roughness texture with ID {} not found", texture_id))?,
+                    .ok_or_else(|| MaterialError::RoughnessTextureNotFound(texture_id))?,
             )
         } else {
             None

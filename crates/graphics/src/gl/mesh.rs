@@ -1,12 +1,25 @@
-use crate::gl::entities::array_buffer::{ArrayBuffer, ArrayBufferUsage};
-use crate::gl::entities::element_array_buffer::{ElementArrayBuffer, ElementArrayBufferUsage};
-use crate::gl::entities::vertex_array::VertexArray;
+use crate::gl::raii::array_buffer::{ArrayBuffer, ArrayBufferUsage};
+use crate::gl::raii::element_array_buffer::{ElementArrayBuffer, ElementArrayBufferUsage};
+use crate::gl::raii::vertex_array::VertexArray;
 use crate::passes::result::PassExecuteResult;
 use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRSubMesh, IRTopology, IRVertex};
 use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage};
 use glam::Vec3;
+use log::debug;
 use std::collections::HashMap;
-use std::ptr::slice_from_raw_parts;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum MeshError {
+    #[error("Material with ID '{0}' not found for submesh")]
+    MaterialNotFound(AssetID),
+    #[error("Failed to allocate VertexArray")]
+    VertexArrayAllocationFailed,
+    #[error("Failed to allocate ArrayBuffer")]
+    ArrayBufferAllocationFailed,
+    #[error("Failed to allocate ElementArrayBuffer")]
+    ElementArrayBufferAllocationFailed,
+}
 
 pub struct SubMesh {
     pub material: Option<Asset>,
@@ -38,13 +51,12 @@ struct IRBucket {
 }
 
 impl IRBucket {
-    pub fn into_bucket(self, deps: &HashMap<AssetID, Asset>) -> Result<TopologyBucket, String> {
+    pub fn into_bucket(self, deps: &HashMap<AssetID, Asset>) -> Result<TopologyBucket, MeshError> {
         let vao = VertexArray::new(self.topology, self.index_type.clone())
-            .map_err(|e| format!("Failed to create VertexArray: {}", e))?;
-        let mut vbo =
-            ArrayBuffer::new().map_err(|e| format!("Failed to create ArrayBuffer: {}", e))?;
+            .ok_or_else(|| MeshError::VertexArrayAllocationFailed)?;
+        let mut vbo = ArrayBuffer::new().ok_or_else(|| MeshError::ArrayBufferAllocationFailed)?;
         let mut ebo = ElementArrayBuffer::new()
-            .map_err(|e| format!("Failed to create ElementArrayBuffer: {}", e))?;
+            .ok_or_else(|| MeshError::ElementArrayBufferAllocationFailed)?;
 
         let vao_binding = vao.bind();
         let vbo_binding = vbo.bind();
@@ -61,17 +73,11 @@ impl IRBucket {
             .flat_map(|submesh| submesh.raw_indices().to_vec())
             .collect::<Vec<u8>>();
 
-        vbo_binding
-            .feed(&joined_vertices, ArrayBufferUsage::StaticDraw)
-            .map_err(|e| format!("Failed to feed vertices to ArrayBuffer: {}", e))?;
-        ebo_binding
-            .feed(&joined_indices, ElementArrayBufferUsage::StaticDraw)
-            .map_err(|e| format!("Failed to feed indices to ElementArrayBuffer: {}", e))?;
+        vbo_binding.feed(&joined_vertices, ArrayBufferUsage::StaticDraw);
+        ebo_binding.feed(&joined_indices, ElementArrayBufferUsage::StaticDraw);
 
         for (i, layout) in IRVertex::layout().iter().enumerate() {
-            vao_binding
-                .setup_attribute(i, layout)
-                .map_err(|e| format!("Failed to enable attribute in VertexArray: {}", e))?;
+            vao_binding.setup_attribute(i, layout);
         }
 
         drop(vbo_binding);
@@ -90,7 +96,7 @@ impl IRBucket {
             let material = match &submesh_ir.material {
                 None => None,
                 Some(id) => match deps.get(id) {
-                    None => return Err(format!("Material with ID '{}' not found for submesh", id)),
+                    None => return Err(MeshError::MaterialNotFound(id.clone())),
                     Some(mat) => Some(mat.clone()),
                 },
             };
@@ -124,7 +130,9 @@ impl Mesh {
     pub fn from_ir(
         ir: IRMesh,
         deps: HashMap<AssetID, Asset>,
-    ) -> Result<(Self, AssetMemoryUsage), String> {
+    ) -> Result<(Self, AssetMemoryUsage), MeshError> {
+        debug!("Creating Mesh from IR: {:?}", ir);
+
         // Group submeshes by topology
         let mut ir_buckets = HashMap::new();
         for submesh in ir.submesh {

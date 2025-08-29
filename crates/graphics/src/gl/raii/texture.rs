@@ -1,12 +1,12 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::{GLenum, GLint, GLsizei, GLuint};
-use crate::gl::entities::shader_program::ShaderProgram;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::texture::{
-    IRPixelDataType, IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap,
+    IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap,
 };
 use dawn_assets::{AssetCastable, AssetMemoryUsage};
 use log::debug;
+use thiserror::Error;
 
 #[derive(Debug)]
 pub struct Texture {
@@ -14,26 +14,42 @@ pub struct Texture {
     texture_type: GLuint,
 }
 
+#[derive(Debug, Error)]
+pub enum TextureError {
+    #[error("Failed to create texture")]
+    FailedToCreateTexture,
+    #[error("Unsupported texture type: {0:?}")]
+    UnsupportedTextureType(IRTextureType),
+    #[error("Unsupported texture wrap: {0:?}")]
+    UnsupportedTextureWrap(IRTextureWrap),
+    #[error("Unsupported texture filter: {0:?}")]
+    UnsupportedTextureFilter(IRTextureFilter),
+    #[error("Unsupported pixel format: {0:?}")]
+    UnsupportedPixelFormat(IRPixelFormat),
+    #[error("Unsupported pixel format: {0:?}")]
+    UnsupportedPixelType(IRPixelFormat),
+}
+
 impl AssetCastable for Texture {}
 
-fn tex_type_to_gl(tex_type: &IRTextureType) -> Result<GLuint, String> {
+fn tex_type_to_gl(tex_type: &IRTextureType) -> Result<GLuint, TextureError> {
     Ok(match tex_type {
         IRTextureType::Texture2D { .. } => bindings::TEXTURE_2D,
         IRTextureType::TextureCube { .. } => bindings::TEXTURE_CUBE_MAP,
-        _ => return Err("Unsupported texture type".to_string()),
+        _ => return Err(TextureError::UnsupportedTextureType(tex_type.clone())),
     })
 }
 
-fn wrap_to_gl(wrap: &IRTextureWrap) -> Result<GLenum, String> {
+fn wrap_to_gl(wrap: &IRTextureWrap) -> Result<GLenum, TextureError> {
     Ok(match wrap {
         IRTextureWrap::ClampToEdge => bindings::CLAMP_TO_EDGE,
         IRTextureWrap::MirroredRepeat => bindings::MIRRORED_REPEAT,
         IRTextureWrap::Repeat => bindings::REPEAT,
-        _ => return Err("Unsupported texture wrap".to_string()),
+        _ => return Err(TextureError::UnsupportedTextureWrap(wrap.clone())),
     })
 }
 
-fn filter_to_gl(filter: &IRTextureFilter) -> Result<GLenum, String> {
+fn filter_to_gl(filter: &IRTextureFilter) -> Result<GLenum, TextureError> {
     Ok(match filter {
         IRTextureFilter::Nearest => bindings::NEAREST,
         IRTextureFilter::Linear => bindings::LINEAR,
@@ -41,11 +57,11 @@ fn filter_to_gl(filter: &IRTextureFilter) -> Result<GLenum, String> {
         // TextureFilter::LinearMipmapNearest => bindings::LINEAR_MIPMAP_NEAREST,
         // TextureFilter::NearestMipmapLinear => bindings::NEAREST_MIPMAP_LINEAR,
         // TextureFilter::LinearMipmapLinear => bindings::LINEAR_MIPMAP_LINEAR,
-        _ => return Err("Unsupported texture filter".to_string()),
+        _ => return Err(TextureError::UnsupportedTextureFilter(filter.clone())),
     })
 }
 
-fn pf_to_format(format: &IRPixelFormat) -> Result<GLenum, String> {
+fn pf_to_format(format: &IRPixelFormat) -> Result<GLenum, TextureError> {
     Ok(match format {
         IRPixelFormat::R8 => bindings::RED,
         IRPixelFormat::R8G8 => bindings::RG,
@@ -57,11 +73,11 @@ fn pf_to_format(format: &IRPixelFormat) -> Result<GLenum, String> {
         IRPixelFormat::R16G16B16A16 => bindings::RGBA,
         IRPixelFormat::R32G32B32FLOAT => bindings::RGB,
         IRPixelFormat::R32G32B32A32FLOAT => bindings::RGBA,
-        _ => return Err("Unsupported pixel format".to_string()),
+        _ => return Err(TextureError::UnsupportedPixelFormat(format.clone())),
     })
 }
 
-fn pf_to_internal(format: &IRPixelFormat) -> Result<GLenum, String> {
+fn pf_to_internal(format: &IRPixelFormat) -> Result<GLenum, TextureError> {
     Ok(match format {
         IRPixelFormat::R8 => bindings::RED,
         IRPixelFormat::R8G8 => bindings::RG,
@@ -73,11 +89,11 @@ fn pf_to_internal(format: &IRPixelFormat) -> Result<GLenum, String> {
         IRPixelFormat::R16G16B16A16 => bindings::RGBA,
         IRPixelFormat::R32G32B32FLOAT => bindings::RGB,
         IRPixelFormat::R32G32B32A32FLOAT => bindings::RGBA,
-        _ => return Err("Unsupported pixel format".to_string()),
+        _ => return Err(TextureError::UnsupportedPixelFormat(format.clone())),
     })
 }
 
-fn pixel_format_to_gl_type(format: &IRPixelFormat) -> Result<GLenum, String> {
+fn pixel_format_to_gl_type(format: &IRPixelFormat) -> Result<GLenum, TextureError> {
     Ok(match format {
         IRPixelFormat::R8
         | IRPixelFormat::R8G8
@@ -88,12 +104,14 @@ fn pixel_format_to_gl_type(format: &IRPixelFormat) -> Result<GLenum, String> {
         | IRPixelFormat::R16G16B16
         | IRPixelFormat::R16G16B16A16 => bindings::UNSIGNED_SHORT,
         IRPixelFormat::R32G32B32FLOAT | IRPixelFormat::R32G32B32A32FLOAT => bindings::FLOAT,
-        _ => return Err("Unsupported pixel format".to_string()),
+        _ => return Err(TextureError::UnsupportedPixelType(format.clone())),
     })
 }
 
 impl Texture {
-    pub fn from_ir<E: PassEventTrait>(ir: IRTexture) -> Result<(Self, AssetMemoryUsage), String> {
+    pub fn from_ir<E: PassEventTrait>(
+        ir: IRTexture,
+    ) -> Result<(Self, AssetMemoryUsage), TextureError> {
         let texture = Self::new(ir.texture_type.clone())?;
 
         texture.bind(0);
@@ -103,7 +121,7 @@ impl Texture {
         texture.set_min_filter(ir.min_filter.clone())?;
         texture.set_mag_filter(ir.mag_filter.clone())?;
         if ir.use_mipmaps {
-            texture.generate_mipmap()?;
+            texture.generate_mipmap();
         }
         match ir.texture_type {
             IRTextureType::Texture2D { width, height } => {
@@ -116,12 +134,11 @@ impl Texture {
                     &ir.data,
                 )?;
             }
-            _ => {
-                return Err("Unsupported texture type for raw texture".to_string());
-            }
+            _ => Err(TextureError::UnsupportedTextureType(
+                ir.texture_type.clone(),
+            ))?,
         }
         Texture::unbind(texture.texture_type, 0);
-
         Ok((texture, AssetMemoryUsage::new(size_of::<Texture>(), 0)))
     }
 
@@ -139,44 +156,43 @@ impl Texture {
         }
     }
 
-    fn set_param(&self, param: GLenum, value: GLint) -> Result<(), String> {
+    fn set_param(&self, param: GLenum, value: GLint) -> Result<(), TextureError> {
         unsafe {
             bindings::TexParameteri(self.texture_type, param, value);
         }
         Ok(())
     }
 
-    pub fn set_wrap_s(&self, wrap: IRTextureWrap) -> Result<(), String> {
+    pub fn set_wrap_s(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
         self.set_param(bindings::TEXTURE_WRAP_S, wrap_to_gl(&wrap)? as GLint)
     }
 
-    pub fn set_wrap_t(&self, wrap: IRTextureWrap) -> Result<(), String> {
+    pub fn set_wrap_t(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
         self.set_param(bindings::TEXTURE_WRAP_T, wrap_to_gl(&wrap)? as GLint)
     }
 
-    pub fn set_wrap_r(&self, wrap: IRTextureWrap) -> Result<(), String> {
+    pub fn set_wrap_r(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
         self.set_param(bindings::TEXTURE_WRAP_R, wrap_to_gl(&wrap)? as GLint)
     }
 
-    pub fn set_min_filter(&self, filter: IRTextureFilter) -> Result<(), String> {
+    pub fn set_min_filter(&self, filter: IRTextureFilter) -> Result<(), TextureError> {
         self.set_param(
             bindings::TEXTURE_MIN_FILTER,
             filter_to_gl(&filter)? as GLint,
         )
     }
 
-    pub fn set_mag_filter(&self, filter: IRTextureFilter) -> Result<(), String> {
+    pub fn set_mag_filter(&self, filter: IRTextureFilter) -> Result<(), TextureError> {
         self.set_param(
             bindings::TEXTURE_MAG_FILTER,
             filter_to_gl(&filter)? as GLint,
         )
     }
 
-    pub fn generate_mipmap(&self) -> Result<(), String> {
+    pub fn generate_mipmap(&self) {
         unsafe {
             bindings::GenerateMipmap(self.texture_type);
         }
-        Ok(())
     }
 
     pub fn texture_image_2d(
@@ -187,10 +203,11 @@ impl Texture {
         border: bool,
         pixel_format: IRPixelFormat,
         data: &[u8],
-    ) -> Result<(), String> {
+    ) -> Result<(), TextureError> {
         let internal = pf_to_internal(&pixel_format)?;
         let format = pf_to_format(&pixel_format)?;
         let data_type = pixel_format_to_gl_type(&pixel_format)?;
+
         debug!(
             "Uploading texture ID: {} ({}x{}, format: {}, type: {}, level {})",
             self.id, width, height, format, data_type, level
@@ -217,12 +234,12 @@ impl Texture {
         self.id
     }
 
-    fn new(texture_type: IRTextureType) -> Result<Self, String> {
+    fn new(texture_type: IRTextureType) -> Result<Self, TextureError> {
         let mut id: GLuint = 0;
         unsafe {
             bindings::GenTextures(1, &mut id);
             if id == 0 {
-                return Err("Failed to create texture".to_string());
+                return Err(TextureError::FailedToCreateTexture);
             }
         }
 

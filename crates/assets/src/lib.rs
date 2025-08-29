@@ -20,10 +20,14 @@ pub(crate) mod registry;
 #[cfg(feature = "hub")]
 pub mod requests;
 
+/// Deterministic checksum of an asset's data and header.
+/// Can be used to verify that an asset hasn't been tampered with.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetChecksum([u8; 16]);
 
 impl AssetChecksum {
+    /// Creates a new checksum from the first 16 bytes of the given slice.
+    /// If the slice is shorter than 16 bytes, the checksum will be padded with zeros.
     pub fn from_bytes(bytes: &[u8]) -> AssetChecksum {
         let mut checksum = [0; 16];
         let len = bytes.len().min(16);
@@ -31,10 +35,14 @@ impl AssetChecksum {
         AssetChecksum(checksum)
     }
 
+    /// Returns the checksum as a slice.
+    /// The slice will be 16 bytes long.
     pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
 
+    /// Returns the checksum as a hex string.
+    /// The string will be 32 characters long.
     pub fn hex_string(&self) -> String {
         self.0.iter().map(|b| format!("{:02x}", b)).collect()
     }
@@ -46,14 +54,22 @@ impl Default for AssetChecksum {
     }
 }
 
+/// Metadata about an asset
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct AssetHeader {
+    /// Unique identifier for the asset.
     pub id: AssetID,
+    /// Type of the asset.
     pub asset_type: AssetType,
+    /// Checksum of the asset's data and header.
     pub checksum: AssetChecksum,
+    /// Dependencies of the asset required during loading.
     pub dependencies: HashSet<AssetID>,
+    /// Additional tags for the asset.
     pub tags: Vec<String>,
+    /// Author of the asset.
     pub author: Option<String>,
+    /// Type of the Asset's license or link to it.
     pub license: Option<String>,
 }
 
@@ -80,6 +96,7 @@ pub enum AssetType {
     Notes,
     Material,
     Mesh,
+    Font,
 }
 
 impl std::fmt::Display for AssetType {
@@ -92,6 +109,7 @@ impl std::fmt::Display for AssetType {
             AssetType::Notes => write!(f, "Notes"),
             AssetType::Material => write!(f, "Material"),
             AssetType::Mesh => write!(f, "Mesh"),
+            AssetType::Font => write!(f, "Font"),
         }
     }
 }

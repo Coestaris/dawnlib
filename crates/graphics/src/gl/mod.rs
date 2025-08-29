@@ -1,8 +1,11 @@
 pub mod assets;
 pub mod bindings;
 mod debug;
-pub mod entities;
+pub mod font;
+pub mod material;
+pub mod mesh;
 mod probe;
+pub mod raii;
 
 use crate::gl::assets::{
     MaterialAssetFactory, MeshAssetFactory, ShaderAssetFactory, TextureAssetFactory,
@@ -35,6 +38,7 @@ pub struct GLRendererConfig {
     pub shader_factory_binding: Option<FactoryBinding>,
     pub mesh_factory_binding: Option<FactoryBinding>,
     pub material_factory_binding: Option<FactoryBinding>,
+    pub font_factory_binding: Option<FactoryBinding>,
 }
 
 #[derive(Debug, Clone)]
@@ -189,9 +193,12 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         if let Some(factory) = &mut self.material_factory {
             factory.process_events::<E>();
         }
+        if let Some(factory) = &mut self.material_factory {
+            factory.process_events::<E>();
+        }
 
         // User will handle clearing the screen in the render passes.
-        
+
         Ok(())
     }
 

@@ -30,7 +30,7 @@ impl<'a> ElementArrayBufferBinding<'a> {
         Self { array_buffer }
     }
 
-    pub fn feed<T>(&self, data: &[T], usage: ElementArrayBufferUsage) -> Result<(), String> {
+    pub fn feed<T>(&self, data: &[T], usage: ElementArrayBufferUsage) {
         unsafe {
             bindings::BufferData(
                 bindings::ELEMENT_ARRAY_BUFFER,
@@ -39,8 +39,6 @@ impl<'a> ElementArrayBufferBinding<'a> {
                 usage.gl_type(),
             );
         }
-
-        Ok(())
     }
 }
 
@@ -49,17 +47,17 @@ pub struct ElementArrayBuffer {
 }
 
 impl ElementArrayBuffer {
-    pub fn new() -> Result<Self, String> {
+    pub fn new() -> Option<Self> {
         let mut id: GLuint = 0;
         unsafe {
             bindings::GenBuffers(1, &mut id);
             if id == 0 {
-                return Err("Failed to create VAO".to_string());
+                return None;
             }
         }
 
         debug!("Allocated ElementArrayBuffer ID: {}", id);
-        Ok(ElementArrayBuffer { id })
+        Some(ElementArrayBuffer { id })
     }
 
     pub fn bind(&mut self) -> ElementArrayBufferBinding<'_> {

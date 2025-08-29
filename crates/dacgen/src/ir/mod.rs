@@ -1,16 +1,19 @@
 use crate::ir::audio::convert_audio;
+use crate::ir::font::convert_font;
 use crate::ir::material::convert_material;
 use crate::ir::mesh::convert_mesh;
 use crate::ir::shader::convert_shader;
 use crate::ir::texture::convert_texture;
 use crate::user::{UserAssetHeader, UserAssetProperties};
 use crate::{ChecksumAlgorithm, UserAssetFile, UserIRAsset};
+use anyhow::Context;
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
 use dawn_util::profile::Measure;
 use std::path::{Path, PathBuf};
 
 mod audio;
+mod font;
 mod material;
 mod mesh;
 mod shader;
@@ -53,7 +56,7 @@ impl PartialIR {
         Self { id, header, ir }
     }
 
-    pub fn convert(self, algorithm: ChecksumAlgorithm) -> Result<UserIRAsset, String> {
+    pub fn convert(self, algorithm: ChecksumAlgorithm) -> anyhow::Result<UserIRAsset> {
         Ok(UserIRAsset {
             header: AssetHeader {
                 id: self.id,
@@ -75,23 +78,21 @@ impl UserAssetFile {
         cache_dir: &Path,
         cwd: &Path,
         algorithm: ChecksumAlgorithm,
-    ) -> Result<Vec<UserIRAsset>, String> {
+    ) -> anyhow::Result<Vec<UserIRAsset>> {
         let _measure = Measure::new(format!(
             "Converted user asset {} to IR",
             self.path.display()
         ));
 
         let irs = match &self.asset.properties {
-            UserAssetProperties::Shader(shader) => convert_shader(self, cache_dir, cwd, shader)?,
-            UserAssetProperties::Texture(texture) => {
-                convert_texture(self, cache_dir, cwd, texture)?
-            }
-            UserAssetProperties::Audio(audio) => convert_audio(self, cache_dir, cwd, audio)?,
-            UserAssetProperties::Mesh(mesh) => convert_mesh(self, cache_dir, cwd, mesh)?,
-            UserAssetProperties::Material(material) => {
-                convert_material(self, cache_dir, cwd, material)?
-            }
-        };
+            UserAssetProperties::Shader(shader) => convert_shader(self, cache_dir, cwd, shader),
+            UserAssetProperties::Texture(texture) => convert_texture(self, cache_dir, cwd, texture),
+            UserAssetProperties::Audio(audio) => convert_audio(self, cache_dir, cwd, audio),
+            UserAssetProperties::Mesh(mesh) => convert_mesh(self, cache_dir, cwd, mesh),
+            UserAssetProperties::Material(mat) => convert_material(self, cache_dir, cwd, mat),
+            UserAssetProperties::Font(font) => convert_font(self, cache_dir, cwd, font),
+        }
+        .with_context(|| format!("Failed to convert asset {}", self.path.display()))?;
 
         let mut result = Vec::new();
         for ir in irs {

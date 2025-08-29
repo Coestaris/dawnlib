@@ -11,11 +11,11 @@ pub enum IRShaderSourceKind {
     TessellationControl,
 
     /* Precompiled */
-    PrecompiledFragment,
-    PrecompiledGeometry,
-    PrecompiledVertex,
-    PrecompiledCompute,
-    PrecompiledTessellationControl,
+    // PrecompiledFragment,
+    // PrecompiledGeometry,
+    // PrecompiledVertex,
+    // PrecompiledCompute,
+    // PrecompiledTessellationControl,
 }
 
 impl Default for IRShaderSourceKind {

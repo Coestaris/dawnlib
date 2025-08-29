@@ -11,7 +11,7 @@ pub fn convert_shader(
     cache_dir: &Path,
     cwd: &Path,
     user: &UserShaderAsset,
-) -> Result<Vec<PartialIR>, String> {
+) -> anyhow::Result<Vec<PartialIR>> {
     let mut sources = HashMap::new();
     for source in user.sources.iter() {
         sources.insert(

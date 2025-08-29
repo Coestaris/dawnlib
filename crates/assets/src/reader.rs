@@ -6,16 +6,16 @@ use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
 use std::time::Duration;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ToReaderMessage {
     Enumerate(AssetTaskID),
     Read(AssetTaskID, AssetID),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum FromReaderMessage {
-    Enumerate(AssetTaskID, Result<Vec<AssetHeader>, String>),
-    Read(AssetTaskID, AssetID, Result<IRAsset, String>),
+    Enumerate(AssetTaskID, anyhow::Result<Vec<AssetHeader>>),
+    Read(AssetTaskID, AssetID, anyhow::Result<IRAsset>),
 }
 
 pub struct ReaderBinding {
@@ -67,8 +67,8 @@ impl BasicReader {
 
     pub fn process_events<E, R>(&self, enumerate: E, read: R, timeout: Duration)
     where
-        E: Fn() -> Result<Vec<AssetHeader>, String>,
-        R: Fn(AssetID) -> Result<IRAsset, String>,
+        E: Fn() -> anyhow::Result<Vec<AssetHeader>>,
+        R: Fn(AssetID) -> anyhow::Result<IRAsset>,
     {
         while let Some(msg) = self.recv(timeout) {
             match msg {
