@@ -4,6 +4,7 @@ pub mod notes;
 pub mod shader;
 pub mod texture;
 pub mod material;
+pub mod font;
 
 use std::fmt::Debug;
 use crate::ir::audio::IRAudio;
@@ -13,6 +14,7 @@ use crate::ir::shader::IRShader;
 use crate::ir::texture::IRTexture;
 use crate::ir::material::IRMaterial;
 use serde::{Deserialize, Serialize};
+use crate::ir::font::IRFont;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum IRAsset {
@@ -23,6 +25,7 @@ pub enum IRAsset {
     Notes(IRNotes),
     Mesh(IRMesh),
     Material(IRMaterial),
+    Font(IRFont),
 }
 
 impl Default for IRAsset {
@@ -41,6 +44,7 @@ impl IRAsset {
             IRAsset::Notes(notes) => notes.memory_usage(),
             IRAsset::Mesh(mesh) => mesh.memory_usage(),
             IRAsset::Material(material) => material.memory_usage(),
+            IRAsset::Font(font) => font.memory_usage(),
         }
     }
 }

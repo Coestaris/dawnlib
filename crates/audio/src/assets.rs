@@ -1,15 +1,15 @@
-use std::time::Duration;
 use crate::SampleRate;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
 use dawn_assets::ir::audio::IRAudio;
 use dawn_assets::ir::notes::IRNotes;
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetCastable, AssetMemoryUsage, AssetType};
+use dawn_ecs::events::TickEvent;
 use evenio::component::Component;
 use evenio::event::Receiver;
 use evenio::fetch::Single;
 use evenio::world::World;
-use dawn_ecs::events::TickEvent;
+use std::time::Duration;
 
 #[derive(Debug)]
 pub struct AudioAsset(pub IRAudio);
@@ -44,7 +44,7 @@ impl AudioAssetFactory {
                     let size = data.memory_usage();
                     Ok((AudioAsset(data), AssetMemoryUsage::new(size, 0)))
                 } else {
-                    Err("Expected audio metadata".to_string())
+                    Err(anyhow::anyhow!("Expected audio metadata"))
                 }
             },
             |_| {
@@ -91,7 +91,7 @@ impl NotesAssetFactory {
                     let size = data.memory_usage();
                     Ok((NotesAsset(data), AssetMemoryUsage::new(size, 0)))
                 } else {
-                    Err("Expected shader metadata".to_string())
+                    Err(anyhow::anyhow!("Expected notes metadata"))
                 }
             },
             |_| {

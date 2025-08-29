@@ -1,6 +1,9 @@
 use crate::compression_backend::decompress;
 use crate::serialize_backend::deserialize;
-use crate::{CompressionMode, ContainerError, Manifest, DAC_MAGIC, DATA_MAGIC, MANIFEST_MAGIC, TOC, TOC_MAGIC};
+use crate::{
+    CompressionMode, ContainerError, Manifest, DAC_MAGIC, DATA_MAGIC, MANIFEST_MAGIC, TOC,
+    TOC_MAGIC,
+};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::AssetID;
 use serde::de::DeserializeOwned;

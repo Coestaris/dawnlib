@@ -30,7 +30,7 @@ impl<'a> ArrayBufferBinding<'a> {
         Self { array_buffer }
     }
 
-    pub fn feed<T>(&self, data: &[T], usage: ArrayBufferUsage) -> Result<(), String> {
+    pub fn feed<T>(&self, data: &[T], usage: ArrayBufferUsage) {
         unsafe {
             bindings::BufferData(
                 bindings::ARRAY_BUFFER,
@@ -39,8 +39,6 @@ impl<'a> ArrayBufferBinding<'a> {
                 usage.gl_type(),
             );
         }
-
-        Ok(())
     }
 }
 
@@ -58,17 +56,17 @@ pub struct ArrayBuffer {
 }
 
 impl ArrayBuffer {
-    pub fn new() -> Result<Self, String> {
+    pub fn new() -> Option<Self> {
         let mut id: GLuint = 0;
         unsafe {
             bindings::GenBuffers(1, &mut id);
             if id == 0 {
-                return Err("Failed to create VAO".to_string());
+                return None;
             }
         }
 
         debug!("Allocated ArrayBuffer ID: {}", id);
-        Ok(ArrayBuffer { id })
+        Some(ArrayBuffer { id })
     }
 
     pub fn bind(&mut self) -> ArrayBufferBinding<'_> {

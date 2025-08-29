@@ -31,8 +31,8 @@ pub struct LoadedFactoryMessage {
 
 #[derive(Debug)]
 pub enum FromFactoryMessage {
-    Load(AssetTaskID, AssetID, Result<LoadedFactoryMessage, String>),
-    Free(AssetTaskID, AssetID, Result<(), String>),
+    Load(AssetTaskID, AssetID, anyhow::Result<LoadedFactoryMessage>),
+    Free(AssetTaskID, AssetID, anyhow::Result<()>),
 }
 
 // Make rust happy with sending NonNull
@@ -109,7 +109,7 @@ impl<T: 'static> BasicFactory<T> {
 
     pub fn process_events<F, P>(&mut self, parse: P, free: F, timeout: Duration)
     where
-        P: Fn(LoadFactoryMessage) -> Result<(T, AssetMemoryUsage), String>,
+        P: Fn(LoadFactoryMessage) -> anyhow::Result<(T, AssetMemoryUsage)>,
         F: Fn(&T),
     {
         if self.binding.is_none() {

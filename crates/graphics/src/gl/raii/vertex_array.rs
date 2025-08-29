@@ -25,7 +25,7 @@ impl<'a> VertexArrayBinding<'a> {
         Self { vertex_array }
     }
 
-    pub fn setup_attribute(&self, index: usize, attribute: &IRMeshLayout) -> Result<(), String> {
+    pub fn setup_attribute(&self, index: usize, attribute: &IRMeshLayout) {
         let gl_format = match attribute.sample_type {
             IRMeshLayoutSampleType::Float => bindings::FLOAT,
             IRMeshLayoutSampleType::U32 => bindings::UNSIGNED_INT,
@@ -41,8 +41,6 @@ impl<'a> VertexArrayBinding<'a> {
                 attribute.offset_bytes as *const _,
             );
         }
-
-        Ok(())
     }
 
     #[inline(always)]
@@ -76,17 +74,17 @@ impl<'a> Drop for VertexArrayBinding<'a> {
 }
 
 impl VertexArray {
-    pub fn new(primitive: IRTopology, index: IRIndexType) -> Result<Self, String> {
+    pub fn new(primitive: IRTopology, index: IRIndexType) -> Option<Self> {
         let mut id: GLuint = 0;
         unsafe {
             bindings::GenVertexArrays(1, &mut id);
             if id == 0 {
-                return Err("Failed to create VBO".to_string());
+                return None;
             }
         }
 
         debug!("Allocated VBO ID: {}", id);
-        Ok(VertexArray {
+        Some(VertexArray {
             id,
             draw_mode: match primitive {
                 IRTopology::Points => bindings::POINTS,

@@ -32,21 +32,21 @@ pub(crate) struct Scheduler {
     peekable: bool,
 }
 
-#[derive(Error, Debug, Clone)]
-pub(crate) enum TaskDoneError {
+#[derive(Error, Debug)]
+pub(crate) enum TaskFinishedError {
     #[error("Task finished for unknown request {0} (task {1})")]
     UnknownRequest(AssetTaskID, AssetRequestID),
     #[error("Task finished for unknown task {0} in request {1}")]
     UnknownTask(AssetTaskID, AssetRequestID),
     #[error("Task failed with error: {0}")]
-    TaskFailed(String),
+    TaskFailed(anyhow::Error),
     #[error("Finish of non-unwrapped request {0}")]
     NonUnwrappedRequest(AssetRequestID),
 }
 
 pub(crate) enum TaskDoneResult {
     Ok,
-    RequestFinished(AssetRequestID, Result<(), TaskDoneError>),
+    RequestFinished(AssetRequestID, Result<(), TaskFinishedError>),
 }
 
 #[derive(Debug, Clone, Error)]
@@ -426,7 +426,7 @@ impl Scheduler {
     pub fn task_finished(
         &mut self,
         task_id: AssetTaskID,
-        result: Result<(), String>,
+        result: anyhow::Result<()>,
     ) -> TaskDoneResult {
         let rid = task_id.as_request();
         self.peekable = true;
@@ -441,7 +441,7 @@ impl Scheduler {
             None => {
                 return TaskDoneResult::RequestFinished(
                     rid,
-                    Err(TaskDoneError::UnknownRequest(task_id, rid)),
+                    Err(TaskFinishedError::UnknownRequest(task_id, rid)),
                 );
             }
         };
@@ -455,7 +455,7 @@ impl Scheduler {
                         None => {
                             return TaskDoneResult::RequestFinished(
                                 rid,
-                                Err(TaskDoneError::UnknownTask(task_id, rid)),
+                                Err(TaskFinishedError::UnknownTask(task_id, rid)),
                             );
                         }
                     };
@@ -480,6 +480,6 @@ impl Scheduler {
 
         // If all tasks are done or failed, remove the request and return RequestFinished.
         self.promises.remove(request_index);
-        TaskDoneResult::RequestFinished(rid, result.map_err(TaskDoneError::TaskFailed))
+        TaskDoneResult::RequestFinished(rid, result.map_err(TaskFinishedError::TaskFailed))
     }
 }

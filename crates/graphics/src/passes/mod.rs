@@ -1,4 +1,3 @@
-use crate::gl::entities::mesh::Mesh;
 use crate::passes::events::{PassEventTarget, PassEventTrait};
 use crate::passes::result::PassExecuteResult;
 use crate::renderable::Renderable;

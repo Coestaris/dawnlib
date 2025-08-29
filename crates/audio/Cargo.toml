@@ -8,6 +8,7 @@ dawn-util = { path = "../util" }
 dawn-ecs = { path = "../ecs" }
 dawn-assets = { path = "../assets", features = ["hub"] }
 log = "0.4.27"
+anyhow = "1.0.99"
 cpal = { version = "0.16.0" } # Primary audio backend
 ringbuf = "0.4.8" # Used for double-buffering audio data
 crossbeam-queue = "0.3.12" # Used for sending messages to the render thread

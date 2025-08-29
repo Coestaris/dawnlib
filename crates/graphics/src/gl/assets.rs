@@ -1,12 +1,14 @@
-use std::time::Duration;
-use crate::gl::entities::material::Material;
-use crate::gl::entities::mesh::Mesh;
-use crate::gl::entities::shader_program::ShaderProgram;
-use crate::gl::entities::texture::Texture;
+use crate::gl::font::Font;
+use crate::gl::material::Material;
+use crate::gl::mesh::Mesh;
+use crate::gl::raii::shader_program::ShaderProgram;
+use crate::gl::raii::texture::Texture;
 use crate::passes::events::PassEventTrait;
+use anyhow::Context;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::AssetType;
+use std::time::Duration;
 
 pub(crate) struct ShaderAssetFactory {
     basic_factory: BasicFactory<ShaderProgram>,
@@ -28,9 +30,10 @@ impl ShaderAssetFactory {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Shader(shader) = message.ir {
-                    ShaderProgram::from_ir::<E>(shader)
+                    let res = ShaderProgram::from_ir::<E>(shader)?;
+                    Ok(res)
                 } else {
-                    Err("Expected shader metadata".to_string())
+                    Err(anyhow::anyhow!("Expected shader metadata"))
                 }
             },
             |_| {
@@ -61,9 +64,10 @@ impl TextureAssetFactory {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Texture(texture) = message.ir {
-                    Texture::from_ir::<E>(texture)
+                    let res = Texture::from_ir::<E>(texture)?;
+                    Ok(res)
                 } else {
-                    Err("Expected texture metadata".to_string())
+                    Err(anyhow::anyhow!("Expected texture metadata"))
                 }
             },
             |_| {
@@ -94,9 +98,10 @@ impl MeshAssetFactory {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Mesh(mesh) = message.ir {
-                    Mesh::from_ir(mesh, message.dependencies)
+                    let res = Mesh::from_ir(mesh, message.dependencies)?;
+                    Ok(res)
                 } else {
-                    Err("Expected mesh metadata".to_string())
+                    Err(anyhow::anyhow!("Expected mesh metadata"))
                 }
             },
             |_| {
@@ -127,9 +132,44 @@ impl MaterialAssetFactory {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Material(material) = message.ir {
-                    Material::from_ir::<E>(material, message.dependencies)
+                    let res = Material::from_ir::<E>(material, message.dependencies)?;
+                    Ok(res)
                 } else {
-                    Err("Expected material metadata".to_string())
+                    Err(anyhow::anyhow!("Expected material metadata"))
+                }
+            },
+            |_| {
+                // Free will be handled in the Drop implementation of Mesh
+            },
+            Duration::ZERO,
+        );
+    }
+}
+
+pub(crate) struct FontAssetFactory {
+    basic_factory: BasicFactory<Font>,
+}
+
+impl FontAssetFactory {
+    pub fn new() -> Self {
+        FontAssetFactory {
+            basic_factory: BasicFactory::new(),
+        }
+    }
+
+    pub fn bind(&mut self, binding: FactoryBinding) {
+        assert_eq!(binding.asset_type(), AssetType::Font);
+        self.basic_factory.bind(binding);
+    }
+
+    pub fn process_events<E: PassEventTrait>(&mut self) {
+        self.basic_factory.process_events(
+            |message| {
+                if let IRAsset::Font(font) = message.ir {
+                    let res = Font::from_ir::<E>(font, message.dependencies)?;
+                    Ok(res)
+                } else {
+                    Err(anyhow::anyhow!("Expected font metadata"))
                 }
             },
             |_| {

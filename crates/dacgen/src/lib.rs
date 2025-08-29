@@ -55,7 +55,7 @@ pub(crate) struct UserAssetFile {
 }
 
 impl DeepHash for UserAssetFile {
-    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> Result<(), String> {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         self.asset.deep_hash(state, ctx)?;
         // We do not hash the path, as it is not relevant to the content
         Ok(())
@@ -75,8 +75,7 @@ impl UserIRAsset {
             self.header.id.clone().as_str().to_string()
         ));
 
-        let serialized =
-            serialize(&self.ir).map_err(|e| WriterError::SerializationError(e.to_string()))?;
+        let serialized = serialize(&self.ir).map_err(|e| WriterError::SerializationError(e))?;
 
         // Not worth compressing such small files
         if serialized.len() > 256 {
@@ -110,12 +109,14 @@ pub enum WriterError {
     UnsupportedChecksumAlgorithm(ChecksumAlgorithm),
     #[error("Failed to parse metadata: {0}: {1}")]
     DeserializationError(PathBuf, toml::de::Error),
+    #[error("Hash failed: {0}")]
+    HashError(anyhow::Error),
     #[error("Failed to serialize: {0}")]
-    SerializationError(String),
+    SerializationError(anyhow::Error),
     #[error("Failed to compress data: {0}")]
-    CompressionError(String),
+    CompressionError(anyhow::Error),
     #[error("Failed to validate metadata: {0}")]
-    ConvertingToIRFailed(String),
+    ConvertingToIRFailed(PathBuf, anyhow::Error),
     #[error("Unsupported read mode: {0}")]
     DependenciesMissing(AssetID, AssetID),
     #[error("Circular dependency detected: {0} -> {1}")]
@@ -257,7 +258,7 @@ pub fn write_from_directory<W: Write>(
                         input_dir.as_path(),
                         config.checksum_algorithm.clone(),
                     )
-                    .map_err(|e| WriterError::ConvertingToIRFailed(e))?;
+                    .map_err(|e| WriterError::ConvertingToIRFailed(user_asset.path.clone(), e))?;
                 debug!("Converted {:?} in {:?}", user_asset.path, instant.elapsed());
 
                 let binaries = irs
@@ -353,15 +354,15 @@ mod tests {
         let file = std::fs::File::open(dirs::OUTPUT_FILE).unwrap();
         let mut reader = std::io::BufReader::new(file);
         let manifest = read_manifest(&mut reader).unwrap();
-        println!("{:#?}", manifest);
-        manifest.tree("sponza".into(), &|id, header, depth| {
-            println!(
-                "{}- {} (deps: {})",
-                "  ".repeat(depth),
-                id.as_str(),
-                header.dependencies.len()
-            );
-        });
+        // println!("{:#?}", manifest);
+        // manifest.tree("sponza".into(), &|id, header, depth| {
+        //     println!(
+        //         "{}- {} (deps: {})",
+        //         "  ".repeat(depth),
+        //         id.as_str(),
+        //         header.dependencies.len()
+        //     );
+        // });
 
         // let ir = read_asset(&mut reader, "barrel".into()).unwrap();
         // println!("{:#?}", ir);

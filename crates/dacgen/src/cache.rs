@@ -31,14 +31,15 @@ impl Cache {
     }
 
     fn get_fn(&self, asset: &UserAssetFile) -> Result<PathBuf, WriterError> {
-        let _measure = Measure::new(format!(
-            "Calculated deep hash of {}",
-            asset.path.display()
-        ));
+        let _measure = Measure::new(format!("Calculated deep hash of {}", asset.path.display()));
 
         let mut hasher = DeepHasher::new(self.checksum_algorithm);
-        hasher.update_object(&self.write_config, self.cache_dir.clone(), self.cwd.clone())?;
-        hasher.update_object(asset, self.cache_dir.clone(), self.cwd.clone())?;
+        hasher
+            .update_object(&self.write_config, self.cache_dir.clone(), self.cwd.clone())
+            .map_err(|e| WriterError::HashError(e))?;
+        hasher
+            .update_object(asset, self.cache_dir.clone(), self.cwd.clone())
+            .map_err(|e| WriterError::HashError(e))?;
 
         Ok(self.cache_dir.join(hasher.finalize().hex_string()))
     }
@@ -82,7 +83,7 @@ impl Cache {
 
         // Serialize the binaries
         let data = dawn_dac::serialize_backend::serialize(binaries)
-            .map_err(|e| WriterError::SerializationError(e.to_string()))?;
+            .map_err(|e| WriterError::SerializationError(e))?;
 
         // Write to the cache file
         std::fs::write(&cache_path, data)?;

@@ -1,5 +1,5 @@
-use crate::gl::entities::material::Material;
-use crate::gl::entities::mesh::Mesh;
+use crate::gl::material::Material;
+use crate::gl::mesh::Mesh;
 use dawn_assets::{Asset, TypedAsset};
 use evenio::component::Component;
 use glam::{Mat4, Quat, Vec3};

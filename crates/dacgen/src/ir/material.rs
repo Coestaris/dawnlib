@@ -8,7 +8,7 @@ pub fn convert_material(
     cache_dir: &Path,
     cwd: &Path,
     user: &UserMaterialAsset,
-) -> Result<Vec<PartialIR>, String> {
+) -> anyhow::Result<Vec<PartialIR>> {
     todo!();
 
     // TODO: Read iamges from disk
