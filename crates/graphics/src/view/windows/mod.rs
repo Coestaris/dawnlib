@@ -312,6 +312,26 @@ impl ViewHandle {
             Some(p2 as *const c_void)
         }
     }
+
+    pub fn error_box(title: &str, message: &str) {
+        use windows::Win32::UI::WindowsAndMessaging::{MessageBoxA, MB_ICONERROR, MB_OK};
+
+        // Leak strings to get static pointers
+        let _title = Box::leak(title.to_string().into_boxed_str());
+        let _message = Box::leak(message.to_string().into_boxed_str());
+
+        let _title_pcstr = PCSTR(_title.as_ptr() as _);
+        let _message_pcstr = PCSTR(_message.as_ptr() as _);
+
+        unsafe {
+            let _ = MessageBoxA(
+                None,
+                _message_pcstr,
+                _title_pcstr,
+                MB_OK | MB_ICONERROR,
+            );
+        }
+    }
 }
 
 #[cfg(feature = "gl")]
