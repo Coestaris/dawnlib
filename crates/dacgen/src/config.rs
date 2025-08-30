@@ -1,5 +1,5 @@
 use crate::deep_hash::{DeepHash, DeepHashCtx};
-use dawn_dac::{ChecksumAlgorithm, CompressionLevel, ReadMode};
+use dawn_dac::{ChecksumAlgorithm, CompressionLevel, ReadMode, Version};
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
@@ -11,7 +11,7 @@ pub struct WriteConfig {
     pub cache_dir: PathBuf,
     pub author: Option<String>,
     pub description: Option<String>,
-    pub version: Option<String>,
+    pub version: Option<Version>,
     pub license: Option<String>,
 }
 
@@ -32,6 +32,16 @@ impl DeepHash for ReadMode {
 impl DeepHash for CompressionLevel {
     fn deep_hash<T: Hasher>(&self, state: &mut T, _ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         self.hash(state);
+        Ok(())
+    }
+}
+
+impl DeepHash for Version {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
+        self.major.deep_hash(state, ctx)?;
+        self.minor.deep_hash(state, ctx)?;
+        self.patch.deep_hash(state, ctx)?;
+        self.extras.deep_hash(state, ctx)?;
         Ok(())
     }
 }
