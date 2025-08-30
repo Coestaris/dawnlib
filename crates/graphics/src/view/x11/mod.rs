@@ -510,6 +510,12 @@ pub struct ViewHandle {
     ctx: Option<GLXContext>,
 }
 
+impl ViewHandle {
+    pub fn error_box(title: &str, message: &str) {
+        todo!()
+    }
+}
+
 #[cfg(feature = "gl")]
 impl ViewHandleOpenGL for ViewHandle {
     fn create_context(&mut self, fps: usize, vsync: bool) -> Result<(), crate::view::ViewError> {
