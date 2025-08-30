@@ -38,8 +38,8 @@ pub(crate) enum TaskFinishedError {
     UnknownRequest(AssetTaskID, AssetRequestID),
     #[error("Task finished for unknown task {0} in request {1}")]
     UnknownTask(AssetTaskID, AssetRequestID),
-    #[error("Task failed with error: {0}")]
-    TaskFailed(anyhow::Error),
+    #[error("Task {0} failed for command {1:?}: {2}")]
+    TaskFailed(AssetTaskID, Option<TaskCommand>, anyhow::Error),
     #[error("Finish of non-unwrapped request {0}")]
     NonUnwrappedRequest(AssetRequestID),
 }
@@ -201,8 +201,14 @@ impl Scheduler {
         let mut all_tasks = Vec::new();
         for id in ids {
             let mut stack = Vec::new();
-            let tasks =
-                Self::collect_tasks_for_asset(rid, id.clone(), registry, deps, &mut stack, constructor)?;
+            let tasks = Self::collect_tasks_for_asset(
+                rid,
+                id.clone(),
+                registry,
+                deps,
+                &mut stack,
+                constructor,
+            )?;
             all_tasks.extend(tasks);
         }
 
@@ -446,6 +452,7 @@ impl Scheduler {
             }
         };
 
+        let mut command = None;
         if !result.is_err() {
             // Mark the task done and remove it from dependencies of other tasks.
             match &mut self.promises[request_index] {
@@ -461,6 +468,7 @@ impl Scheduler {
                     };
 
                     tasks[task_index].state = TaskState::Done;
+                    command = Some(tasks[task_index].command.clone());
                     let completed_task_id = tasks[task_index].id;
                     for task in tasks.iter_mut() {
                         task.dependencies.remove(&completed_task_id);
@@ -476,10 +484,25 @@ impl Scheduler {
                     // as we unwrap requests before processing tasks.
                 }
             };
+        } else {
+            // If the task failed, find the command for error reporting.
+            match &mut self.promises[request_index] {
+                RequestPromise::Unwrapped(_, tasks) => {
+                    match tasks.iter().position(|t| t.id == task_id) {
+                        Some(index) => {
+                            command = Some(tasks[index].command.clone());
+                        }
+                        None => {}
+                    }
+                }
+                _ => {}
+            }
         }
+
+        let result = result.map_err(|e| TaskFinishedError::TaskFailed(task_id, command, e));
 
         // If all tasks are done or failed, remove the request and return RequestFinished.
         self.promises.remove(request_index);
-        TaskDoneResult::RequestFinished(rid, result.map_err(TaskFinishedError::TaskFailed))
+        TaskDoneResult::RequestFinished(rid, result)
     }
 }

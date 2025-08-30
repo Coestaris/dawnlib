@@ -1,5 +1,6 @@
 use crate::binding::Binding;
 use crate::ir::IRAsset;
+use crate::requests::task::AssetTaskID;
 use crate::{Asset, AssetHeader, AssetID, AssetMemoryUsage, AssetType};
 use crossbeam_channel::{Receiver, Sender};
 use log::{error, warn};
@@ -7,7 +8,6 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::time::Duration;
-use crate::requests::task::AssetTaskID;
 
 #[derive(Debug)]
 pub struct LoadFactoryMessage {

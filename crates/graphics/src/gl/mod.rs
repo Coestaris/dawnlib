@@ -7,7 +7,10 @@ pub mod mesh;
 mod probe;
 pub mod raii;
 
-use crate::gl::assets::{FontAssetFactory, MaterialAssetFactory, MeshAssetFactory, ShaderAssetFactory, TextureAssetFactory};
+use crate::gl::assets::{
+    FontAssetFactory, MaterialAssetFactory, MeshAssetFactory, ShaderAssetFactory,
+    TextureAssetFactory,
+};
 use crate::gl::debug::{Debugger, MessageType};
 use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
@@ -63,6 +66,48 @@ impl Display for GLRendererError {
 
 impl std::error::Error for GLRendererError {}
 
+fn stat_opengl_context() {
+    let version = unsafe { probe::get_version() };
+    info!("OpenGL stat");
+    if let Some(version) = version {
+        info!("  Version: {}", version);
+    } else {
+        warn!("Failed to get OpenGL version. This may cause issues with rendering.");
+    }
+    let renderer = unsafe { probe::get_renderer() };
+    if let Some(renderer) = renderer {
+        info!("  Renderer: {}", renderer);
+    } else {
+        warn!("Failed to get OpenGL renderer. This may cause issues with rendering.");
+    }
+    let vendor = unsafe { probe::get_vendor() };
+    if let Some(vendor) = vendor {
+        info!("  Vendor: {}", vendor);
+    } else {
+        warn!("Failed to get OpenGL vendor. This may cause issues with rendering.");
+    }
+    let shading_language_version = unsafe { probe::get_shading_language_version() };
+    if let Some(version) = shading_language_version {
+        info!("  GLSL version: {}", version);
+    } else {
+        warn!(
+            "Failed to get OpenGL shading language version. This may cause issues with rendering."
+        );
+    }
+    let binary_formats = unsafe { probe::get_binary_formats() };
+    if !binary_formats.is_empty() {
+        info!("  Binary formats: {:?}", binary_formats);
+    } else {
+        warn!("Failed to get OpenGL binary formats. This may cause issues with rendering.");
+    }
+    // let extensions = unsafe { probe::get_extensions() };
+    // if !extensions.is_empty() {
+    //     debug!("OpenGL extensions: {:?}", extensions);
+    // } else {
+    //     warn!("Failed to get OpenGL extensions. This may cause issues with rendering.");
+    // }
+}
+
 // Texture and shader assets cannot be handled from the ECS (like other assets),
 // because they are tightly coupled with the OpenGL context and cannot be
 // loaded asynchronously.
@@ -85,42 +130,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         });
 
         // Stat the OpenGL context
-        let version = unsafe { probe::get_version() };
-        if let Some(version) = version {
-            info!("OpenGL version: {}", version);
-        } else {
-            warn!("Failed to get OpenGL version. This may cause issues with rendering.");
-        }
-        let renderer = unsafe { probe::get_renderer() };
-        if let Some(renderer) = renderer {
-            info!("OpenGL renderer: {}", renderer);
-        } else {
-            warn!("Failed to get OpenGL renderer. This may cause issues with rendering.");
-        }
-        let vendor = unsafe { probe::get_vendor() };
-        if let Some(vendor) = vendor {
-            info!("OpenGL vendor: {}", vendor);
-        } else {
-            warn!("Failed to get OpenGL vendor. This may cause issues with rendering.");
-        }
-        let shading_language_version = unsafe { probe::get_shading_language_version() };
-        if let Some(version) = shading_language_version {
-            info!("OpenGL shading language version: {}", version);
-        } else {
-            warn!("Failed to get OpenGL shading language version. This may cause issues with rendering.");
-        }
-        let binary_formats = unsafe { probe::get_binary_formats() };
-        if !binary_formats.is_empty() {
-            info!("OpenGL binary formats: {:?}", binary_formats);
-        } else {
-            warn!("Failed to get OpenGL binary formats. This may cause issues with rendering.");
-        }
-        let extensions = unsafe { probe::get_extensions() };
-        if !extensions.is_empty() {
-            debug!("OpenGL extensions: {:?}", extensions);
-        } else {
-            warn!("Failed to get OpenGL extensions. This may cause issues with rendering.");
-        }
+        stat_opengl_context();
 
         // Setup factories for texture and shader assets
         // These factories are used to load and manage texture and shader assets.

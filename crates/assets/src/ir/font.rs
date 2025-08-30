@@ -3,6 +3,7 @@ use crate::AssetID;
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::{Debug, Display};
 use std::mem::offset_of;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -62,7 +63,7 @@ pub struct IRGlyph {
     pub x_offset: f32,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct IRFont {
     pub glyphs: HashMap<char, IRGlyph>,
     pub y_advance: f32,
@@ -86,5 +87,19 @@ impl IRFont {
         let mut sum = 0;
         // TODO: calculate memory usage
         sum
+    }
+}
+
+impl Debug for IRFont {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IRFont")
+            .field("glyphs", &self.glyphs.len())
+            .field("y_advance", &self.y_advance)
+            .field("atlas", &self.atlas)
+            .field("vertices", &self.vertices.len())
+            .field("topology", &self.topology)
+            .field("indices", &self.indices.len())
+            .field("index_type", &self.index_type)
+            .finish()
     }
 }
