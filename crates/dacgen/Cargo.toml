@@ -1,6 +1,5 @@
 [package]
 name = "dawn-dacgen"
-version = "0.1.0"
 edition = "2021"
 
 [features]
@@ -13,10 +12,14 @@ image_gif = ["image/gif"]
 image_avif = ["image/avif"]
 image_webp = ["image/webp"]
 
+[build-dependencies]
+build-info-build = "0.0.41"
+
 [dependencies]
 dawn-dac = { path = "../dac" }
 dawn-util = { path = "../util" }
 dawn-assets = { path = "../assets" }
+build-info = "0.0.41"
 thiserror = "2.0.16"
 anyhow = "1.0.99"
 walkdir = "2.5.0"

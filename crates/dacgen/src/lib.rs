@@ -15,6 +15,7 @@ use dawn_dac::serialize_backend::serialize;
 use dawn_dac::writer::{write_container, BinaryAsset};
 use dawn_dac::{
     ChecksumAlgorithm, CompressionLevel, CompressionMode, ContainerError, Manifest, ReadMode,
+    Version,
 };
 use dawn_util::profile::Measure;
 use log::{debug, info};
@@ -26,12 +27,21 @@ use std::path::PathBuf;
 use std::time::SystemTime;
 use thiserror::Error;
 
+build_info::build_info!(fn build_info);
+
 fn generator_tool() -> String {
-    "dawn-dac".to_string() // TODO: Get from Cargo.toml
+    let bi = build_info();
+    bi.crate_info.name.clone()
 }
 
-fn generator_tool_version() -> String {
-    "0.1.0".to_string() // TODO: Get from Cargo.toml
+fn generator_tool_version() -> Version {
+    let bi = build_info();
+    Version::new(
+        bi.crate_info.version.major as u16,
+        bi.crate_info.version.minor as u16,
+        bi.crate_info.version.patch as u16,
+        None,
+    )
 }
 
 pub(crate) fn create_manifest(write_options: &WriteConfig, headers: Vec<AssetHeader>) -> Manifest {
@@ -295,7 +305,7 @@ pub fn write_from_directory<W: Write>(
 mod tests {
     use crate::{write_from_directory, WriteConfig};
     use dawn_dac::reader::read_manifest;
-    use dawn_dac::{ChecksumAlgorithm, CompressionLevel, ReadMode};
+    use dawn_dac::{ChecksumAlgorithm, CompressionLevel, ReadMode, Version};
 
     #[test]
     fn test() {
@@ -344,7 +354,7 @@ mod tests {
                 cache_dir: dirs::CACHE_DIR.into(),
                 author: Some("Coestaris <vk_vm@ukr.net>".to_string()),
                 description: Some("Test assets".to_string()),
-                version: Some("0.1.0".to_string()),
+                version: Some(Version::new(1, 0, 0, None)),
                 license: Some("MIT".to_string()),
             },
         )

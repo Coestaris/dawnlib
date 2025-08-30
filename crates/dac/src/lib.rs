@@ -95,17 +95,45 @@ pub enum CompressionLevel {
     Best,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Version {
+    pub major: u16,
+    pub minor: u16,
+    pub patch: u16,
+    pub extras: Option<String>,
+}
+
+impl Version {
+    pub fn new(major: u16, minor: u16, patch: u16, extras: Option<String>) -> Self {
+        Self {
+            major,
+            minor,
+            patch,
+            extras,
+        }
+    }
+}
+impl Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(extras) = &self.extras {
+            write!(f, "{}.{}.{}-{}", self.major, self.minor, self.patch, extras)
+        } else {
+            write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Manifest {
     // File information
     pub author: Option<String>,
     pub description: Option<String>,
-    pub version: Option<String>,
+    pub version: Option<Version>,
     pub license: Option<String>,
 
     // Technical information
     pub tool: String,
-    pub tool_version: String,
+    pub tool_version: Version,
     pub created: SystemTime,
     pub read_mode: ReadMode,
     pub checksum_algorithm: ChecksumAlgorithm,
