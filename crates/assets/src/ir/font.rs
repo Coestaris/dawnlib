@@ -67,6 +67,7 @@ pub struct IRGlyph {
 pub struct IRFont {
     pub glyphs: HashMap<char, IRGlyph>,
     pub y_advance: f32,
+    pub space_advance: f32,
     pub atlas: AssetID,
 
     #[serde(with = "serde_bytes")]

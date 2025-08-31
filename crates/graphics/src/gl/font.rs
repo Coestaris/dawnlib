@@ -26,6 +26,7 @@ pub struct Font {
     pub glyphs: HashMap<char, IRGlyph>,
     pub atlas: Asset,
     pub y_advance: f32,
+    pub space_advance: f32,
 
     pub vao: VertexArray,
     pub vbo: ArrayBuffer,
@@ -70,6 +71,7 @@ impl Font {
                 glyphs: ir.glyphs,
                 atlas,
                 y_advance: ir.y_advance,
+                space_advance: ir.space_advance,
                 vao,
                 vbo,
             },
@@ -80,20 +82,24 @@ impl Font {
     pub fn render_string(
         &self,
         string: &str,
-        mut on_glyph: impl FnMut(&IRGlyph) -> (bool, RenderResult),
+        mut on_glyph: impl FnMut(char, Option<&IRGlyph>) -> (bool, RenderResult),
     ) -> RenderResult {
         let mut result = RenderResult::default();
 
         let biding = self.vao.bind();
         for c in string.chars() {
-            let glyph = self.glyphs.get(&c).unwrap();
-            let (skip, new_result) = on_glyph(glyph);
+            let glyph = self.glyphs.get(&c).map_or_else(|| None, |g| Some(g));
+
+            let (skip, new_result) = on_glyph(c, glyph);
             result += new_result;
 
             if skip {
                 continue;
             }
 
+            let glyph = glyph.unwrap_or_else(|| {
+                panic!("Glyph for character '{}' not found in font", c);
+            });
             result += biding.draw_elements(glyph.index_count, glyph.index_offset);
         }
 

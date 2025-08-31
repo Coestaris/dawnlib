@@ -79,7 +79,7 @@ fn pf_to_format(format: &IRPixelFormat) -> Result<GLenum, TextureError> {
 
 fn pf_to_internal(format: &IRPixelFormat) -> Result<GLenum, TextureError> {
     Ok(match format {
-        IRPixelFormat::R8 => bindings::RED,
+        IRPixelFormat::R8 => bindings::R8,
         IRPixelFormat::R8G8 => bindings::RG,
         IRPixelFormat::R8G8B8 => bindings::RGB,
         IRPixelFormat::R8G8B8A8 => bindings::RGBA,
@@ -215,7 +215,11 @@ impl Texture {
             "Uploading texture ID: {} ({}x{}, format: {}, type: {}, level {})",
             self.id, width, height, format, data_type, level
         );
+
         unsafe {
+            if let IRPixelFormat::R8 = pixel_format {
+                bindings::PixelStorei(bindings::UNPACK_ALIGNMENT, 1);
+            }
             bindings::TexImage2D(
                 self.texture_type,
                 level as GLint,
@@ -227,6 +231,7 @@ impl Texture {
                 data_type,
                 data.as_ptr() as *const _,
             );
+            bindings::PixelStorei(bindings::UNPACK_ALIGNMENT, 4);
         }
 
         Ok(())
