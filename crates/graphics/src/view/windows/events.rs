@@ -2,7 +2,7 @@ use crate::input::{InputEvent, MouseButton};
 use crate::view::windows::input::convert_key;
 use crate::view::{TickResult, View};
 use log::debug;
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -101,20 +101,35 @@ pub(super) unsafe extern "system" fn win_proc(
         WM_PAINT => LRESULT(0),
 
         WM_SIZE => {
-            let cx = (lparam.0 & 0xFFFF) as i32;
-            let cy = ((lparam.0 >> 16) & 0xFFFF) as i32;
+            let width = (lparam.0 & 0xFFFF) as u32;
+            let height = (lparam.0 >> 16) as u32;
             let _ = PostMessageW(
                 Some(hwnd),
                 WM_APP_RESIZED,
-                WPARAM(cx as usize),
-                LPARAM(cy as usize as isize),
+                WPARAM(width as usize),
+                LPARAM(height as isize),
             );
             LRESULT(0)
         }
 
         WM_SIZING => LRESULT(1),
 
-        WM_ENTERSIZEMOVE | WM_EXITSIZEMOVE => LRESULT(0),
+        WM_ENTERSIZEMOVE | WM_EXITSIZEMOVE => {
+            let rect = RECT::default();
+            unsafe {
+                GetClientRect(hwnd, &rect as *const RECT as *mut RECT);
+            }
+            let width = (rect.right - rect.left) as u32;
+            let height = (rect.bottom - rect.top) as u32;
+            let _ = PostMessageW(
+                Some(hwnd),
+                WM_APP_RESIZED,
+                WPARAM(width as usize),
+                LPARAM(height as isize),
+            );
+
+            LRESULT(0)
+        }
 
         WM_WINDOWPOSCHANGING | WM_WINDOWPOSCHANGED => unsafe {
             DefWindowProcW(hwnd, message, wparam, lparam)
