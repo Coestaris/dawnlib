@@ -148,13 +148,6 @@ pub fn convert_font(
     let mut indices = Vec::with_capacity(index_count * size_of::<u16>());
     let mut current_vertex = 0;
     let mut current_index = 0;
-    struct TC {
-        a: Vec2,
-        b: Vec2,
-        c: Vec2,
-        d: Vec2,
-    }
-    let mut tcs = Vec::with_capacity(glyphs.len());
 
     for (char, positioned) in text.chars().zip(&glyphs) {
         let bounding_box = positioned.pixel_bounding_box().unwrap();
@@ -173,12 +166,6 @@ pub fn convert_font(
         let tc_b = Vec2::new((x + w) * inv_w, (y) * inv_h);
         let tc_c = Vec2::new((x) * inv_w, (y + h) * inv_h);
         let tc_d = Vec2::new((x + w) * inv_w, (y + h) * inv_h);
-        tcs.push(TC {
-            a: tc_a,
-            b: tc_b,
-            c: tc_c,
-            d: tc_d,
-        });
 
         // Vertex positions
         let a = Vec2::new(0.0, 0.0);
@@ -257,39 +244,39 @@ pub fn convert_font(
     }
 
     // Test the image
-    let image = DynamicImage::ImageRgb8(image::ImageBuffer::from_fn(
-        width_u32,
-        height_u32,
-        |x, y| {
-            for tc in &tcs {
-                let a_x = (tc.a.x * width_u32 as f32).round() as u32;
-                let a_y = (tc.a.y * height_u32 as f32).round() as u32;
-                let b_x = (tc.b.x * width_u32 as f32).round() as u32;
-                let b_y = (tc.b.y * height_u32 as f32).round() as u32;
-                let c_x = (tc.c.x * width_u32 as f32).round() as u32;
-                let c_y = (tc.c.y * height_u32 as f32).round() as u32;
-                let d_x = (tc.d.x * width_u32 as f32).round() as u32;
-                let d_y = (tc.d.y * height_u32 as f32).round() as u32;
-
-                if (x == a_x && y == a_y) {
-                    return image::Rgb([255, 0, 0]);
-                }
-                if (x == b_x && y == b_y) {
-                    return image::Rgb([0, 255, 0]);
-                }
-                if (x == c_x && y == c_y) {
-                    return image::Rgb([0, 0, 255]);
-                }
-                if (x == d_x && y == d_y) {
-                    return image::Rgb([255, 255, 0]);
-                }
-            }
-
-            let alpha = raw[(x + y * width_u32) as usize];
-            image::Rgb([alpha, alpha, alpha])
-        },
-    ));
-    image.save(r"c:\Users\user\AppData\Local\dawn_cache\image.png")?;
+    // let image = DynamicImage::ImageRgb8(image::ImageBuffer::from_fn(
+    //     width_u32,
+    //     height_u32,
+    //     |x, y| {
+    //         for tc in &tcs {
+    //             let a_x = (tc.a.x * width_u32 as f32).round() as u32;
+    //             let a_y = (tc.a.y * height_u32 as f32).round() as u32;
+    //             let b_x = (tc.b.x * width_u32 as f32).round() as u32;
+    //             let b_y = (tc.b.y * height_u32 as f32).round() as u32;
+    //             let c_x = (tc.c.x * width_u32 as f32).round() as u32;
+    //             let c_y = (tc.c.y * height_u32 as f32).round() as u32;
+    //             let d_x = (tc.d.x * width_u32 as f32).round() as u32;
+    //             let d_y = (tc.d.y * height_u32 as f32).round() as u32;
+    //
+    //             if (x == a_x && y == a_y) {
+    //                 return image::Rgb([255, 0, 0]);
+    //             }
+    //             if (x == b_x && y == b_y) {
+    //                 return image::Rgb([0, 255, 0]);
+    //             }
+    //             if (x == c_x && y == c_y) {
+    //                 return image::Rgb([0, 0, 255]);
+    //             }
+    //             if (x == d_x && y == d_y) {
+    //                 return image::Rgb([255, 255, 0]);
+    //             }
+    //         }
+    //
+    //         let alpha = raw[(x + y * width_u32) as usize];
+    //         image::Rgb([alpha, alpha, alpha])
+    //     },
+    // ));
+    // image.save(r"c:\Users\user\AppData\Local\dawn_cache\image.png")?;
 
     let (mut irs, atlas) = convert_texture(font_id.clone(), width_u32, height_u32, raw)?;
     let mut header = file.asset.header.clone();
