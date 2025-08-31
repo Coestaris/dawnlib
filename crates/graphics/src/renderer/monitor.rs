@@ -1,13 +1,12 @@
 use crate::passes::result::RenderResult;
 use crate::passes::MAX_RENDER_PASSES;
-use evenio::event::GlobalEvent;
-use log::{debug, warn};
-use std::collections::HashMap;
-use std::panic::UnwindSafe;
-use std::sync::Arc;
-use std::time::Duration;
 use crossbeam_channel::Sender;
 use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
+use evenio::event::GlobalEvent;
+use log::debug;
+use std::collections::HashMap;
+use std::panic::UnwindSafe;
+use std::time::Duration;
 
 #[derive(GlobalEvent)]
 pub struct RendererMonitorEvent {
@@ -47,8 +46,7 @@ pub(crate) trait RendererMonitorTrait: Send + Sync + 'static + UnwindSafe {
     fn events_stop(&mut self) {}
 
     fn render_start(&mut self) {}
-    fn render_stop(&mut self, _result: RenderResult, _passes: &[Duration; MAX_RENDER_PASSES]) {
-    }
+    fn render_stop(&mut self, _result: RenderResult, _passes: &[Duration; MAX_RENDER_PASSES]) {}
 }
 
 pub(crate) struct RendererMonitor {

@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IRShaderSourceKind {
@@ -9,7 +9,6 @@ pub enum IRShaderSourceKind {
     Vertex,
     Compute,
     TessellationControl,
-
     /* Precompiled */
     // PrecompiledFragment,
     // PrecompiledGeometry,

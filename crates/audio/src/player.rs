@@ -246,7 +246,9 @@ impl Player {
         }
 
         // Setup monitor
-        let monitor_queue = Arc::new(ArrayQueue::<PlayerMonitorEvent>::new(MONITOR_QUEUE_CAPACITY));
+        let monitor_queue = Arc::new(ArrayQueue::<PlayerMonitorEvent>::new(
+            MONITOR_QUEUE_CAPACITY,
+        ));
         monitor.set_queue(Arc::clone(&monitor_queue));
 
         // Should not be here, since DSP processing is not required

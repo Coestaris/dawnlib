@@ -1,8 +1,8 @@
 use crate::gl::ViewHandleOpenGL;
 use crate::input::InputEvent;
 use crate::view::{TickResult, ViewConfig, ViewTrait};
-use std::sync::Arc;
 use crossbeam_channel::Sender;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct PlatformSpecificViewConfig {}

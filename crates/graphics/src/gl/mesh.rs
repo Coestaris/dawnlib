@@ -164,10 +164,7 @@ impl Mesh {
 
 impl Mesh {
     #[inline(always)]
-    pub fn draw(
-        &self,
-        on_submesh: impl Fn(&SubMesh) -> (bool, RenderResult),
-    ) -> RenderResult {
+    pub fn draw(&self, on_submesh: impl Fn(&SubMesh) -> (bool, RenderResult)) -> RenderResult {
         let mut result = RenderResult::default();
 
         for bucket in &self.buckets {

@@ -1,8 +1,9 @@
-use crate::events::{InterSyncEvent, ExitEvent, TickEvent};
+use crate::events::{ExitEvent, InterSyncEvent, TickEvent};
 use crate::main_loop::monitor::{DummyMainLoopMonitor, MainLoopMonitor, MainLoopMonitorTrait};
 use crate::main_loop::sync::{
     DummySynchronization, FixedRateSynchronization, RendezvousSynchronization, Synchronization,
 };
+use dawn_util::profile::MonitorSample;
 use dawn_util::rendezvous::Rendezvous;
 use evenio::component::Component;
 use evenio::event::{GlobalEvent, Receiver};
@@ -11,7 +12,6 @@ use evenio::handler::IntoHandler;
 use evenio::prelude::World;
 use log::info;
 use std::time::{Duration, Instant};
-use dawn_util::profile::MonitorSample;
 
 mod monitor;
 mod sync;

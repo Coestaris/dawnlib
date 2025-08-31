@@ -5,7 +5,7 @@ use crate::renderable::{
 };
 use crate::renderer::monitor::RendererMonitorEvent;
 use crate::renderer::Renderer;
-use dawn_ecs::events::{InterSyncEvent, ExitEvent, TickEvent};
+use dawn_ecs::events::{ExitEvent, InterSyncEvent, TickEvent};
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
 use evenio::fetch::{Fetcher, Single};

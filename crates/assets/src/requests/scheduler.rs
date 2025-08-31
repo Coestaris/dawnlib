@@ -2,7 +2,7 @@ use crate::registry::{AssetRegistry, AssetState, RegistryError};
 use crate::requests::task::{AssetTaskID, TaskCommand};
 use crate::requests::{AssetRequest, AssetRequestID, AssetRequestQuery};
 use crate::AssetID;
-use log::{debug, error, info};
+use log::{debug, error};
 use std::collections::HashSet;
 use thiserror::Error;
 

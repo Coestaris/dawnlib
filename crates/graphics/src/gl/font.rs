@@ -4,7 +4,6 @@ use crate::gl::raii::vertex_array::VertexArray;
 use crate::passes::events::PassEventTrait;
 use crate::passes::result::RenderResult;
 use dawn_assets::ir::font::{IRFont, IRGlyph, IRGlyphVertex};
-use dawn_assets::ir::mesh::IRIndexType;
 use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage};
 use log::debug;
 use std::collections::HashMap;

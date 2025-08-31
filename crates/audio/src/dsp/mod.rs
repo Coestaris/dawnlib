@@ -313,12 +313,12 @@ impl PlanarBlock<f32> {
         // better performance due to better cache locality
         let left_gain = gain * (1.0 - pan).sqrt();
         for i in 0..BLOCK_SIZE {
-            self.samples[LEFT_CHANNEL][i] = (self.samples[LEFT_CHANNEL][i] * left_gain);
+            self.samples[LEFT_CHANNEL][i] = self.samples[LEFT_CHANNEL][i] * left_gain;
         }
 
         let right_gain = gain * (1.0 + pan).sqrt();
         for i in 0..BLOCK_SIZE {
-            self.samples[RIGHT_CHANNEL][i] = (self.samples[RIGHT_CHANNEL][i] * right_gain);
+            self.samples[RIGHT_CHANNEL][i] = self.samples[RIGHT_CHANNEL][i] * right_gain;
         }
     }
 }

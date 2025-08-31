@@ -2,7 +2,7 @@ use crate::assets::AudioAsset;
 use crate::entities::{AudioEventTarget, AudioEventTargetId, AudioEventType, BlockInfo, Source};
 use crate::sample::PlanarBlock;
 use crate::{SamplesCount, BLOCK_SIZE};
-use dawn_assets::{Asset, TypedAsset};
+use dawn_assets::TypedAsset;
 use glam::Vec3;
 use std::cmp::min;
 use std::collections::HashMap;
@@ -273,7 +273,7 @@ impl Source for ActorsSource {
                 let clip = clip.cast();
                 let to_copy = min(BLOCK_SIZE, clip.0.length - actor.playback_position);
 
-                let mut block = PlanarBlock::default();
+                let block = PlanarBlock::default();
                 // TODO: Implement copy
                 // block.copy_from_planar_vec(&clip.0.data, actor.playback_position, to_copy);
                 self.output.addm(&block, actor.gain * gain);

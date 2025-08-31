@@ -1,7 +1,7 @@
-use std::path::Path;
 use crate::ir::PartialIR;
 use crate::user::UserMaterialAsset;
 use crate::UserAssetFile;
+use std::path::Path;
 
 pub fn convert_material(
     file: &UserAssetFile,
@@ -24,5 +24,4 @@ pub fn convert_material(
     //         roughness_factor: 0.0,
     //     },
     // )
-    
 }

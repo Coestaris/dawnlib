@@ -1,7 +1,6 @@
 use crate::gl::bindings;
 use crate::gl::bindings::types::GLuint;
 use crate::passes::events::PassEventTrait;
-use anyhow::Context;
 use dawn_assets::ir::shader::IRShader;
 use dawn_assets::{AssetCastable, AssetMemoryUsage};
 use log::debug;
@@ -61,7 +60,6 @@ use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
 }
 
 use crate::gl::raii::shader::{Shader, ShaderError};
-pub use targets::*;
 
 impl ShaderProgram {
     pub(crate) fn from_ir<E: PassEventTrait>(

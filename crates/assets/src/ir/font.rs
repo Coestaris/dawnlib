@@ -3,7 +3,7 @@ use crate::AssetID;
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::mem::offset_of;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -84,7 +84,7 @@ pub struct IRFont {
 
 impl IRFont {
     pub fn memory_usage(&self) -> usize {
-        let mut sum = 0;
+        let sum = 0;
         // TODO: calculate memory usage
         sum
     }

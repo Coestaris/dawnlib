@@ -10,7 +10,7 @@ use crate::config::WriteConfig;
 use crate::deep_hash::{DeepHash, DeepHashCtx};
 use crate::user::UserAsset;
 use dawn_assets::ir::IRAsset;
-use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
+use dawn_assets::{AssetHeader, AssetID};
 use dawn_dac::serialize_backend::serialize;
 use dawn_dac::writer::{write_container, BinaryAsset};
 use dawn_dac::{
@@ -21,7 +21,7 @@ use dawn_util::profile::Measure;
 use log::{debug, info};
 use rayon::prelude::*;
 use std::fs::File;
-use std::hash::{Hash, Hasher};
+use std::hash::Hasher;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::time::SystemTime;

@@ -4,7 +4,7 @@ use dawn_assets::ir::shader::IRShaderSourceKind;
 use dawn_assets::ir::texture::{IRPixelFormat, IRTextureFilter, IRTextureType, IRTextureWrap};
 use dawn_assets::{AssetID, AssetType};
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

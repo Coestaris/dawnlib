@@ -1,4 +1,4 @@
-use crate::input::{KeyCode, MouseButton};
+use crate::input::KeyCode;
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 
 pub(crate) fn convert_key(key: VIRTUAL_KEY) -> KeyCode {

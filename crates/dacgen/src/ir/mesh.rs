@@ -2,7 +2,9 @@ use crate::ir::{normalize_name, PartialIR};
 use crate::user::{UserAssetHeader, UserMeshAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::material::IRMaterial;
-use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRMeshBounds, IRSubMesh, IRTopology, IRMeshVertex};
+use dawn_assets::ir::mesh::{
+    IRIndexType, IRMesh, IRMeshBounds, IRMeshVertex, IRSubMesh, IRTopology,
+};
 use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};

@@ -16,7 +16,7 @@ use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
 use crate::view::{ViewError, ViewHandle};
 use dawn_assets::factory::FactoryBinding;
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use std::fmt::{Display, Formatter};
 
 pub struct GLRenderer<E: PassEventTrait> {

@@ -24,7 +24,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     PostQuitMessage, RegisterClassW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, WINDOW_EX_STYLE,
     WM_APP, WM_CLOSE, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
     WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONDOWN,
-    WM_RBUTTONUP, WM_SIZE, WM_WINDOWPOSCHANGED, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+    WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
 };
 
 #[derive(Clone, Debug)]
@@ -324,12 +324,7 @@ impl ViewHandle {
         let _message_pcstr = PCSTR(_message.as_ptr() as _);
 
         unsafe {
-            let _ = MessageBoxA(
-                None,
-                _message_pcstr,
-                _title_pcstr,
-                MB_OK | MB_ICONERROR,
-            );
+            let _ = MessageBoxA(None, _message_pcstr, _title_pcstr, MB_OK | MB_ICONERROR);
         }
     }
 }

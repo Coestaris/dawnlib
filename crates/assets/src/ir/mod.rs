@@ -1,20 +1,20 @@
 pub mod audio;
+pub mod font;
+pub mod material;
 pub mod mesh;
 pub mod notes;
 pub mod shader;
 pub mod texture;
-pub mod material;
-pub mod font;
 
-use std::fmt::Debug;
 use crate::ir::audio::IRAudio;
+use crate::ir::font::IRFont;
+use crate::ir::material::IRMaterial;
 use crate::ir::mesh::IRMesh;
 use crate::ir::notes::IRNotes;
 use crate::ir::shader::IRShader;
 use crate::ir::texture::IRTexture;
-use crate::ir::material::IRMaterial;
 use serde::{Deserialize, Serialize};
-use crate::ir::font::IRFont;
+use std::fmt::Debug;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum IRAsset {

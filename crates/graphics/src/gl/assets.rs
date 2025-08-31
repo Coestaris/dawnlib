@@ -4,7 +4,6 @@ use crate::gl::mesh::Mesh;
 use crate::gl::raii::shader_program::ShaderProgram;
 use crate::gl::raii::texture::Texture;
 use crate::passes::events::PassEventTrait;
-use anyhow::Context;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::AssetType;

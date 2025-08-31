@@ -1,6 +1,6 @@
 pub mod actor;
-pub mod notes;
 pub mod multiplexer;
+pub mod notes;
 pub mod waveform;
 #[cfg(test)]
 mod test {
