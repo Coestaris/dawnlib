@@ -40,8 +40,6 @@ pub(crate) enum TaskFinishedError {
     UnknownTask(AssetTaskID, AssetRequestID),
     #[error("Task {0} failed for command {1:?}: {2}")]
     TaskFailed(AssetTaskID, Option<TaskCommand>, anyhow::Error),
-    #[error("Finish of non-unwrapped request {0}")]
-    NonUnwrappedRequest(AssetRequestID),
 }
 
 pub(crate) enum TaskDoneResult {
@@ -131,6 +129,10 @@ impl Scheduler {
         Ok(tasks)
     }
 
+    // Debug function to print the task tree.
+    // Not used yet, but may be useful for future debugging.
+    // Let it stay for now.
+    #[allow(dead_code)]
     fn print_task_tree(tasks: &Vec<Task>, task: &Task, depth: usize) {
         println!(
             "{} Task ID: {}, Command: {:?}, State: {:?}",

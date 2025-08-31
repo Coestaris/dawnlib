@@ -28,6 +28,7 @@ impl std::fmt::Display for ShadingLanguageVersion {
     }
 }
 
+#[allow(unused)]
 pub(crate) unsafe fn get_version() -> Option<GlVersion> {
     let mut major = 0;
     let mut minor = 0;
@@ -43,6 +44,7 @@ pub(crate) unsafe fn get_version() -> Option<GlVersion> {
     }
 }
 
+#[allow(unused)]
 pub(crate) unsafe fn get_vendor() -> Option<String> {
     let vendor_ptr = bindings::GetString(bindings::VENDOR);
     if !vendor_ptr.is_null() {
@@ -56,6 +58,7 @@ pub(crate) unsafe fn get_vendor() -> Option<String> {
     }
 }
 
+#[allow(unused)]
 pub(crate) unsafe fn get_renderer() -> Option<String> {
     let renderer_ptr = bindings::GetString(bindings::RENDERER);
     if !renderer_ptr.is_null() {
@@ -69,6 +72,7 @@ pub(crate) unsafe fn get_renderer() -> Option<String> {
     }
 }
 
+#[allow(unused)]
 pub(crate) unsafe fn get_shading_language_version() -> Option<ShadingLanguageVersion> {
     let version_ptr = bindings::GetString(bindings::SHADING_LANGUAGE_VERSION);
     if !version_ptr.is_null() {
@@ -105,6 +109,7 @@ pub(crate) unsafe fn get_shading_language_version() -> Option<ShadingLanguageVer
     }
 }
 
+#[allow(unused)]
 pub(crate) unsafe fn get_binary_formats() -> Vec<u32> {
     let mut num_formats = 0;
     bindings::GetIntegerv(bindings::NUM_SHADER_BINARY_FORMATS, &mut num_formats);
@@ -118,6 +123,7 @@ pub(crate) unsafe fn get_binary_formats() -> Vec<u32> {
     formats.into_iter().map(|f| f as u32).collect()
 }
 
+#[allow(unused)]
 pub(crate) unsafe fn get_extensions() -> Vec<String> {
     let extensions_ptr = bindings::GetString(bindings::EXTENSIONS);
     if extensions_ptr.is_null() {

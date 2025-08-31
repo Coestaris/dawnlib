@@ -12,9 +12,10 @@ use crate::renderable::Renderable;
 use crate::renderer::backend::{RendererBackendError, RendererBackendTrait};
 use crate::renderer::ecs::attach_to_ecs;
 use crate::renderer::monitor::{DummyRendererMonitor, RendererMonitor, RendererMonitorTrait};
-use crate::view::{TickResult, View, ViewConfig, ViewError, ViewTrait};
+use crate::view::{TickResult, View, ViewConfig, ViewCursor, ViewError, ViewGeometry, ViewTrait};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use evenio::component::Component;
+use evenio::event::GlobalEvent;
 use evenio::world::World;
 use log::{info, warn};
 use std::panic::UnwindSafe;
@@ -27,6 +28,13 @@ use triple_buffer::{triple_buffer, Input, Output};
 pub use backend::{RendererBackend, RendererBackendConfig};
 use dawn_util::rendezvous::Rendezvous;
 pub use monitor::RendererMonitorEvent;
+
+#[derive(GlobalEvent, Clone)]
+pub enum ViewEvent {
+    SetGeometry(ViewGeometry),
+    SetCursor(ViewCursor),
+    SetTitle(String),
+}
 
 #[derive(Clone)]
 pub(crate) struct DataStreamFrame {
@@ -43,6 +51,8 @@ pub struct Renderer<E: PassEventTrait> {
     data_stream: Input<DataStreamFrame>,
     // Used for transferring input events from the renderer thread to the ECS.
     inputs_receiver: Receiver<InputEvent>,
+    // Used for transferring view events from the ECS to the View.
+    view_sender: Sender<ViewEvent>,
     // Used for transferring render pass events from the ECS to the renderer thread.
     renderer_sender: Sender<RenderPassEvent<E>>,
     monitor_receiver: Receiver<RendererMonitorEvent>,
@@ -224,6 +234,7 @@ impl<E: PassEventTrait> Renderer<E> {
 
         // Setup renderer
         let (inputs_sender, inputs_receiver) = unbounded();
+        let (view_sender, view_receiver) = unbounded();
         let (renderer_sender, renderer_receiver) = unbounded();
         let (stream_input, mut stream_output) =
             triple_buffer::<DataStreamFrame>(&DataStreamFrame {
@@ -266,7 +277,7 @@ impl<E: PassEventTrait> Renderer<E> {
                         before_frame.wait();
 
                         // Get the new events from the OS
-                        match Self::handle_view(&mut view, &mut monitor) {
+                        match Self::handle_view(&mut view, &mut monitor, &view_receiver) {
                             Ok(false) => {
                                 before_frame.unlock();
                                 after_frame.unlock();
@@ -311,6 +322,7 @@ impl<E: PassEventTrait> Renderer<E> {
             stop_signal,
             data_stream: stream_input,
             inputs_receiver,
+            view_sender,
             renderer_sender,
             monitor_receiver,
             handle: Some(handle),
@@ -321,9 +333,30 @@ impl<E: PassEventTrait> Renderer<E> {
     fn handle_view(
         view: &mut View,
         monitor: &mut impl RendererMonitorTrait,
+        view_receiver: &Receiver<ViewEvent>,
     ) -> Result<bool, RendererError> {
         // Process View. Usually this will produce input events
         monitor.view_start();
+        for event in view_receiver.try_iter() {
+            match event {
+                ViewEvent::SetGeometry(geo) => {
+                    if let Err(e) = view.set_geometry(geo) {
+                        warn!("Failed to set view geometry: {:?}", e);
+                    }
+                }
+                ViewEvent::SetCursor(cursor) => {
+                    if let Err(e) = view.set_cursor(cursor) {
+                        warn!("Failed to set view cursor: {:?}", e);
+                    }
+                }
+                ViewEvent::SetTitle(title) => {
+                    if let Err(e) = view.set_title(&title) {
+                        warn!("Failed to set view title: {:?}", e);
+                    }
+                }
+            }
+        }
+
         match view.tick() {
             TickResult::Continue => {
                 // View tick was successful, continue processing
@@ -411,13 +444,14 @@ impl<E: PassEventTrait> Renderer<E> {
     /// After attaching the renderer to the ECS, it will automatically collect the renderables
     /// and send them to the renderer thread (see `renderable` mod for more details).
     ///
-    /// When any input event is received, it will be sent to the ECS as `InputEvent` events.
-    /// It will capture all user's render pass events as `RenderPassEvent<E>` events and
-    /// send them to the renderer thread for processing.
-    /// Also, if you've enabled monitoring, it will send monitor data as `RendererMonitoring`
-    /// events to the ECS every second.
-    /// Additionally, if the Window or Renderer is closed/failed the event loop will be stopped
-    /// by sending a `ExitEvent` event to the ECS.
+    /// Input events from the ECS:
+    ///    - `ViewEvent` - to control the view (resize, set cursor, set title)
+    ///    - `RenderPassEvent<E>` - to send events to the render passes
+    ///
+    /// Output events to the ECS:
+    ///   - `InputEvent` - when any input event is received from the OS
+    ///   - `RendererMonitorEvent` - when monitoring is enabled, it will send monitoring data every second
+    ///   - `ExitEvent` - when the view is closed or the renderer fails, it will send an exit event to stop the ECS
     ///
     /// This function moves the renderer into the ECS world.
     pub fn attach_to_ecs(self, world: &mut World) {

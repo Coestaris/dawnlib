@@ -39,7 +39,7 @@ impl ViewTrait for View {
         todo!()
     }
 
-    fn set_size(&self, width: usize, height: usize) {
+    fn set_geometry(&self, width: usize, height: usize) {
         todo!()
     }
 

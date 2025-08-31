@@ -4,7 +4,8 @@ use crate::renderable::{
     ObjectMaterial, ObjectMesh, ObjectPosition, ObjectRotation, ObjectScale, Renderable,
 };
 use crate::renderer::monitor::RendererMonitorEvent;
-use crate::renderer::Renderer;
+use crate::renderer::{Renderer, ViewEvent};
+use crate::view::{ViewCursor, ViewGeometry};
 use dawn_ecs::events::{ExitEvent, InterSyncEvent, TickEvent};
 use evenio::component::Component;
 use evenio::event::{Receiver, Sender};
@@ -170,6 +171,12 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         renderer.data_stream.publish();
     }
 
+    fn view_handler<E: PassEventTrait>(r: Receiver<ViewEvent>, mut renderer: Single<&mut Boxed>) {
+        let renderer = renderer.cast_mut::<E>();
+        renderer.view_sender.send(r.event.clone()).unwrap();
+    }
+
+    world.add_handler(view_handler::<E>);
     world.add_handler(monitoring_handler::<E>.low());
     world.add_handler(inputs_handler::<E>.high());
     world.add_handler(view_closed_handler::<E>.low());

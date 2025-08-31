@@ -164,7 +164,7 @@ pub trait AssetCastable: 'static {}
 
 #[derive(Debug, Clone)]
 struct AssetInner {
-    tid: TypeId,
+    _tid: TypeId,
     ptr: NonNull<()>,
 }
 
@@ -176,7 +176,7 @@ unsafe impl Sync for Asset {}
 
 impl Asset {
     pub fn new(tid: TypeId, ptr: NonNull<()>) -> Asset {
-        Asset(Arc::new(AssetInner { tid, ptr }))
+        Asset(Arc::new(AssetInner { _tid: tid, ptr }))
     }
 
     #[allow(dead_code)]
@@ -186,11 +186,11 @@ impl Asset {
 
     pub fn cast<'a, T: AssetCastable>(&self) -> &'a T {
         #[cfg(debug_assertions)]
-        if self.0.tid != TypeId::of::<T>() {
+        if self.0._tid != TypeId::of::<T>() {
             panic!(
                 "Asset type mismatch: expected {:?}, found {:?}",
                 TypeId::of::<T>(),
-                self.0.tid
+                self.0._tid
             );
         }
 
@@ -217,11 +217,11 @@ impl<T: AssetCastable> Clone for TypedAsset<T> {
 impl<T: AssetCastable> TypedAsset<T> {
     pub fn new(asset: Asset) -> TypedAsset<T> {
         #[cfg(debug_assertions)]
-        if asset.0.tid != TypeId::of::<T>() {
+        if asset.0._tid != TypeId::of::<T>() {
             panic!(
                 "TypedAsset type mismatch: expected {:?}, found {:?}",
                 TypeId::of::<T>(),
-                asset.0.tid
+                asset.0._tid
             );
         }
 

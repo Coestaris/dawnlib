@@ -1,93 +1,84 @@
+mod geometry;
 mod input;
+mod events;
+mod cursor;
 
 use crate::gl::ViewHandleOpenGL;
 use crate::input::{InputEvent, MouseButton};
+use crate::view::windows::geometry::{SavedWindowState, WindowMode};
 use crate::view::windows::input::convert_key;
-use crate::view::{TickResult, ViewConfig, ViewTrait};
+use crate::view::{TickResult, ViewConfig, ViewCursor, ViewGeometry, ViewTrait};
 use crossbeam_channel::Sender;
 use log::{debug, info, warn};
-use std::ffi::c_void;
-use windows::core::{s, HSTRING, PCSTR, PCWSTR};
+use std::ffi::{c_void, OsStr};
+use std::os::windows::ffi::OsStrExt;
+use thiserror::Error;
+use windows::core::{s, w, HSTRING, PCSTR, PCWSTR};
 use windows::Win32::Foundation::{
     FreeLibrary, GetLastError, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, WIN32_ERROR, WPARAM,
 };
-use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC, HDC};
+use windows::Win32::Graphics::Gdi::{
+    ChangeDisplaySettingsW, GetDC, ReleaseDC, CDS_FULLSCREEN, CDS_RESET, DEVMODEW, DM_PELSHEIGHT,
+    DM_PELSWIDTH, HDC,
+};
 use windows::Win32::Graphics::OpenGL::{
-    wglCreateContext, wglDeleteContext, wglGetCurrentContext, wglGetProcAddress, wglMakeCurrent,
-    ChoosePixelFormat, SetPixelFormat, SwapBuffers, HGLRC, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW,
-    PFD_SUPPORT_OPENGL, PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
+    wglCreateContext, wglDeleteContext, wglGetProcAddress, wglMakeCurrent, ChoosePixelFormat,
+    SetPixelFormat, SwapBuffers, HGLRC, PFD_DOUBLEBUFFER, PFD_DRAW_TO_WINDOW, PFD_SUPPORT_OPENGL,
+    PFD_TYPE_RGBA, PIXELFORMATDESCRIPTOR,
 };
 use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetModuleHandleW, GetProcAddress};
 use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
-use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcA, DestroyWindow, DispatchMessageA, GetMessageA, PostMessageW,
-    PostQuitMessage, RegisterClassW, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, MSG, WINDOW_EX_STYLE,
-    WM_APP, WM_CLOSE, WM_DESTROY, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT, WM_RBUTTONDOWN,
-    WM_RBUTTONUP, WM_SIZE, WNDCLASSW, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
-};
+use windows::Win32::UI::WindowsAndMessaging::*;
+use crate::view::windows::events::win_proc;
 
 #[derive(Clone, Debug)]
 pub struct PlatformSpecificViewConfig {}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Error)]
 #[allow(dead_code)]
 pub enum ViewError {
+    #[error("Invalid HWND")]
     InvalidHWND(),
-    InvalidHINSTANCE(),
-    InvalidClassName(String),
-
-    GetInstanceError(WIN32_ERROR),
-    RegisterClassError(WIN32_ERROR),
-    CreateWindowError(WIN32_ERROR),
-    SetWindowTextError(WIN32_ERROR),
-    ShowWindowError(WIN32_ERROR),
-    UpdateWindowError(WIN32_ERROR),
+    #[error("Invalid HDC")]
     InvalidHDC,
+    #[error("Invalid HINSTANCE")]
+    InvalidHINSTANCE(),
+    #[error("Invalid class name: {0}")]
+    InvalidClassName(String),
+    #[error("Failed to get instance handle: {0:?}")]
+    GetInstanceError(WIN32_ERROR),
+    #[error("Failed to register window class: {0:?}")]
+    RegisterClassError(WIN32_ERROR),
+    #[error("Failed to create window: {0:?}")]
+    CreateWindowError(WIN32_ERROR),
+    #[error("Failed to destroy window: {0:?}")]
+    SetWindowTextError(WIN32_ERROR),
+    #[error("Invalid pixel format")]
     InvalidPixelFormat,
+    #[error("Failed to create OpenGL context: {0:?}")]
     ContextCreationError(WIN32_ERROR),
+    #[error("Failed to load OpenGL function {1}: {0:?}")]
     FunctionLoadError(WIN32_ERROR, String),
+    #[error("Failed to create cursor: {0:?}")]
+    CreateCursorError(WIN32_ERROR),
 }
+const CLASS_NAME: PCWSTR = w!("DAWN_WINDOW_CLASS");
 
-impl std::fmt::Display for ViewError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ViewError::InvalidHWND() => write!(f, "Invalid HWND"),
-            ViewError::InvalidHINSTANCE() => write!(f, "Invalid HINSTANCE"),
-            ViewError::InvalidClassName(name) => write!(f, "Invalid class name: {}", name),
-            ViewError::GetInstanceError(err) => {
-                write!(f, "Failed to get instance handle: {:?}", err)
-            }
-            ViewError::RegisterClassError(err) => {
-                write!(f, "Failed to register window class: {:?}", err)
-            }
-            ViewError::CreateWindowError(err) => write!(f, "Failed to create window: {:?}", err),
-            ViewError::SetWindowTextError(err) => {
-                write!(f, "Failed to set window title: {:?}", err)
-            }
-            ViewError::ShowWindowError(err) => write!(f, "Failed to show window: {:?}", err),
-            ViewError::UpdateWindowError(err) => write!(f, "Failed to update window: {:?}", err),
-            ViewError::InvalidHDC => write!(f, "Invalid HDC"),
-            ViewError::InvalidPixelFormat => write!(f, "Invalid pixel format"),
-            ViewError::ContextCreationError(err) => {
-                write!(f, "Failed to create OpenGL context: {:?}", err)
-            }
-            ViewError::FunctionLoadError(err, symbol) => {
-                write!(f, "Failed to load function '{}': {:?}", symbol, err)
-            }
-        }
-    }
+fn to_wide_null(s: &str) -> Vec<u16> {
+    OsStr::new(s)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
 }
-
-impl std::error::Error for ViewError {}
-
-const CLASS_NAME: &str = "DAWN Window Class";
-pub const WM_APP_QUIT_REQUESTED: u32 = WM_APP + 1;
 
 pub(crate) struct View {
     hwnd: HWND,
     hinstance: HINSTANCE,
+    cursor: ViewCursor,
     events_sender: Sender<InputEvent>,
+
+    mode: WindowMode,
+    saved: Option<SavedWindowState>,
 }
 
 impl ViewTrait for View {
@@ -102,30 +93,27 @@ impl ViewTrait for View {
                 Err(_) => Err(ViewError::GetInstanceError(get_last_error())),
             }?;
 
-            debug!("Registering window class. class_name={}", CLASS_NAME);
-            let class_name = HSTRING::from(CLASS_NAME);
             match RegisterClassW(&WNDCLASSW {
                 style: CS_HREDRAW | CS_VREDRAW,
                 hInstance: hinstance,
-                lpszClassName: PCWSTR(class_name.as_ptr()),
-                lpfnWndProc: Some(default_proc),
+                lpszClassName: CLASS_NAME,
+                lpfnWndProc: Some(win_proc),
                 ..Default::default()
             }) {
                 0 => Err(ViewError::RegisterClassError(get_last_error())),
                 atom => Ok(atom),
             }?;
 
-            debug!("Creating window. w={}, h={}", cfg.width, cfg.height);
-            let title = HSTRING::from("TItle");
+            debug!("Creating window");
             let hwnd = match CreateWindowExW(
                 WINDOW_EX_STYLE(0),
-                PCWSTR(class_name.as_ptr()),
-                PCWSTR(title.as_ptr()),
+                CLASS_NAME,
+                None,
                 WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
-                cfg.width as i32,
-                cfg.height as i32,
+                800i32,
+                600i32,
                 None,
                 None,
                 hinstance.into(),
@@ -135,20 +123,20 @@ impl ViewTrait for View {
                 Err(_) => Err(ViewError::CreateWindowError(get_last_error())),
             }?;
 
-            // Send fake resize event to initialize the viewport
-            events_sender
-                .send(InputEvent::Resize {
-                    width: cfg.width,
-                    height: cfg.height,
-                })
-                .unwrap();
-
             info!("WIN32 Window created successfully");
-            Ok(View {
+            let mut view = View {
                 hwnd,
                 hinstance,
+                cursor: ViewCursor::Default,
                 events_sender,
-            })
+                mode: WindowMode::Normal,
+                saved: None,
+            };
+
+            view.set_title(&cfg.title)?;
+            view.set_cursor(cfg.cursor.clone())?;
+            view.set_geometry(cfg.geometry.clone())?;
+            Ok(view)
         }
     }
 
@@ -163,92 +151,24 @@ impl ViewTrait for View {
     }
 
     fn tick(&mut self) -> TickResult {
-        let mut closed = false;
-        let mut msg = MSG::default();
-        while unsafe { GetMessageA(&mut msg, Some(self.hwnd), 0, 0).0 != 0 } {
-            unsafe {
-                DispatchMessageA(&msg);
-            }
+        self.tick_inner()
+    }
 
-            /* Process the message synchronously
-             * to make things simpler */
-            let event: InputEvent;
-            match msg.message {
-                WM_APP_QUIT_REQUESTED => {
-                    debug!("WM_APP_QUIT_REQUESTED received, closing the window");
-                    closed = true;
-                    continue;
-                }
-                // Catch resize event
-                WM_SIZE => {
-                    let width = (msg.lParam.0 & 0xFFFF) as u32;
-                    let height = (msg.lParam.0 >> 16) as u32;
-                    event = InputEvent::Resize {
-                        width: width as usize,
-                        height: height as usize,
-                    };
-                }
-                WM_KEYDOWN => {
-                    event = InputEvent::KeyPress(convert_key(VIRTUAL_KEY(msg.wParam.0 as u16)));
-                }
-                WM_KEYUP => {
-                    event = InputEvent::KeyRelease(convert_key(VIRTUAL_KEY(msg.wParam.0 as u16)));
-                }
-                WM_LBUTTONDOWN => {
-                    event = InputEvent::MouseButtonPress(MouseButton::Left);
-                }
-                WM_LBUTTONUP => {
-                    event = InputEvent::MouseButtonRelease(MouseButton::Left);
-                }
-                WM_MBUTTONDOWN => {
-                    event = InputEvent::MouseButtonPress(MouseButton::Middle);
-                }
-                WM_MBUTTONUP => {
-                    event = InputEvent::MouseButtonRelease(MouseButton::Middle);
-                }
-                WM_MOUSEMOVE => {
-                    let x = (msg.lParam.0 as i32 & 0xFFFF) as f32;
-                    let y = (msg.lParam.0 >> 16) as i32 as f32;
-                    event = InputEvent::MouseMove { x, y };
-                }
-                WM_MOUSEWHEEL => {
-                    let delta = (msg.wParam.0 as i32 >> 16) as f32 / 120.0; // Convert to standard scroll units
-                    event = InputEvent::MouseScroll {
-                        delta_x: 0.0,
-                        delta_y: delta,
-                    };
-                }
-                WM_RBUTTONDOWN => {
-                    event = InputEvent::MouseButtonPress(MouseButton::Right);
-                }
-                WM_RBUTTONUP => {
-                    event = InputEvent::MouseButtonRelease(MouseButton::Right);
-                }
-                _ => {
-                    return if !closed {
-                        TickResult::Continue
-                    } else {
-                        TickResult::Closed
-                    }
-                }
-            }
+    fn set_geometry(&mut self, geometry: ViewGeometry) -> Result<(), crate::view::ViewError> {
+        self.set_geometry_inner(geometry)
+    }
 
-            self.events_sender.send(event).unwrap();
-        }
-
-        if !closed {
-            TickResult::Continue
-        } else {
-            TickResult::Closed
+    fn set_title(&mut self, title: &str) -> Result<(), crate::view::ViewError> {
+        debug!("Setting window title: {}", title);
+        let wide_title = to_wide_null(title);
+        unsafe {
+            SetWindowTextW(self.hwnd, PCWSTR(wide_title.as_ptr()))
+                .map_err(|_| ViewError::SetWindowTextError(get_last_error()))
         }
     }
 
-    fn set_size(&self, _width: usize, _height: usize) {
-        todo!()
-    }
-
-    fn set_title(&self, _title: &str) {
-        todo!()
+    fn set_cursor(&mut self, cursor: ViewCursor) -> Result<(), crate::view::ViewError> {
+        self.set_cursor_inner(cursor)
     }
 }
 
@@ -263,6 +183,7 @@ impl Drop for View {
     }
 }
 
+#[allow(dead_code)]
 pub struct ViewHandle {
     hwnd: HWND,
     hinstance: HINSTANCE,
@@ -273,7 +194,6 @@ pub struct ViewHandle {
 }
 
 #[cfg(feature = "gl")]
-
 impl ViewHandle {
     unsafe fn load_gl_proc(&mut self, symbol: &str) -> Option<*const c_void> {
         unsafe {
@@ -298,7 +218,7 @@ impl ViewHandle {
             self.opengl32_hmod = if let Some(hmod) = self.opengl32_hmod {
                 Some(hmod)
             } else {
-                if let Ok(hmod) = GetModuleHandleA(s!("opengl32.dll")) {
+                if let Ok(hmod) = GetModuleHandleW(w!("opengl32.dll")) {
                     debug!("Loaded opengl32.dll module handle");
                     Some(hmod)
                 } else {
@@ -314,24 +234,25 @@ impl ViewHandle {
     }
 
     pub fn error_box(title: &str, message: &str) {
-        use windows::Win32::UI::WindowsAndMessaging::{MessageBoxA, MB_ICONERROR, MB_OK};
+        use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK};
 
-        // Leak strings to get static pointers
-        let _title = Box::leak(title.to_string().into_boxed_str());
-        let _message = Box::leak(message.to_string().into_boxed_str());
-
-        let _title_pcstr = PCSTR(_title.as_ptr() as _);
-        let _message_pcstr = PCSTR(_message.as_ptr() as _);
+        let title = to_wide_null(title);
+        let message = to_wide_null(message);
 
         unsafe {
-            let _ = MessageBoxA(None, _message_pcstr, _title_pcstr, MB_OK | MB_ICONERROR);
+            let _ = MessageBoxW(
+                None,
+                PCWSTR(message.as_ptr()),
+                PCWSTR(title.as_ptr()),
+                MB_OK | MB_ICONERROR,
+            );
         }
     }
 }
 
 #[cfg(feature = "gl")]
 impl ViewHandleOpenGL for ViewHandle {
-    fn create_context(&mut self, fps: usize, vsync: bool) -> Result<(), crate::view::ViewError> {
+    fn create_context(&mut self, _fps: usize, _vsync: bool) -> Result<(), crate::view::ViewError> {
         unsafe {
             let pfd = PIXELFORMATDESCRIPTOR {
                 nSize: size_of::<PIXELFORMATDESCRIPTOR>() as u16,
@@ -374,6 +295,7 @@ impl ViewHandleOpenGL for ViewHandle {
         }
         #[cfg(debug_assertions)]
         unsafe {
+            use windows::Win32::Graphics::OpenGL::wglGetCurrentContext;
             assert!(
                 !wglGetCurrentContext().is_invalid(),
                 "No current OpenGL context"
@@ -429,30 +351,3 @@ fn get_last_error() -> WIN32_ERROR {
     unsafe { GetLastError() }
 }
 
-unsafe extern "system" fn default_proc(
-    hwnd: HWND,
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    match message {
-        WM_PAINT => LRESULT(0),
-
-        WM_CLOSE => {
-            /* Send a custom message to request the application to quit */
-            PostMessageW(Some(hwnd), WM_APP_QUIT_REQUESTED, WPARAM(0), LPARAM(0));
-            /* Block the message loop until the window is destroyed */
-            LRESULT(0)
-        }
-
-        WM_DESTROY => {
-            debug!("WM_DESTROY received, destroying window");
-            unsafe {
-                PostQuitMessage(0);
-            }
-            LRESULT(0)
-        }
-
-        _ => unsafe { DefWindowProcA(hwnd, message, wparam, lparam) },
-    }
-}

@@ -434,7 +434,7 @@ impl ViewTrait for View {
         TickResult::Continue
     }
 
-    fn set_size(&self, width: usize, height: usize) {
+    fn set_geometry(&self, width: usize, height: usize) {
         todo!()
     }
 

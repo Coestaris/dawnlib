@@ -51,6 +51,28 @@ pub struct ViewSynchronization {
     pub after_frame: Rendezvous,
 }
 
+#[derive(Clone, Debug)]
+pub enum ViewCursor {
+    Default,
+    Hidden,
+
+    Crosshair,
+    Hand,
+    Arrow,
+    Move,
+    Text,
+    Wait,
+    Help,
+    NotAllowed,
+}
+
+#[derive(Clone, Debug)]
+pub enum ViewGeometry {
+    Normal(u32, u32),
+    BorderlessFullscreen,
+    Fullscreen,
+}
+
 #[derive(Clone)]
 pub struct ViewConfig {
     /// Platform-specific configuration
@@ -62,12 +84,14 @@ pub struct ViewConfig {
 
     /// Title of the window
     pub title: String,
-    /// Width of the window in pixels
-    pub width: usize,
-    /// Height of the window in pixels
-    pub height: usize,
+    /// Initial geometry of the window
+    pub geometry: ViewGeometry,
+    /// Initial cursor style
+    pub cursor: ViewCursor,
 }
 
+#[derive(Debug)]
+#[allow(dead_code)]
 pub(crate) enum TickResult {
     Continue,
     Closed,
@@ -83,6 +107,7 @@ pub(crate) trait ViewTrait {
 
     fn tick(&mut self) -> TickResult;
 
-    fn set_size(&self, width: usize, height: usize);
-    fn set_title(&self, title: &str);
+    fn set_geometry(&mut self, geometry: ViewGeometry) -> Result<(), ViewError>;
+    fn set_title(&mut self, title: &str) -> Result<(), ViewError>;
+    fn set_cursor(&mut self, cursor: ViewCursor) -> Result<(), ViewError>;
 }
