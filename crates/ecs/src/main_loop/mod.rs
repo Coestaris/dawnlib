@@ -17,7 +17,7 @@ mod monitor;
 mod sync;
 
 /// Event sent every second with monitoring data about the main loop.
-#[derive(GlobalEvent)]
+#[derive(GlobalEvent, Debug, Clone)]
 pub struct MainLoopMonitorEvent {
     pub cycle_time: MonitorSample<Duration>,
     pub tps: MonitorSample<f32>,

@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::panic::UnwindSafe;
 use std::time::Duration;
 
-#[derive(GlobalEvent)]
+#[derive(GlobalEvent, Clone, Debug)]
 pub struct RendererMonitorEvent {
     /// Actual number of frames drawn per second.
     pub fps: MonitorSample<f32>,
@@ -26,7 +26,7 @@ pub struct RendererMonitorEvent {
     /// The amount of time spend on each render pass.
     /// The key is the name of the pass, and the value is the time spent on it.
     /// This is used for profiling the render passes.
-    pub passes: HashMap<String, MonitorSample<Duration>>,
+    pub passes: Vec<(String, MonitorSample<Duration>)>,
 
     /// The approximate number of primitives drawn
     /// (triangles, lines, points, etc.) in the frame.
@@ -34,6 +34,11 @@ pub struct RendererMonitorEvent {
     /// The number of draw calls made in the frame.
     /// This is the number of times the GPU was instructed
     pub draw_calls: MonitorSample<f32>,
+
+    /// The total load of the renderer.
+    /// Calculated as the ratio of the time spent rendering
+    /// to the total frame time (including waiting for VSync).
+    pub load: MonitorSample<f32>,
 }
 
 pub(crate) trait RendererMonitorTrait: Send + Sync + 'static + UnwindSafe {
@@ -136,9 +141,9 @@ impl RendererMonitorTrait for RendererMonitor {
             self.drawn_primitives.update();
 
             if let Some(sender) = &self.sender {
-                let mut passes = HashMap::with_capacity(self.pass_names.len());
+                let mut passes = Vec::with_capacity(self.pass_names.len());
                 for (i, name) in self.pass_names.iter().enumerate() {
-                    passes.insert(name.clone(), self.pass_samples[i].clone());
+                    passes.push((name.clone(), self.pass_samples[i].clone()));
                 }
 
                 let frame = RendererMonitorEvent {
@@ -149,6 +154,7 @@ impl RendererMonitorTrait for RendererMonitor {
                     passes,
                     drawn_primitives: self.drawn_primitives.get(),
                     draw_calls: self.draw_calls.get(),
+                    load: MonitorSample::new(0.0, 0.0, 0.0),
                 };
 
                 sender.send(frame).unwrap();

@@ -5,6 +5,7 @@ use crate::passes::events::PassEventTrait;
 use crate::passes::result::RenderResult;
 use dawn_assets::ir::font::{IRFont, IRGlyph, IRGlyphVertex};
 use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage};
+use glam::Vec2;
 use log::debug;
 use std::collections::HashMap;
 use thiserror::Error;
@@ -104,5 +105,29 @@ impl Font {
         }
 
         result
+    }
+
+    pub fn text_dimensions(&self, string: &str) -> Vec2 {
+        let mut width = 0.0;
+        let mut height = self.y_advance;
+
+        for c in string.chars() {
+            match c {
+                ' ' => {
+                    width += self.space_advance; // Simple space handling
+                }
+                '\n' => {
+                    width = 0.0;
+                    height += self.y_advance;
+                }
+                _ => {
+                    if let Some(glyph) = self.glyphs.get(&c) {
+                        width += glyph.x_advance;
+                    }
+                }
+            }
+        }
+
+        Vec2::new(width, height)
     }
 }

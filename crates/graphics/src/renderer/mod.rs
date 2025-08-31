@@ -131,7 +131,6 @@ pub trait RenderChainConstructor<C, E> = FnOnce(&mut RendererBackend<E>) -> Resu
     + Send
     + Sync
     + 'static
-    + UnwindSafe
 where
     C: RenderChain<E>,
     E: PassEventTrait;
