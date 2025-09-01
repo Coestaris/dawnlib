@@ -71,9 +71,9 @@ impl PlayerMonitor {
             last_update: Instant::now(),
             sample_rate,
             renderer_time: Stopwatch::new(0.5),
-            renderer_tps: Counter::new(Duration::from_secs(1), 0.5),
+            renderer_tps: Counter::new(0.5),
             events: Stopwatch::new(0.5),
-            events_tps: Counter::new(Duration::from_secs(1), 0.5),
+            events_tps: Counter::new(0.5),
         }
     }
 }
@@ -112,9 +112,9 @@ impl PlayerMonitorTrait for PlayerMonitor {
                 // Calculate the average load of the player
                 // Number of samples that actually processed by one render call
                 // (assuming that no underruns happens).
-                let render_tps = self.renderer_tps.get();
-                let renderer_time = self.renderer_time.get();
-                let events_time = self.events.get();
+                let render_tps = self.renderer_tps.get().unwrap_or_default();
+                let renderer_time = self.renderer_time.get().unwrap_or_default();
+                let events_time = self.events.get().unwrap_or_default();
 
                 let total_time_average = renderer_time.average() + events_time.average();
                 let total_time_min = renderer_time.min() + events_time.min();
@@ -133,7 +133,7 @@ impl PlayerMonitorTrait for PlayerMonitor {
                     render: renderer_time,
                     render_tps,
                     events: events_time,
-                    events_tps: self.events_tps.get(),
+                    events_tps: self.events_tps.get().unwrap_or_default(),
                     load,
                     sample_rate: self.sample_rate,
                     channels: CHANNELS_COUNT,

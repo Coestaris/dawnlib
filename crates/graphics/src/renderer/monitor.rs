@@ -135,10 +135,11 @@ impl RendererMonitorTrait for RendererMonitor {
 
         // Call these each second
         let now = std::time::Instant::now();
-        if now.duration_since(self.last_send) >= Duration::from_secs(1) {
+        if now.duration_since(self.last_send) >= Duration::from_millis(200) {
             self.last_send = now;
             self.fps.update();
             self.drawn_primitives.update();
+            self.draw_calls.update();
 
             if let Some(sender) = &self.sender {
                 let mut passes = Vec::with_capacity(self.pass_names.len());
@@ -146,22 +147,37 @@ impl RendererMonitorTrait for RendererMonitor {
                     passes.push((name.clone(), self.pass_samples[i].clone()));
                 }
 
+                let fps = self.fps.get().unwrap_or_default();
+                let view = self.view.get().unwrap_or_default();
+                let events = self.events.get().unwrap_or_default();
+                let render = self.render.get().unwrap_or_default();
+
+                let min_time = view.min() + events.min() + render.min();
+                let average_time = view.average() + events.average() + render.average();
+                let max_time = view.max() + events.max() + render.max();
+
+                let load = MonitorSample::new(
+                    min_time.as_secs_f32() * fps.min(),
+                    average_time.as_secs_f32() * fps.average(),
+                    max_time.as_secs_f32() * fps.max(),
+                );
+
                 let frame = RendererMonitorEvent {
-                    fps: self.fps.get(),
-                    view: self.view.get(),
-                    events: self.events.get(),
-                    render: self.render.get(),
+                    fps,
+                    view,
+                    events,
+                    render,
                     passes,
-                    drawn_primitives: self.drawn_primitives.get(),
-                    draw_calls: self.draw_calls.get(),
-                    load: MonitorSample::new(0.0, 0.0, 0.0),
+                    drawn_primitives: self.drawn_primitives.get().unwrap_or_default(),
+                    draw_calls: self.draw_calls.get().unwrap_or_default(),
+                    load,
                 };
 
                 sender.send(frame).unwrap();
             }
 
             // Reset the counters each 5 seconds to get more smooth data
-            if self.counter % 5 == 0 {
+            if self.counter % 50 == 0 {
                 self.fps.reset();
                 self.view.reset();
                 self.events.reset();
@@ -176,12 +192,12 @@ impl RendererMonitorTrait for RendererMonitor {
 impl RendererMonitor {
     pub fn new() -> Self {
         RendererMonitor {
-            fps: Counter::new(Duration::from_secs(1), 0.5),
+            fps: Counter::new(0.5),
             view: Stopwatch::new(0.5),
             events: Stopwatch::new(0.5),
             render: Stopwatch::new(0.5),
-            draw_calls: Counter::new(Duration::from_secs(1), 0.5),
-            drawn_primitives: Counter::new(Duration::from_secs(1), 0.5),
+            draw_calls: Counter::new(0.5),
+            drawn_primitives: Counter::new(0.5),
             pass_names: Vec::with_capacity(MAX_RENDER_PASSES),
             pass_samples: Vec::with_capacity(MAX_RENDER_PASSES),
             last_send: std::time::Instant::now(),
