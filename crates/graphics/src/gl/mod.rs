@@ -124,9 +124,15 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         view_handle.create_context(0, false).unwrap();
         // Load OpenGL functions using the OS-specific loaders
         bindings::load_with(|symbol| {
-            view_handle
-                .get_proc_addr(symbol)
-                .expect("Failed to load OpenGL function")
+            // Warn if the symbol is not found
+            match view_handle.get_proc_addr(symbol) {
+                Ok(addr) => addr,
+                Err(e) => {
+                    // That's not a catastrophic, but we should know about it
+                    warn!("Failed to load OpenGL symbol: {}: {}", symbol, e);
+                    std::ptr::null()
+                }
+            }
         });
 
         // Stat the OpenGL context

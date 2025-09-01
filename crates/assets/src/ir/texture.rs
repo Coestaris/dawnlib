@@ -86,6 +86,8 @@ pub enum IRPixelFormat {
     R32G32B32FLOAT,
     /// Red, green, blue, alpha (32 bits float)
     R32G32B32A32FLOAT,
+    // ????
+    DEPTH32F,
 }
 
 impl Default for IRPixelFormat {

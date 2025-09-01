@@ -1,10 +1,11 @@
+mod cursor;
+mod events;
 mod geometry;
 mod input;
-mod events;
-mod cursor;
 
 use crate::gl::ViewHandleOpenGL;
 use crate::input::{InputEvent, MouseButton};
+use crate::view::windows::events::win_proc;
 use crate::view::windows::geometry::{SavedWindowState, WindowMode};
 use crate::view::windows::input::convert_key;
 use crate::view::{TickResult, ViewConfig, ViewCursor, ViewGeometry, ViewTrait};
@@ -12,6 +13,7 @@ use crossbeam_channel::Sender;
 use log::{debug, info, warn};
 use std::ffi::{c_void, OsStr};
 use std::os::windows::ffi::OsStrExt;
+use std::ptr;
 use thiserror::Error;
 use windows::core::{s, w, HSTRING, PCSTR, PCWSTR};
 use windows::Win32::Foundation::{
@@ -29,7 +31,6 @@ use windows::Win32::Graphics::OpenGL::{
 use windows::Win32::System::LibraryLoader::{GetModuleHandleA, GetModuleHandleW, GetProcAddress};
 use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
 use windows::Win32::UI::WindowsAndMessaging::*;
-use crate::view::windows::events::win_proc;
 
 #[derive(Clone, Debug)]
 pub struct PlatformSpecificViewConfig {}
@@ -273,10 +274,66 @@ impl ViewHandleOpenGL for ViewHandle {
             let pixel_format = ChoosePixelFormat(hdc, &pfd);
             SetPixelFormat(hdc, pixel_format, &pfd).map_err(|_| ViewError::InvalidPixelFormat)?;
 
+            // Bootstrap OpenGL context to load functions
+            // This context will be replaced later if possible
             let hglrc = wglCreateContext(hdc)
                 .map_err(|_| ViewError::ContextCreationError(get_last_error()))?;
             wglMakeCurrent(hdc, hglrc)
                 .map_err(|_| ViewError::ContextCreationError(get_last_error()))?;
+
+            // Try to locate the *Attrib function to create a modern OpenGL context
+            // If it fails, we will use the old context created above
+            // This is not ideal, but at least it will work on older systems
+            // and we can still use modern OpenGL if the function is available
+            // Note: wglCreateContextAttribsARB is an extension function, so we need to load it manually
+            let hglrc = if let Some(wglCreateContextAttribsARB) =
+                self.load_gl_proc("wglCreateContextAttribsARB")
+            {
+                type WglCreateContextAttribsARB =
+                    unsafe extern "system" fn(HDC, HGLRC, *const i32) -> HGLRC;
+                let wglCreateContextAttribsARB: WglCreateContextAttribsARB =
+                    std::mem::transmute(wglCreateContextAttribsARB);
+
+                // Request an OpenGL 3.3 core profile context
+                // God forgive me for this magic number soup
+                // See https://www.khronos.org/registry/OpenGL/extensions/ARB/WGL_ARB_create_context.txt
+                // for details.
+                // TODO: Maybe this constant already exists somewhere in the windows crate?
+                const WGL_CONTEXT_MAJOR_VERSION_ARB: i32 = 0x2091;
+                const WGL_CONTEXT_MINOR_VERSION_ARB: i32 = 0x2092;
+                const WGL_CONTEXT_LAYER_PLANE_ARB: i32 = 0x2093;
+                const WGL_CONTEXT_FLAGS_ARB: i32 = 0x2094;
+                const WGL_CONTEXT_PROFILE_MASK_ARB: i32 = 0x9126;
+
+                const WGL_CONTEXT_CORE_PROFILE_BIT_ARB: i32 = 0x00000001;
+
+                let attribs = [
+                    WGL_CONTEXT_MAJOR_VERSION_ARB,
+                    3,
+                    WGL_CONTEXT_MINOR_VERSION_ARB,
+                    2,
+                    WGL_CONTEXT_PROFILE_MASK_ARB,
+                    WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+                    0,
+                ];
+
+                let ctx = wglCreateContextAttribsARB(hdc, HGLRC::default(), attribs.as_ptr());
+                if ctx.is_invalid() {
+                    warn!("wglCreateContextAttribsARB failed, falling back to wglCreateContext");
+                    hglrc
+                } else {
+                    // Make the new context current and delete the old one
+                    wglMakeCurrent(hdc, ctx)
+                        .map_err(|_| ViewError::ContextCreationError(get_last_error()))?;
+                    // Delete the old context
+                    wglDeleteContext(hglrc).ok();
+                    info!("Created OpenGL 3.2+ context successfully");
+                    ctx
+                }
+            } else {
+                warn!("wglCreateContextAttribsARB not found, using legacy context");
+                hglrc
+            };
 
             // Set the OpenGL context
             self.hdc = Some(hdc);
@@ -350,4 +407,3 @@ impl Drop for ViewHandle {
 fn get_last_error() -> WIN32_ERROR {
     unsafe { GetLastError() }
 }
-

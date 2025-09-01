@@ -10,7 +10,7 @@ use thiserror::Error;
 
 #[derive(Debug)]
 pub struct Texture {
-    id: GLuint,
+    pub(crate) id: GLuint,
     texture_type: GLuint,
 }
 
@@ -73,6 +73,7 @@ fn pf_to_format(format: &IRPixelFormat) -> Result<GLenum, TextureError> {
         IRPixelFormat::R16G16B16A16 => bindings::RGBA,
         IRPixelFormat::R32G32B32FLOAT => bindings::RGB,
         IRPixelFormat::R32G32B32A32FLOAT => bindings::RGBA,
+        IRPixelFormat::DEPTH32F => bindings::DEPTH_COMPONENT,
         _ => return Err(TextureError::UnsupportedPixelFormat(format.clone())),
     })
 }
@@ -89,6 +90,7 @@ fn pf_to_internal(format: &IRPixelFormat) -> Result<GLenum, TextureError> {
         IRPixelFormat::R16G16B16A16 => bindings::RGBA,
         IRPixelFormat::R32G32B32FLOAT => bindings::RGB,
         IRPixelFormat::R32G32B32A32FLOAT => bindings::RGBA,
+        IRPixelFormat::DEPTH32F => bindings::DEPTH_COMPONENT32F,
         _ => return Err(TextureError::UnsupportedPixelFormat(format.clone())),
     })
 }
@@ -103,7 +105,9 @@ fn pixel_format_to_gl_type(format: &IRPixelFormat) -> Result<GLenum, TextureErro
         | IRPixelFormat::R16G16
         | IRPixelFormat::R16G16B16
         | IRPixelFormat::R16G16B16A16 => bindings::UNSIGNED_SHORT,
-        IRPixelFormat::R32G32B32FLOAT | IRPixelFormat::R32G32B32A32FLOAT => bindings::FLOAT,
+        IRPixelFormat::R32G32B32FLOAT
+        | IRPixelFormat::R32G32B32A32FLOAT
+        | IRPixelFormat::DEPTH32F => bindings::FLOAT,
         _ => return Err(TextureError::UnsupportedPixelType(format.clone())),
     })
 }
@@ -131,7 +135,7 @@ impl Texture {
                     height as usize,
                     false,
                     ir.pixel_format.clone(),
-                    &ir.data,
+                    Some(&ir.data),
                 )?;
             }
             _ => Err(TextureError::UnsupportedTextureType(
@@ -205,7 +209,7 @@ impl Texture {
         height: usize,
         border: bool,
         pixel_format: IRPixelFormat,
-        data: &[u8],
+        data: Option<&[u8]>,
     ) -> Result<(), TextureError> {
         let internal = pf_to_internal(&pixel_format)?;
         let format = pf_to_format(&pixel_format)?;
@@ -229,7 +233,11 @@ impl Texture {
                 if border { 1 } else { 0 } as GLint,
                 format,
                 data_type,
-                data.as_ptr() as *const _,
+                if data.is_none() {
+                    std::ptr::null()
+                } else {
+                    data.unwrap().as_ptr() as *const _
+                },
             );
             bindings::PixelStorei(bindings::UNPACK_ALIGNMENT, 4);
         }
@@ -242,7 +250,14 @@ impl Texture {
         self.id
     }
 
-    fn new(texture_type: IRTextureType) -> Result<Self, TextureError> {
+    pub fn new2d() -> Result<Self, TextureError> {
+        Self::new(IRTextureType::Texture2D {
+            width: 0u32,
+            height: 0u32,
+        })
+    }
+
+    pub fn new(texture_type: IRTextureType) -> Result<Self, TextureError> {
         let mut id: GLuint = 0;
         unsafe {
             bindings::GenTextures(1, &mut id);
