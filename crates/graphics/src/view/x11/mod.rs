@@ -1,6 +1,6 @@
 use crate::gl::ViewHandleOpenGL;
 use crate::input::InputEvent;
-use crate::view::{TickResult, ViewConfig, ViewTrait};
+use crate::view::{TickResult, ViewConfig, ViewCursor, ViewGeometry, ViewTrait};
 use crossbeam_channel::Sender;
 use log::{debug, info, warn};
 use std::ffi::{c_char, c_int, c_uint};
@@ -18,10 +18,10 @@ use x11::xlib::{
     Atom, ButtonPressMask, ButtonReleaseMask, CWColormap, CWEventMask, ClientMessage,
     ConfigureNotify, CopyFromParent, CurrentTime, Display, ExposureMask, InputOutput, KeyPressMask,
     KeyReleaseMask, NoEventMask, PointerMotionMask, StructureNotifyMask, Visual, XAutoRepeatOff,
-    XAutoRepeatOn, XClearWindow, XCloseDisplay, XCreateColormap, XCreateWindow, XDefaultScreen,
-    XDestroyWindow, XEvent, XFlush, XFree, XFreeColormap, XInternAtom, XMapRaised, XMapWindow,
-    XNextEvent, XOpenDisplay, XRootWindow, XSendEvent, XSetWMProtocols, XSetWindowAttributes,
-    XStoreName, XSync, XVisualInfo,
+    XAutoRepeatOn, XChangeProperty, XClearWindow, XCloseDisplay, XCreateColormap, XCreateWindow,
+    XDefaultScreen, XDefineCursor, XDestroyWindow, XEvent, XFlush, XFree, XFreeColormap,
+    XInternAtom, XMapRaised, XMapWindow, XNextEvent, XOpenDisplay, XRootWindow, XSendEvent,
+    XSetWMProtocols, XSetWindowAttributes, XStoreName, XSync, XVisualInfo,
 };
 
 mod input;
@@ -327,8 +327,8 @@ impl ViewTrait for View {
                 XRootWindow(display, screen_id),
                 0,
                 0,
-                cfg.width as c_uint,
-                cfg.height as c_uint,
+                800,
+                600,
                 0,
                 if visual_info.is_null() {
                     CopyFromParent as c_int
@@ -356,7 +356,6 @@ impl ViewTrait for View {
             }
 
             debug!("Setting up X11 window attributes");
-            XStoreName(display, window, b"Title\0".as_ptr() as *const c_char);
             XSync(display, 0);
             XAutoRepeatOff(display);
             XClearWindow(display, window);
@@ -401,7 +400,7 @@ impl ViewTrait for View {
                 })?;
 
             info!("X11 Window created successfully");
-            Ok(View {
+            let mut view = View {
                 display,
                 window,
                 fb_config,
@@ -409,7 +408,12 @@ impl ViewTrait for View {
                 delete_message,
                 stop_signal: stop_signal.clone(),
                 events_thread: Some(events_thread),
-            })
+            };
+
+            view.set_geometry(cfg.geometry)?;
+            view.set_title(&cfg.title)?;
+            view.set_cursor(cfg.cursor)?;
+            Ok(view)
         }
     }
 
@@ -434,12 +438,43 @@ impl ViewTrait for View {
         TickResult::Continue
     }
 
-    fn set_geometry(&self, width: usize, height: usize) {
-        todo!()
+    fn set_geometry(&mut self, geometry: ViewGeometry) -> Result<(), crate::view::ViewError> {
+        match geometry {
+            ViewGeometry::Normal(width, height) => {
+                unsafe {
+                    xlib::XResizeWindow(
+                        self.display,
+                        self.window,
+                        width as c_uint,
+                        height as c_uint,
+                    );
+                    XSync(self.display, 0);
+                }
+                Ok(())
+            }
+            ViewGeometry::BorderlessFullscreen => {
+                unimplemented!()
+            }
+            ViewGeometry::Fullscreen => {
+                unimplemented!()
+            }
+        }
     }
+    fn set_title(&mut self, title: &str) -> Result<(), crate::view::ViewError> {
+        unsafe {
+            XStoreName(self.display, self.window, title.as_ptr() as *const c_char);
+            XSync(self.display, 0);
+        }
 
-    fn set_title(&self, title: &str) {
-        todo!()
+        Ok(())
+    }
+    fn set_cursor(&mut self, _cursor: ViewCursor) -> Result<(), crate::view::ViewError> {
+        unsafe {
+            XDefineCursor(self.display, self.window, 0 as xlib::Cursor);
+            XSync(self.display, 0);
+        }
+
+        Ok(())
     }
 }
 
