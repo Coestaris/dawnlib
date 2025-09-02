@@ -61,54 +61,44 @@ fn filter_to_gl(filter: &IRTextureFilter) -> Result<GLenum, TextureError> {
     })
 }
 
-fn pf_to_format(format: &IRPixelFormat) -> Result<GLenum, TextureError> {
-    Ok(match format {
-        IRPixelFormat::R8 => bindings::RED,
-        IRPixelFormat::R8G8 => bindings::RG,
-        IRPixelFormat::R8G8B8 => bindings::RGB,
-        IRPixelFormat::R8G8B8A8 => bindings::RGBA,
-        IRPixelFormat::R16 => bindings::RED,
-        IRPixelFormat::R16G16 => bindings::RG,
-        IRPixelFormat::R16G16B16 => bindings::RGB,
-        IRPixelFormat::R16G16B16A16 => bindings::RGBA,
-        IRPixelFormat::R32G32B32FLOAT => bindings::RGB,
-        IRPixelFormat::R32G32B32A32FLOAT => bindings::RGBA,
-        IRPixelFormat::DEPTH32F => bindings::DEPTH_COMPONENT,
-        _ => return Err(TextureError::UnsupportedPixelFormat(format.clone())),
-    })
+struct GLPF {
+    pub internal: GLint,
+    pub format: GLenum,
+    pub data_type: GLenum,
 }
 
-fn pf_to_internal(format: &IRPixelFormat) -> Result<GLenum, TextureError> {
-    Ok(match format {
-        IRPixelFormat::R8 => bindings::R8,
-        IRPixelFormat::R8G8 => bindings::RG,
-        IRPixelFormat::R8G8B8 => bindings::RGB,
-        IRPixelFormat::R8G8B8A8 => bindings::RGBA,
-        IRPixelFormat::R16 => bindings::RED,
-        IRPixelFormat::R16G16 => bindings::RG,
-        IRPixelFormat::R16G16B16 => bindings::RGB,
-        IRPixelFormat::R16G16B16A16 => bindings::RGBA,
-        IRPixelFormat::R32G32B32FLOAT => bindings::RGB,
-        IRPixelFormat::R32G32B32A32FLOAT => bindings::RGBA,
-        IRPixelFormat::DEPTH32F => bindings::DEPTH_COMPONENT32F,
-        _ => return Err(TextureError::UnsupportedPixelFormat(format.clone())),
-    })
+impl GLPF {
+    fn new(internal: GLenum, format: GLenum, data_type: GLenum) -> Self {
+        GLPF {
+            internal: internal as GLint,
+            format,
+            data_type,
+        }
+    }
 }
 
-fn pixel_format_to_gl_type(format: &IRPixelFormat) -> Result<GLenum, TextureError> {
+fn pf_to_gl(format: &IRPixelFormat) -> Result<GLPF, TextureError> {
     Ok(match format {
-        IRPixelFormat::R8
-        | IRPixelFormat::R8G8
-        | IRPixelFormat::R8G8B8
-        | IRPixelFormat::R8G8B8A8 => bindings::UNSIGNED_BYTE,
-        IRPixelFormat::R16
-        | IRPixelFormat::R16G16
-        | IRPixelFormat::R16G16B16
-        | IRPixelFormat::R16G16B16A16 => bindings::UNSIGNED_SHORT,
-        IRPixelFormat::R32G32B32FLOAT
-        | IRPixelFormat::R32G32B32A32FLOAT
-        | IRPixelFormat::DEPTH32F => bindings::FLOAT,
-        _ => return Err(TextureError::UnsupportedPixelType(format.clone())),
+        IRPixelFormat::R8 => GLPF::new(bindings::R8, bindings::RED, bindings::UNSIGNED_BYTE),
+        IRPixelFormat::RG8 => GLPF::new(bindings::RG, bindings::RG, bindings::UNSIGNED_BYTE),
+        IRPixelFormat::RGB8 => GLPF::new(bindings::RGB, bindings::RGB, bindings::UNSIGNED_BYTE),
+        IRPixelFormat::RGBA8 => GLPF::new(bindings::RGBA, bindings::RGBA, bindings::UNSIGNED_BYTE),
+        IRPixelFormat::R16 => GLPF::new(bindings::RED, bindings::RED, bindings::UNSIGNED_SHORT),
+        IRPixelFormat::RG16 => GLPF::new(bindings::RG, bindings::RG, bindings::UNSIGNED_SHORT),
+        IRPixelFormat::RGB16 => GLPF::new(bindings::RGB, bindings::RGB, bindings::UNSIGNED_SHORT),
+        IRPixelFormat::RGBA16 => {
+            GLPF::new(bindings::RGBA, bindings::RGBA, bindings::UNSIGNED_SHORT)
+        }
+        IRPixelFormat::RGB16F => GLPF::new(bindings::RGB16F, bindings::RGB, bindings::FLOAT),
+        IRPixelFormat::RGBA16F => GLPF::new(bindings::RGBA16F, bindings::RGBA, bindings::FLOAT),
+        IRPixelFormat::RGB32F => GLPF::new(bindings::RGB, bindings::RGB, bindings::FLOAT),
+        IRPixelFormat::RGBA32F => GLPF::new(bindings::RGBA, bindings::RGBA, bindings::FLOAT),
+        IRPixelFormat::DEPTH32F => GLPF::new(
+            bindings::DEPTH_COMPONENT32F,
+            bindings::DEPTH_COMPONENT,
+            bindings::FLOAT,
+        ),
+        _ => return Err(TextureError::UnsupportedPixelFormat(format.clone())),
     })
 }
 
@@ -211,15 +201,7 @@ impl Texture {
         pixel_format: IRPixelFormat,
         data: Option<&[u8]>,
     ) -> Result<(), TextureError> {
-        let internal = pf_to_internal(&pixel_format)?;
-        let format = pf_to_format(&pixel_format)?;
-        let data_type = pixel_format_to_gl_type(&pixel_format)?;
-
-        debug!(
-            "Uploading texture ID: {} ({}x{}, format: {}, type: {}, level {})",
-            self.id, width, height, format, data_type, level
-        );
-
+        let gl = pf_to_gl(&pixel_format)?;
         unsafe {
             if let IRPixelFormat::R8 = pixel_format {
                 bindings::PixelStorei(bindings::UNPACK_ALIGNMENT, 1);
@@ -227,12 +209,12 @@ impl Texture {
             bindings::TexImage2D(
                 self.texture_type,
                 level as GLint,
-                internal as GLint,
+                gl.internal,
                 width as GLsizei,
                 height as GLsizei,
                 if border { 1 } else { 0 } as GLint,
-                format,
-                data_type,
+                gl.format,
+                gl.data_type,
                 if data.is_none() {
                     std::ptr::null()
                 } else {

@@ -5,3 +5,4 @@ pub mod shader_program;
 pub mod texture;
 pub mod vertex_array;
 pub mod framebuffer;
+pub mod renderbuffer;

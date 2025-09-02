@@ -66,46 +66,28 @@ impl Display for GLRendererError {
 
 impl std::error::Error for GLRendererError {}
 
-fn stat_opengl_context() {
-    let version = unsafe { probe::get_version() };
-    info!("OpenGL stat");
-    if let Some(version) = version {
-        info!("  Version: {}", version);
-    } else {
-        warn!("Failed to get OpenGL version. This may cause issues with rendering.");
-    }
-    let renderer = unsafe { probe::get_renderer() };
-    if let Some(renderer) = renderer {
-        info!("  Renderer: {}", renderer);
-    } else {
-        warn!("Failed to get OpenGL renderer. This may cause issues with rendering.");
-    }
-    let vendor = unsafe { probe::get_vendor() };
-    if let Some(vendor) = vendor {
-        info!("  Vendor: {}", vendor);
-    } else {
-        warn!("Failed to get OpenGL vendor. This may cause issues with rendering.");
-    }
-    let shading_language_version = unsafe { probe::get_shading_language_version() };
-    if let Some(version) = shading_language_version {
-        info!("  GLSL version: {}", version);
-    } else {
-        warn!(
-            "Failed to get OpenGL shading language version. This may cause issues with rendering."
-        );
-    }
-    let binary_formats = unsafe { probe::get_binary_formats() };
-    if !binary_formats.is_empty() {
-        info!("  Binary formats: {:?}", binary_formats);
-    } else {
-        warn!("Failed to get OpenGL binary formats. This may cause issues with rendering.");
-    }
-    // let extensions = unsafe { probe::get_extensions() };
-    // if !extensions.is_empty() {
-    //     debug!("OpenGL extensions: {:?}", extensions);
-    // } else {
-    //     warn!("Failed to get OpenGL extensions. This may cause issues with rendering.");
-    // }
+unsafe fn stat_opengl_context() {
+    info!("OpenGL information:");
+    probe::get_version().map_or_else(
+        || warn!("Failed to get OpenGL version"),
+        |v| info!("OpenGL version: {}.{}", v.major, v.minor),
+    );
+    probe::get_renderer().map_or_else(
+        || warn!("Failed to get OpenGL renderer"),
+        |r| info!("  Renderer: {}", r),
+    );
+    probe::get_vendor().map_or_else(
+        || warn!("Failed to get OpenGL vendor"),
+        |v| info!("  Vendor: {}", v),
+    );
+    probe::get_shading_language_version().map_or_else(
+        || warn!("Failed to get OpenGL shading language version"),
+        |v| info!("  GLSL version: {}", v),
+    );
+    probe::get_depth_bits().map_or_else(
+        || warn!("Failed to get OpenGL depth bits"),
+        |b| info!("  Depth bits: {}", b),
+    );
 }
 
 // Texture and shader assets cannot be handled from the ECS (like other assets),
@@ -136,7 +118,9 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         });
 
         // Stat the OpenGL context
-        stat_opengl_context();
+        unsafe {
+            stat_opengl_context();
+        }
 
         // Setup factories for texture and shader assets
         // These factories are used to load and manage texture and shader assets.

@@ -139,3 +139,13 @@ pub(crate) unsafe fn get_extensions() -> Vec<String> {
         .map(|s| s.to_string())
         .collect()
 }
+
+pub(crate) unsafe fn get_depth_bits() -> Option<u32> {
+    let mut depth_bits = 0;
+    bindings::GetIntegerv(bindings::DEPTH_BITS, &mut depth_bits);
+    if depth_bits > 0 {
+        Some(depth_bits as u32)
+    } else {
+        None
+    }
+}

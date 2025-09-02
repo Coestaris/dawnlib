@@ -69,30 +69,38 @@ pub enum IRPixelFormat {
     /// Red only.
     R8,
     /// Red, green.
-    R8G8,
+    RG8,
     /// Red, green, blue.
-    R8G8B8,
+    RGB8,
     /// Red, green, blue, alpha.
-    R8G8B8A8,
+    RGBA8,
+
     /// Red only (16 bits).
     R16,
     /// Red, green (16 bits).
-    R16G16,
+    RG16,
     /// Red, green, blue (16 bits).
-    R16G16B16,
+    RGB16,
     /// Red, green, blue, alpha (16 bits).
-    R16G16B16A16,
+    RGBA16,
+
+    /// Red, green, blue (16 bits float)
+    RGB16F,
+    /// Red, green, blue, alpha (16 bits float)
+    RGBA16F,
+
     /// Red, green, blue (32 bits float)
-    R32G32B32FLOAT,
+    RGB32F,
     /// Red, green, blue, alpha (32 bits float)
-    R32G32B32A32FLOAT,
+    RGBA32F,
+
     // ????
     DEPTH32F,
 }
 
 impl Default for IRPixelFormat {
     fn default() -> Self {
-        IRPixelFormat::R8G8B8
+        IRPixelFormat::RGB8
     }
 }
 
