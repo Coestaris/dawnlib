@@ -1,6 +1,6 @@
 use crate::ecs::{
-    InvalidateRendererCache, ObjectAreaLight, ObjectMaterial, ObjectMesh, ObjectPointLight,
-    ObjectPosition, ObjectRotation, ObjectScale, ObjectSpotLight, ObjectSunLight,
+    InvalidateRendererCache, ObjectAreaLight, ObjectMesh, ObjectPointLight, ObjectPosition,
+    ObjectRotation, ObjectScale, ObjectSpotLight, ObjectSunLight,
 };
 use crate::input::InputEvent;
 use crate::passes::events::{PassEventTrait, RenderPassEvent};
@@ -31,7 +31,6 @@ struct RenderableQuery<'a> {
     position: Option<&'a ObjectPosition>,
     rotation: Option<&'a ObjectRotation>,
     scale: Option<&'a ObjectScale>,
-    material: Option<&'a ObjectMaterial>,
 }
 
 #[derive(Query)]
@@ -284,19 +283,10 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
             let position = renderable.position.map_or(Vec3::ZERO, |p| p.0);
             let rotation = renderable.rotation.map_or(Quat::IDENTITY, |r| r.0);
             let scale = renderable.scale.map_or(Vec3::ONE, |s| s.0);
-            let material = renderable
-                .material
-                .map_or_else(|| ObjectMaterial::default_material(), |m| m.0.clone());
 
             // Push the renderable to the vector
-            let mut object = Renderable::new(
-                renderable.entity_id,
-                position,
-                rotation,
-                scale,
-                Some(material),
-                mesh_asset,
-            );
+            let mut object =
+                Renderable::new(renderable.entity_id, position, rotation, scale, mesh_asset);
             object.set_updated(tracker.track_renderable(renderable.entity_id, &object));
             frame.renderables.push(object);
         }

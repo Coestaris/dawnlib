@@ -1,4 +1,5 @@
 use crate::view::{View, ViewGeometry};
+use glam::UVec2;
 use log::debug;
 use std::mem::size_of;
 use windows::Win32::Graphics::Gdi::CDS_TYPE;
@@ -43,7 +44,7 @@ impl View {
         );
         unsafe {
             match geometry {
-                ViewGeometry::Normal(w, h) => {
+                ViewGeometry::Normal(size) => {
                     if self.mode == WindowMode::Normal {
                         // Already normal - just resize
                         SetWindowPos(
@@ -51,11 +52,11 @@ impl View {
                             None,
                             0,
                             0,
-                            w as i32,
-                            h as i32,
+                            size.x as i32,
+                            size.y as i32,
                             SWP_NOMOVE | SWP_NOZORDER,
                         )
-                            .ok();
+                        .ok();
                         return Ok(());
                     }
 
@@ -71,11 +72,11 @@ impl View {
                         None,
                         0,
                         0,
-                        w as i32,
-                        h as i32,
+                        size.x as i32,
+                        size.y as i32,
                         SWP_NOMOVE | SWP_NOZORDER,
                     )
-                        .ok();
+                    .ok();
                     self.mode = WindowMode::Normal;
                     Ok(())
                 }
@@ -171,13 +172,12 @@ impl View {
             h,
             SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOOWNERZORDER,
         )
-            .ok();
+        .ok();
 
         self.events_sender
-            .send(crate::view::InputEvent::Resize {
-                width: w as usize,
-                height: h as usize,
-            })
+            .send(crate::view::InputEvent::Resize(UVec2::new(
+                w as u32, h as u32,
+            )))
             .ok();
 
         ShowWindow(self.hwnd, SW_SHOW);
@@ -210,13 +210,12 @@ impl View {
                 h,
                 SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOOWNERZORDER,
             )
-                .ok();
+            .ok();
 
             self.events_sender
-                .send(crate::view::InputEvent::Resize {
-                    width: w as usize,
-                    height: h as usize,
-                })
+                .send(crate::view::InputEvent::Resize(UVec2::new(
+                    w as u32, h as u32,
+                )))
                 .ok();
 
             ShowWindow(self.hwnd, SW_SHOW);
@@ -244,16 +243,18 @@ impl View {
             SetWindowPos(
                 self.hwnd,
                 Some(HWND_TOPMOST),
-                0, 0, w, h,
+                0,
+                0,
+                w,
+                h,
                 SWP_SHOWWINDOW | SWP_NOOWNERZORDER,
             )
-                .ok();
+            .ok();
 
             self.events_sender
-                .send(crate::view::InputEvent::Resize {
-                    width: w as usize,
-                    height: h as usize,
-                })
+                .send(crate::view::InputEvent::Resize(UVec2::new(
+                    w as u32, h as u32,
+                )))
                 .ok();
 
             ShowWindow(self.hwnd, SW_SHOW);
@@ -289,13 +290,12 @@ impl View {
                 h,
                 SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOOWNERZORDER,
             )
-                .ok();
+            .ok();
 
             self.events_sender
-                .send(crate::view::InputEvent::Resize {
-                    width: w as usize,
-                    height: h as usize,
-                })
+                .send(crate::view::InputEvent::Resize(UVec2::new(
+                    w as u32, h as u32,
+                )))
                 .ok();
 
             ShowWindow(self.hwnd, SW_SHOW);

@@ -1,4 +1,4 @@
-use crate::ecs::{ObjectMaterial, ObjectPointLight, ObjectSunLight};
+use crate::ecs::{ObjectPointLight, ObjectSunLight};
 use crate::gl::material::Material;
 use crate::gl::mesh::Mesh;
 use dawn_assets::{Asset, TypedAsset};
@@ -106,31 +106,28 @@ pub struct RenderableAreaLight {
     pub meta: RenderableMeta,
 }
 
-impl ObjectMaterial {
-    pub fn default_material() -> TypedAsset<Material> {
-        const LOCK: OnceLock<TypedAsset<Material>> = OnceLock::new();
+pub fn default_material() -> TypedAsset<Material> {
+    const LOCK: OnceLock<TypedAsset<Material>> = OnceLock::new();
 
-        // Use OnceLock to ensure the material is created only once
-        let binding = LOCK;
-        let material = binding.get_or_init(|| {
-            let material = Material::default();
-            let ptr = Box::into_raw(Box::new(material));
-            let asset = Asset::new(
-                TypeId::of::<Material>(),
-                NonNull::new(ptr as *mut ()).unwrap(),
-            );
-            TypedAsset::new(asset)
-        });
+    // Use OnceLock to ensure the material is created only once
+    let binding = LOCK;
+    let material = binding.get_or_init(|| {
+        let material = Material::default();
+        let ptr = Box::into_raw(Box::new(material));
+        let asset = Asset::new(
+            TypeId::of::<Material>(),
+            NonNull::new(ptr as *mut ()).unwrap(),
+        );
+        TypedAsset::new(asset)
+    });
 
-        material.clone()
-    }
+    material.clone()
 }
 
 #[derive(Clone)]
 pub struct Renderable {
     pub meta: RenderableMeta,
     pub model: Mat4,
-    pub material: TypedAsset<Material>,
     pub mesh: TypedAsset<Mesh>,
 }
 
@@ -140,7 +137,6 @@ impl Renderable {
         position: Vec3,
         rotation: Quat,
         scale: Vec3,
-        material: Option<TypedAsset<Material>>,
         mesh: TypedAsset<Mesh>,
     ) -> Self {
         let model = Mat4::from_scale_rotation_translation(scale, rotation, position);
@@ -148,7 +144,6 @@ impl Renderable {
         Renderable {
             meta: RenderableMeta::new(uid),
             model,
-            material: material.unwrap_or_else(ObjectMaterial::default_material),
             mesh,
         }
     }
@@ -161,7 +156,6 @@ impl Renderable {
 impl PartialEq for Renderable {
     fn eq(&self, other: &Self) -> bool {
         self.model.abs_diff_eq(other.model, 0.0001)
-            && self.material == other.material
             && self.mesh == other.mesh
             && self.meta == other.meta
     }

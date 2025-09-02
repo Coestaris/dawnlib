@@ -27,9 +27,6 @@ pub struct ObjectScale(pub Vec3);
 #[derive(Component)]
 pub struct ObjectMesh(pub TypedAsset<Mesh>);
 
-#[derive(Component)]
-pub struct ObjectMaterial(pub TypedAsset<Material>);
-
 
 /// ECS component for point light
 /// Can be rendered only if `ObjectPosition` is also present

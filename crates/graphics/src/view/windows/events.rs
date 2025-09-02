@@ -1,6 +1,7 @@
 use crate::input::{InputEvent, MouseButton};
 use crate::view::windows::input::convert_key;
 use crate::view::{TickResult, View};
+use glam::{UVec2, Vec2};
 use log::debug;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
@@ -48,22 +49,16 @@ impl View {
                 WM_MOUSEMOVE => {
                     let x = (msg.lParam.0 as i32 & 0xFFFF) as f32;
                     let y = (msg.lParam.0 >> 16) as i32 as f32;
-                    event = InputEvent::MouseMove { x, y };
+                    event = InputEvent::MouseMove(Vec2::new(x, y));
                 }
                 WM_MOUSEWHEEL => {
                     let delta = (msg.wParam.0 as i32 >> 16) as f32 / 120.0; // Convert to standard scroll units
-                    event = InputEvent::MouseScroll {
-                        delta_x: 0.0,
-                        delta_y: delta,
-                    };
+                    event = InputEvent::MouseScroll(Vec2::new(0.0, delta));
                 }
                 WM_APP_RESIZED => {
                     let width = msg.wParam.0 as u32;
                     let height = msg.lParam.0 as u32;
-                    event = InputEvent::Resize {
-                        width: width as usize,
-                        height: height as usize,
-                    };
+                    event = InputEvent::Resize(UVec2::new(width, height));
                 }
                 WM_RBUTTONDOWN => {
                     event = InputEvent::MouseButtonPress(MouseButton::Right);

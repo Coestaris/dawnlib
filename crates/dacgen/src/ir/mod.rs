@@ -1,4 +1,5 @@
 use crate::ir::audio::convert_audio;
+use crate::ir::dictionary::convert_dictionary;
 use crate::ir::font::convert_font;
 use crate::ir::material::convert_material;
 use crate::ir::mesh::convert_mesh;
@@ -13,6 +14,7 @@ use dawn_util::profile::Measure;
 use std::path::{Path, PathBuf};
 
 mod audio;
+mod dictionary;
 mod font;
 mod material;
 mod mesh;
@@ -91,6 +93,7 @@ impl UserAssetFile {
             UserAssetProperties::Mesh(mesh) => convert_mesh(self, cache_dir, cwd, mesh),
             UserAssetProperties::Material(mat) => convert_material(self, cache_dir, cwd, mat),
             UserAssetProperties::Font(font) => convert_font(self, cache_dir, cwd, font),
+            UserAssetProperties::Dictionary(dict) => convert_dictionary(self, cache_dir, cwd, dict),
         }
         .with_context(|| format!("Failed to convert asset {}", self.path.display()))?;
 

@@ -1,5 +1,6 @@
 use crate::deep_hash::{with_std, DeepHash, DeepHashCtx};
 use crate::source::SourceRef;
+use dawn_assets::ir::dictionary::IRDictionaryEntry;
 use dawn_assets::ir::shader::IRShaderSourceKind;
 use dawn_assets::ir::texture::{IRPixelFormat, IRTextureFilter, IRTextureType, IRTextureWrap};
 use dawn_assets::{AssetID, AssetType};
@@ -184,6 +185,12 @@ pub(crate) struct UserFontAsset {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub(crate) struct UserDictionaryAsset {
+    #[serde(default)]
+    pub entries: Vec<IRDictionaryEntry>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum UserAssetProperties {
     Shader(UserShaderAsset),
     Texture(UserTextureAsset),
@@ -191,6 +198,7 @@ pub enum UserAssetProperties {
     Material(UserMaterialAsset),
     Mesh(UserMeshAsset),
     Font(UserFontAsset),
+    Dictionary(UserDictionaryAsset),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -289,6 +297,70 @@ impl DeepHash for UserFontAsset {
     }
 }
 
+impl DeepHash for IRDictionaryEntry {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
+        match self {
+            IRDictionaryEntry::String(v) => {
+                1u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::Int(v) => {
+                2u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::UInt(v) => {
+                3u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::F32(v) => {
+                4u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::Bool(v) => {
+                5u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::Map(v) => {
+                6u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::Array(v) => {
+                7u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::Vec2f(v) => {
+                8u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::Vec3f(v) => {
+                9u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::Vec4f(v) => {
+                10u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::Mat3f(v) => {
+                11u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+            IRDictionaryEntry::Mat4f(v) => {
+                12u8.deep_hash(state, ctx)?;
+                v.deep_hash(state, ctx)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl DeepHash for UserDictionaryAsset {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
+        self.entries.deep_hash(state, ctx)?;
+        Ok(())
+    }
+}
+
 impl DeepHash for UserAssetProperties {
     fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         match self {
@@ -315,6 +387,10 @@ impl DeepHash for UserAssetProperties {
             UserAssetProperties::Font(f) => {
                 5u8.deep_hash(state, ctx)?;
                 f.deep_hash(state, ctx)?;
+            }
+            UserAssetProperties::Dictionary(d) => {
+                6u8.deep_hash(state, ctx)?;
+                d.deep_hash(state, ctx)?;
             }
         }
         Ok(())

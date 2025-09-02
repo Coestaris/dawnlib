@@ -44,7 +44,7 @@ pub enum HubError {
     AssetInUse(AssetID, usize),
     #[error("Invalid asset state for ID {0}")]
     InvalidAssetState(AssetID),
-    #[error("Asset with ID {0} not found")]
+    #[error("Factory for asset type {0:?} not found")]
     FactoryNotFound(AssetType),
     #[error("Reader binding is not registered")]
     ReaderNotRegistered,

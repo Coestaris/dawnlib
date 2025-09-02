@@ -97,6 +97,7 @@ pub enum AssetType {
     Material,
     Mesh,
     Font,
+    Dictionary
 }
 
 impl std::fmt::Display for AssetType {
@@ -110,6 +111,7 @@ impl std::fmt::Display for AssetType {
             AssetType::Material => write!(f, "Material"),
             AssetType::Mesh => write!(f, "Mesh"),
             AssetType::Font => write!(f, "Font"),
+            AssetType::Dictionary => write!(f, "Dictionary"),
         }
     }
 }
