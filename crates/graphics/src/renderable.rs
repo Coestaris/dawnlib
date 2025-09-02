@@ -1,36 +1,110 @@
+use crate::ecs::{ObjectMaterial, ObjectPointLight, ObjectSunLight};
 use crate::gl::material::Material;
 use crate::gl::mesh::Mesh;
 use dawn_assets::{Asset, TypedAsset};
-use evenio::component::Component;
+use evenio::prelude::EntityId;
 use glam::{Mat4, Quat, Vec3};
 use std::any::TypeId;
 use std::ptr::NonNull;
 use std::sync::OnceLock;
 
-/// ECS component for specifying the rotation of a renderable object.
-/// If entity has no `Rotation` component, it will use the default rotation (0, 0, 0).
-/// The rotation is specified in radians around the x, y, and z axes.
-#[derive(Component)]
-pub struct ObjectRotation(pub Quat);
+#[derive(Clone, Debug)]
+pub struct RenderableUID(EntityId);
 
-/// ECS component for specifying the position of a renderable object.
-/// If entity has no `Position` component, it will use the default position (0, 0, 0).
-/// The position is specified in world coordinates.
-#[derive(Component)]
-pub struct ObjectPosition(pub Vec3);
+#[derive(Clone, Debug)]
+pub struct RenderableMeta {
+    pub uid: RenderableUID,
+    pub updated: bool,
+}
 
-/// ECS component for specifying the scale of a renderable object.
-#[derive(Component)]
-pub struct ObjectScale(pub Vec3);
+impl RenderableMeta {
+    pub fn new(uid: EntityId) -> Self {
+        RenderableMeta {
+            uid: RenderableUID(uid),
+            updated: false,
+        }
+    }
+}
 
-/// ECS component for specifying the mesh to be rendered.
-/// Also used as a marker to indicate that the entity is renderable.
-/// If entity has no `RenderableMesh` component, it will not be rendered.
-#[derive(Component)]
-pub struct ObjectMesh(pub TypedAsset<Mesh>);
+impl PartialEq for RenderableMeta {
+    fn eq(&self, other: &Self) -> bool {
+        self.uid.0 == other.uid.0
+    }
+}
 
-#[derive(Component)]
-pub struct ObjectMaterial(pub TypedAsset<Material>);
+#[derive(Clone, Debug)]
+pub struct RenderablePointLight {
+    pub meta: RenderableMeta,
+    pub position: Vec3,
+    pub color: Vec3,
+    pub intensity: f32,
+}
+
+impl RenderablePointLight {
+    pub fn new(uid: EntityId, object: &ObjectPointLight, position: Vec3) -> Self {
+        RenderablePointLight {
+            meta: RenderableMeta::new(uid),
+            position,
+            color: object.color,
+            intensity: object.intensity,
+        }
+    }
+
+    pub fn set_updated(&mut self, updated: bool) {
+        self.meta.updated = updated;
+    }
+}
+
+impl PartialEq for RenderablePointLight {
+    fn eq(&self, other: &Self) -> bool {
+        self.position.abs_diff_eq(other.position, 0.0001)
+            && self.color.abs_diff_eq(other.color, 0.0001)
+            && (self.intensity - other.intensity).abs() < 0.0001
+            && self.meta == other.meta
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RenderableSpotLight {
+    pub meta: RenderableMeta,
+}
+
+#[derive(Clone, Debug)]
+pub struct RenderableSunLight {
+    pub meta: RenderableMeta,
+    pub intensity: f32,
+    pub direction: Vec3,
+    pub color: Vec3,
+}
+
+impl RenderableSunLight {
+    pub fn new(uid: EntityId, object: &ObjectSunLight) -> Self {
+        RenderableSunLight {
+            meta: RenderableMeta::new(uid),
+            intensity: object.intensity,
+            direction: object.direction,
+            color: object.color,
+        }
+    }
+
+    pub fn set_updated(&mut self, updated: bool) {
+        self.meta.updated = updated;
+    }
+}
+
+impl PartialEq for RenderableSunLight {
+    fn eq(&self, other: &Self) -> bool {
+        self.direction.abs_diff_eq(other.direction, 0.0001)
+            && self.color.abs_diff_eq(other.color, 0.0001)
+            && (self.intensity - other.intensity).abs() < 0.0001
+            && self.meta == other.meta
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RenderableAreaLight {
+    pub meta: RenderableMeta,
+}
 
 impl ObjectMaterial {
     pub fn default_material() -> TypedAsset<Material> {
@@ -54,7 +128,41 @@ impl ObjectMaterial {
 
 #[derive(Clone)]
 pub struct Renderable {
+    pub meta: RenderableMeta,
     pub model: Mat4,
     pub material: TypedAsset<Material>,
     pub mesh: TypedAsset<Mesh>,
+}
+
+impl Renderable {
+    pub fn new(
+        uid: EntityId,
+        position: Vec3,
+        rotation: Quat,
+        scale: Vec3,
+        material: Option<TypedAsset<Material>>,
+        mesh: TypedAsset<Mesh>,
+    ) -> Self {
+        let model = Mat4::from_scale_rotation_translation(scale, rotation, position);
+
+        Renderable {
+            meta: RenderableMeta::new(uid),
+            model,
+            material: material.unwrap_or_else(ObjectMaterial::default_material),
+            mesh,
+        }
+    }
+
+    pub fn set_updated(&mut self, updated: bool) {
+        self.meta.updated = updated;
+    }
+}
+
+impl PartialEq for Renderable {
+    fn eq(&self, other: &Self) -> bool {
+        self.model.abs_diff_eq(other.model, 0.0001)
+            && self.material == other.material
+            && self.mesh == other.mesh
+            && self.meta == other.meta
+    }
 }

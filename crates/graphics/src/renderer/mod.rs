@@ -8,7 +8,9 @@ use crate::passes::events::{PassEventTrait, RenderPassEvent};
 use crate::passes::pipeline::RenderPipeline;
 use crate::passes::result::RenderResult;
 use crate::passes::ChainExecuteCtx;
-use crate::renderable::Renderable;
+use crate::renderable::{
+    Renderable, RenderableAreaLight, RenderablePointLight, RenderableSpotLight, RenderableSunLight,
+};
 use crate::renderer::backend::{RendererBackendError, RendererBackendTrait};
 use crate::renderer::ecs::attach_to_ecs;
 use crate::renderer::monitor::{DummyRendererMonitor, RendererMonitor, RendererMonitorTrait};
@@ -37,9 +39,24 @@ pub enum ViewEvent {
 }
 
 #[derive(Clone)]
-pub(crate) struct DataStreamFrame {
-    epoch: usize,
-    renderables: Vec<Renderable>,
+pub struct DataStreamFrame {
+    pub epoch: usize,
+    pub renderables: Vec<Renderable>,
+
+    pub point_lights: Vec<RenderablePointLight>,
+    pub spot_lights: Vec<RenderableSpotLight>,
+    pub area_lights: Vec<RenderableAreaLight>,
+    pub sun_lights: Vec<RenderableSunLight>,
+}
+
+impl DataStreamFrame {
+    pub fn clear(&mut self) {
+        self.renderables.clear();
+        self.point_lights.clear();
+        self.spot_lights.clear();
+        self.area_lights.clear();
+        self.sun_lights.clear();
+    }
 }
 
 #[derive(Component)]
@@ -127,13 +144,11 @@ impl RendezvousTrait for RendezvousWrapper {
 struct DummyRendezvous;
 impl RendezvousTrait for DummyRendezvous {}
 
-pub trait RenderChainConstructor<C, E> = FnOnce(&mut RendererBackend<E>) -> Result<RenderPipeline<C, E>, String>
-    + Send
-    + Sync
-    + 'static
-where
-    C: RenderChain<E>,
-    E: PassEventTrait;
+pub trait RenderChainConstructor<C, E> =
+    FnOnce(&mut RendererBackend<E>) -> Result<RenderPipeline<C, E>, String> + Send + Sync + 'static
+    where
+        C: RenderChain<E>,
+        E: PassEventTrait;
 
 impl<E: PassEventTrait> Renderer<E> {
     /// Creates a new renderer instance that will immediately try to spawn a View,
@@ -239,6 +254,10 @@ impl<E: PassEventTrait> Renderer<E> {
             triple_buffer::<DataStreamFrame>(&DataStreamFrame {
                 epoch: 0,
                 renderables: vec![],
+                point_lights: vec![],
+                spot_lights: vec![],
+                area_lights: vec![],
+                sun_lights: vec![],
             });
         let stop_signal = Arc::new(AtomicBool::new(false));
 
@@ -421,7 +440,7 @@ impl<E: PassEventTrait> Renderer<E> {
             frame_index += 1;
         }
 
-        let mut ctx = ChainExecuteCtx::new(frame.renderables.as_slice(), backend);
+        let mut ctx = ChainExecuteCtx::new(frame, backend);
 
         let pass_result = pipeline.execute(&mut ctx);
         if let RenderResult::Failed = pass_result {

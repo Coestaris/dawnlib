@@ -2,6 +2,7 @@ use crate::passes::events::{PassEventTarget, PassEventTrait};
 use crate::passes::result::RenderResult;
 use crate::renderable::Renderable;
 use crate::renderer::backend::RendererBackend;
+use crate::renderer::DataStreamFrame;
 use std::time::Duration;
 
 pub mod chain;
@@ -11,7 +12,7 @@ pub mod result;
 
 pub(crate) const MAX_RENDER_PASSES: usize = 32;
 
-pub trait RenderPass<E: PassEventTrait>:  'static {
+pub trait RenderPass<E: PassEventTrait>: 'static {
     /// Declare the targets for this render pass.
     /// This is used to address events that are relevant to this pass.
     #[inline(always)]
@@ -34,7 +35,7 @@ pub trait RenderPass<E: PassEventTrait>:  'static {
     /// Begin the render pass execution.
     /// This method is called before processing any renderables or meshes.
     #[inline(always)]
-    fn begin(&mut self, _backend: &RendererBackend<E>) -> RenderResult {
+    fn begin(&mut self, _backend: &RendererBackend<E>, _frame: &DataStreamFrame) -> RenderResult {
         RenderResult::default()
     }
 
@@ -58,7 +59,7 @@ pub trait RenderPass<E: PassEventTrait>:  'static {
 
 pub struct ChainExecuteCtx<'a, E: PassEventTrait> {
     // The renderables to be processed by the render pass.
-    pub(crate) renderables: &'a [Renderable],
+    pub(crate) frame: &'a DataStreamFrame,
     // Amount of time consumed by render pass in the chain.
     pub(crate) durations: [Duration; MAX_RENDER_PASSES],
     // The renderer backend context
@@ -66,9 +67,9 @@ pub struct ChainExecuteCtx<'a, E: PassEventTrait> {
 }
 
 impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
-    pub fn new(renderables: &'a [Renderable], backend: &'a mut RendererBackend<E>) -> Self {
+    pub fn new(frame: &'a DataStreamFrame, backend: &'a mut RendererBackend<E>) -> Self {
         ChainExecuteCtx {
-            renderables,
+            frame,
             durations: [Duration::ZERO; MAX_RENDER_PASSES],
             backend,
         }
@@ -83,8 +84,8 @@ impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
         let start = std::time::Instant::now();
 
         let mut result = RenderResult::default();
-        result += pass.begin(self.backend);
-        for renderable in self.renderables {
+        result += pass.begin(self.backend, self.frame);
+        for renderable in self.frame.renderables.iter() {
             result += pass.on_renderable(self.backend, renderable);
         }
         result += pass.end(self.backend);

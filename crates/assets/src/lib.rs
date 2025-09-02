@@ -174,6 +174,14 @@ pub struct Asset(Arc<AssetInner>);
 unsafe impl Send for Asset {}
 unsafe impl Sync for Asset {}
 
+impl PartialEq for Asset {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for Asset {}
+
 impl Asset {
     pub fn new(tid: TypeId, ptr: NonNull<()>) -> Asset {
         Asset(Arc::new(AssetInner { _tid: tid, ptr }))
@@ -203,6 +211,14 @@ pub struct TypedAsset<T: AssetCastable> {
     inner: Asset,
     _marker: PhantomData<T>,
 }
+
+impl<T: AssetCastable> PartialEq for TypedAsset<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl<T: AssetCastable> Eq for TypedAsset<T> {}
 
 impl<T: AssetCastable> Clone for TypedAsset<T> {
     fn clone(&self) -> Self {

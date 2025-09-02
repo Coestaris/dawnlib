@@ -1,13 +1,18 @@
+use crate::ecs::{
+    InvalidateRendererCache, ObjectAreaLight, ObjectMaterial, ObjectMesh, ObjectPointLight,
+    ObjectPosition, ObjectRotation, ObjectScale, ObjectSpotLight, ObjectSunLight,
+};
 use crate::input::InputEvent;
 use crate::passes::events::{PassEventTrait, RenderPassEvent};
 use crate::renderable::{
-    ObjectMaterial, ObjectMesh, ObjectPosition, ObjectRotation, ObjectScale, Renderable,
+    Renderable, RenderableAreaLight, RenderablePointLight, RenderableSpotLight, RenderableSunLight,
 };
 use crate::renderer::monitor::RendererMonitorEvent;
 use crate::renderer::{Renderer, ViewEvent};
-use crate::view::{ViewCursor, ViewGeometry};
+use crate::view::ViewGeometry;
 use dawn_ecs::events::{ExitEvent, InterSyncEvent, TickEvent};
 use evenio::component::Component;
+use evenio::entity::EntityId;
 use evenio::event::{Receiver, Sender};
 use evenio::fetch::{Fetcher, Single};
 use evenio::handler::IntoHandler;
@@ -15,52 +20,179 @@ use evenio::query::Query;
 use evenio::world::World;
 use glam::{Mat4, Quat, Vec3};
 use log::info;
+use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::atomic::Ordering;
 
+#[derive(Query)]
+struct RenderableQuery<'a> {
+    entity_id: EntityId,
+    mesh: &'a ObjectMesh,
+    position: Option<&'a ObjectPosition>,
+    rotation: Option<&'a ObjectRotation>,
+    scale: Option<&'a ObjectScale>,
+    material: Option<&'a ObjectMaterial>,
+}
+
+#[derive(Query)]
+struct PointLightQuery<'a> {
+    entity_id: EntityId,
+    light: &'a ObjectPointLight,
+    position: &'a ObjectPosition,
+}
+
+#[derive(Query)]
+struct SpotLightQuery<'a> {
+    entity_id: EntityId,
+    light: &'a ObjectSpotLight,
+}
+
+#[derive(Query)]
+struct AreaLightQuery<'a> {
+    entity_id: EntityId,
+    light: &'a ObjectAreaLight,
+}
+
+#[derive(Query)]
+struct SunLightQuery<'a> {
+    entity_id: EntityId,
+    light: &'a ObjectSunLight,
+}
+#[derive(Component)]
+struct Boxed {
+    raw: NonNull<()>,
+}
+
+impl Boxed {
+    fn new<E: PassEventTrait>(renderer: Renderer<E>) -> Self {
+        let raw = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(renderer)) as *mut ()) };
+        Boxed { raw }
+    }
+
+    fn cast<E: PassEventTrait>(&self) -> &Renderer<E> {
+        // SAFETY: We are guaranteed that the raw pointer is valid
+        // and points to a Renderer<E> because we created it from a Box<Renderer<E>>.
+        unsafe { &*(self.raw.as_ptr() as *const Renderer<E>) }
+    }
+
+    fn cast_mut<E: PassEventTrait>(&mut self) -> &mut Renderer<E> {
+        // SAFETY: We are guaranteed that the raw pointer is valid
+        // and points to a Renderer<E> because we created it from a Box<Renderer<E>>.
+        unsafe { &mut *(self.raw.as_ptr() as *mut Renderer<E>) }
+    }
+}
+
+impl Drop for Boxed {
+    fn drop(&mut self) {
+        info!("Dropping renderer box");
+
+        // TODO: Empty is not an E. Can this break something?
+        #[derive(Copy, Clone)]
+        struct Empty {}
+
+        unsafe {
+            let _ = Box::from_raw(self.raw.as_ptr() as *mut Renderer<Empty>);
+        };
+    }
+}
+
+#[derive(Component)]
+struct UpdateTracker {
+    renderables_cache: foldhash::HashMap<EntityId, Renderable>,
+    point_lights_cache: foldhash::HashMap<EntityId, RenderablePointLight>,
+    sun_lights_cache: foldhash::HashMap<EntityId, RenderableSunLight>,
+    area_lights_cache: foldhash::HashMap<EntityId, RenderableAreaLight>,
+    spot_lights_cache: foldhash::HashMap<EntityId, RenderableSpotLight>,
+}
+
+impl UpdateTracker {
+    fn new() -> Self {
+        UpdateTracker {
+            renderables_cache: Default::default(),
+            point_lights_cache: Default::default(),
+            sun_lights_cache: Default::default(),
+            area_lights_cache: Default::default(),
+            spot_lights_cache: Default::default(),
+        }
+    }
+
+    fn clear(&mut self) {
+        self.renderables_cache.clear();
+        self.point_lights_cache.clear();
+        self.sun_lights_cache.clear();
+        self.area_lights_cache.clear();
+        self.spot_lights_cache.clear();
+    }
+
+    fn is_updated<T: PartialEq + Clone>(
+        entity_id: EntityId,
+        cache: &mut foldhash::HashMap<EntityId, T>,
+        item: &T,
+    ) -> bool {
+        match cache.get(&entity_id) {
+            Some(cached_item) => {
+                if item.eq(cached_item) {
+                    false
+                } else {
+                    cache.insert(entity_id, item.clone());
+                    true
+                }
+            }
+            None => {
+                cache.insert(entity_id, item.clone());
+                true
+            }
+        }
+    }
+
+    fn track_renderable(&mut self, entity_id: EntityId, renderable: &Renderable) -> bool {
+        UpdateTracker::is_updated(entity_id, &mut self.renderables_cache, renderable)
+    }
+
+    fn track_point_light(
+        &mut self,
+        entity_id: EntityId,
+        point_light: &RenderablePointLight,
+    ) -> bool {
+        UpdateTracker::is_updated(entity_id, &mut self.point_lights_cache, point_light)
+    }
+
+    fn track_sun_light(&mut self, entity_id: EntityId, sun_light: &RenderableSunLight) -> bool {
+        UpdateTracker::is_updated(entity_id, &mut self.sun_lights_cache, sun_light)
+    }
+}
+
 pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World) {
-    #[derive(Component)]
-    struct Boxed {
-        raw: NonNull<()>,
-    }
-
-    impl Boxed {
-        fn new<E: PassEventTrait>(renderer: Renderer<E>) -> Self {
-            let raw =
-                unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(renderer)) as *mut ()) };
-            Boxed { raw }
-        }
-
-        fn cast<E: PassEventTrait>(&self) -> &Renderer<E> {
-            // SAFETY: We are guaranteed that the raw pointer is valid
-            // and points to a Renderer<E> because we created it from a Box<Renderer<E>>.
-            unsafe { &*(self.raw.as_ptr() as *const Renderer<E>) }
-        }
-
-        fn cast_mut<E: PassEventTrait>(&mut self) -> &mut Renderer<E> {
-            // SAFETY: We are guaranteed that the raw pointer is valid
-            // and points to a Renderer<E> because we created it from a Box<Renderer<E>>.
-            unsafe { &mut *(self.raw.as_ptr() as *mut Renderer<E>) }
-        }
-    }
-
-    impl Drop for Boxed {
-        fn drop(&mut self) {
-            info!("Dropping renderer box");
-
-            // TODO: Empty is not an E. Can this break something?
-            #[derive(Copy, Clone)]
-            struct Empty {}
-
-            unsafe {
-                let _ = Box::from_raw(self.raw.as_ptr() as *mut Renderer<Empty>);
-            };
-        }
-    }
-
     // Setup the renderer player entity in the ECS
-    let renderer_entity = world.spawn();
-    world.insert(renderer_entity, Boxed::new(renderer));
+    let boxed = world.spawn();
+    world.insert(boxed, Boxed::new(renderer));
+
+    let tracker = world.spawn();
+    world.insert(tracker, UpdateTracker::new());
+
+    fn invalidate_cache_handler<E: PassEventTrait>(
+        _: Receiver<InvalidateRendererCache>,
+        mut renderer: Single<&mut Boxed>,
+        mut tracker: Single<&mut UpdateTracker>,
+    ) {
+        info!("Invalidating renderer cache");
+
+        let renderer = renderer.cast_mut::<E>();
+
+        // Clear the tracker
+        tracker.clear();
+
+        // Flush the triple buffer... three times
+        let frame = renderer.data_stream.input_buffer_mut();
+        frame.clear();
+        renderer.data_stream.publish();
+        let frame = renderer.data_stream.input_buffer_mut();
+        frame.clear();
+        renderer.data_stream.publish();
+        let frame = renderer.data_stream.input_buffer_mut();
+        frame.clear();
+        renderer.data_stream.publish();
+    }
 
     // If the renderer loop is closed or stopped,
     // we need to stop the event loop
@@ -112,15 +244,6 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         renderer.renderer_sender.send(rpe.event.clone()).unwrap();
     }
 
-    #[derive(Query)]
-    struct Query<'a> {
-        mesh: &'a ObjectMesh,
-        position: Option<&'a ObjectPosition>,
-        rotation: Option<&'a ObjectRotation>,
-        scale: Option<&'a ObjectScale>,
-        material: Option<&'a ObjectMaterial>,
-    }
-
     // Collect renderables from the ECS and send them to the renderer thread
     // This function will be called every tick to collect the renderables
     // and send them to the renderer thread.
@@ -139,33 +262,63 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
     // instead of free running the renderer thread.
     fn stream_data_handle<E: PassEventTrait>(
         t: Receiver<InterSyncEvent>,
-        mut renderer: Single<&mut Boxed>,
-        fetcher: Fetcher<Query>,
+        mut boxed: Single<&mut Boxed>,
+        mut tracker: Single<&mut UpdateTracker>,
+        renderables: Fetcher<RenderableQuery>,
+        point_lights: Fetcher<PointLightQuery>,
+        _spot_lights: Fetcher<SpotLightQuery>,
+        _area_lights: Fetcher<AreaLightQuery>,
+        sun_lights: Fetcher<SunLightQuery>,
     ) {
-        let renderer = renderer.cast_mut::<E>();
+        let renderer = boxed.cast_mut::<E>();
 
-        // Update the renderables buffer in-place
+        // Update the buffer in-place
         let frame = renderer.data_stream.input_buffer_mut();
+        frame.clear();
+        frame.epoch = t.event.frame;
 
-        frame.renderables.clear();
-        for query in fetcher.iter() {
+        // Process the renderables
+        for renderable in renderables.iter() {
             // Collect the renderable data from the query
-            let mesh_asset = query.mesh.0.clone();
-            let position = query.position.map_or(Vec3::ZERO, |p| p.0);
-            let rotation = query.rotation.map_or(Quat::IDENTITY, |r| r.0);
-            let scale = query.scale.map_or(Vec3::ONE, |s| s.0);
-            let material = query
+            let mesh_asset = renderable.mesh.0.clone();
+            let position = renderable.position.map_or(Vec3::ZERO, |p| p.0);
+            let rotation = renderable.rotation.map_or(Quat::IDENTITY, |r| r.0);
+            let scale = renderable.scale.map_or(Vec3::ONE, |s| s.0);
+            let material = renderable
                 .material
                 .map_or_else(|| ObjectMaterial::default_material(), |m| m.0.clone());
 
             // Push the renderable to the vector
-            frame.renderables.push(Renderable {
-                model: Mat4::from_scale_rotation_translation(scale, rotation, position),
-                material,
-                mesh: mesh_asset,
-            });
+            let mut object = Renderable::new(
+                renderable.entity_id,
+                position,
+                rotation,
+                scale,
+                Some(material),
+                mesh_asset,
+            );
+            object.set_updated(tracker.track_renderable(renderable.entity_id, &object));
+            frame.renderables.push(object);
         }
-        frame.epoch = t.event.frame;
+
+        // Process the point lights
+        for light in point_lights.iter() {
+            let position = light.position.0;
+            let inner_light = light.light;
+
+            let mut object = RenderablePointLight::new(light.entity_id, inner_light, position);
+            object.set_updated(tracker.track_point_light(light.entity_id, &object));
+            frame.point_lights.push(object);
+        }
+
+        // Process the sun lights
+        for light in sun_lights.iter() {
+            let inner_light = light.light;
+
+            let mut object = RenderableSunLight::new(light.entity_id, inner_light);
+            object.set_updated(tracker.track_sun_light(light.entity_id, &object));
+            frame.sun_lights.push(object);
+        }
 
         // Send the collected renderables to the renderer thread
         renderer.data_stream.publish();
@@ -176,6 +329,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
         renderer.view_sender.send(r.event.clone()).unwrap();
     }
 
+    world.add_handler(invalidate_cache_handler::<E>);
     world.add_handler(view_handler::<E>);
     world.add_handler(monitoring_handler::<E>.low());
     world.add_handler(inputs_handler::<E>.high());
