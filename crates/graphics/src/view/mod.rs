@@ -9,6 +9,7 @@ mod x11;
 use crate::input::InputEvent;
 use crossbeam_channel::Sender;
 use dawn_util::rendezvous::Rendezvous;
+use glam::UVec2;
 
 #[cfg(target_os = "macos")]
 pub mod view_impl {
@@ -68,7 +69,7 @@ pub enum ViewCursor {
 
 #[derive(Clone, Debug)]
 pub enum ViewGeometry {
-    Normal(u32, u32),
+    Normal(UVec2),
     BorderlessFullscreen,
     Fullscreen,
 }

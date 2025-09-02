@@ -2,6 +2,7 @@ use crate::gl::ViewHandleOpenGL;
 use crate::input::InputEvent;
 use crate::view::{TickResult, ViewConfig, ViewCursor, ViewGeometry, ViewTrait};
 use crossbeam_channel::Sender;
+use glam::{UVec2, Vec2};
 use log::{debug, info, warn};
 use std::ffi::{c_char, c_int, c_uint};
 use std::ptr::addr_of_mut;
@@ -129,10 +130,7 @@ fn process_events_sync(
             let width = unsafe { event.configure.width };
             let height = unsafe { event.configure.height };
             events_sender
-                .send(InputEvent::Resize {
-                    width: width as usize,
-                    height: height as usize,
-                })
+                .send(InputEvent::Resize(UVec2::new(width as u32, height as u32)))
                 .unwrap();
         }
 
@@ -140,10 +138,7 @@ fn process_events_sync(
             let x = unsafe { event.motion.x };
             let y = unsafe { event.motion.y };
             events_sender
-                .send(InputEvent::MouseMove {
-                    x: x as f32,
-                    y: y as f32,
-                })
+                .send(InputEvent::MouseMove(Vec2::new(x as f32, y as f32)))
                 .unwrap();
         }
 
@@ -440,13 +435,13 @@ impl ViewTrait for View {
 
     fn set_geometry(&mut self, geometry: ViewGeometry) -> Result<(), crate::view::ViewError> {
         match geometry {
-            ViewGeometry::Normal(width, height) => {
+            ViewGeometry::Normal(size) => {
                 unsafe {
                     xlib::XResizeWindow(
                         self.display,
                         self.window,
-                        width as c_uint,
-                        height as c_uint,
+                        size.x as c_uint,
+                        size.y as c_uint,
                     );
                     XSync(self.display, 0);
                 }

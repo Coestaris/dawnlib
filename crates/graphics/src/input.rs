@@ -1,4 +1,5 @@
 use evenio::event::GlobalEvent;
+use glam::{UVec2, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MouseButton {
@@ -136,9 +137,9 @@ pub enum InputEvent {
     KeyPress(KeyCode),
     KeyRelease(KeyCode),
     CharInput(char),
-    MouseMove { x: f32, y: f32 },
-    MouseScroll { delta_x: f32, delta_y: f32 },
+    MouseMove(Vec2),
+    MouseScroll(Vec2),
     MouseButtonPress(MouseButton),
     MouseButtonRelease(MouseButton),
-    Resize { width: usize, height: usize },
+    Resize(UVec2),
 }
