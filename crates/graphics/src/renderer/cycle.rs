@@ -1,0 +1,234 @@
+use crate::passes::chain::RenderChain;
+use crate::passes::events::RenderPassEvent;
+use crate::passes::pipeline::RenderPipeline;
+use crate::passes::result::RenderResult;
+use crate::passes::ChainExecuteCtx;
+use crate::renderer::backend::RendererBackendTrait;
+use crate::renderer::monitor::RendererMonitorTrait;
+use crate::renderer::{DataStreamFrame, InputEvent, PassEventTrait, RendezvousTrait, ViewConfig, ViewEvent};
+use crate::renderer::{RenderChainConstructor, RendererBackendConfig};
+use crate::renderer::{RendererBackend, RendererError};
+use crossbeam_channel::{Receiver, Sender};
+use dawn_util::rendezvous::Rendezvous;
+use log::{info, warn};
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use thiserror::Error;
+use triple_buffer::Output;
+use winit::application::ApplicationHandler;
+use winit::error::EventLoopError;
+use winit::event::{StartCause, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, ControlFlow};
+use winit::raw_window_handle::HasWindowHandle;
+use winit::window::{Window, WindowAttributes, WindowId};
+
+#[derive(Clone, Debug)]
+pub enum ViewCursor {
+    Default,
+    Hidden,
+
+    Crosshair,
+    Hand,
+    Arrow,
+    Move,
+    Text,
+    Wait,
+    Help,
+    NotAllowed,
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub(crate) enum TickResult {
+    Continue,
+    Closed,
+    Failed(ViewError),
+}
+
+#[derive(Debug, Error)]
+pub enum ViewError {
+    #[error("Event loop error: {0}")]
+    EventLoopError(#[from] EventLoopError),
+}
+
+pub(crate) struct Cycle<P, C, E>
+where
+    E: PassEventTrait,
+    P: RendererMonitorTrait,
+    C: RenderChain<E>,
+{
+    window: Option<Window>,
+    chain: Option<RenderPipeline<C, E>>,
+    backend: Option<RendererBackend<E>>,
+
+    config: ViewConfig,
+    frame_index: usize,
+
+    backend_config: RendererBackendConfig,
+    external_stop: Arc<AtomicBool>,
+    constructor: Box<dyn RenderChainConstructor<C, E>>,
+    before_frame: Box<dyn RendezvousTrait>,
+    after_frame: Box<dyn RendezvousTrait>,
+    monitor: P,
+
+    // In/Out queues
+    renderer_in: Receiver<RenderPassEvent<E>>,
+    view_in: Receiver<ViewEvent>,
+    data_stream: Output<DataStreamFrame>,
+    input_out: Sender<InputEvent>,
+}
+
+impl<P, C, E> Cycle<P, C, E>
+where
+    E: PassEventTrait,
+    P: RendererMonitorTrait,
+    C: RenderChain<E>,
+{
+    // God forgive me for this abomination.
+    pub(crate) fn new(
+        config: ViewConfig,
+        backend_config: RendererBackendConfig,
+        monitor: P,
+        constructor: impl RenderChainConstructor<C, E>,
+        before_frame: impl RendezvousTrait,
+        after_frame: impl RendezvousTrait,
+        external_stop: Arc<AtomicBool>,
+        renderer_in: Receiver<RenderPassEvent<E>>,
+        view_in: Receiver<ViewEvent>,
+        data_stream: Output<DataStreamFrame>,
+        input_out: Sender<InputEvent>,
+    ) -> Result<Self, ViewError> {
+        Ok(Cycle {
+            constructor: Box::new(constructor),
+            before_frame: Box::new(before_frame),
+            after_frame: Box::new(after_frame),
+            config,
+            window: None,
+            external_stop,
+            chain: None,
+            monitor,
+            renderer_in,
+            view_in,
+            data_stream,
+            backend_config,
+            frame_index: 0,
+            backend: None,
+            input_out,
+        })
+    }
+}
+
+impl<P, C, E> ApplicationHandler for Cycle<P, C, E>
+where
+    E: PassEventTrait,
+    P: RendererMonitorTrait,
+    C: RenderChain<E>,
+{
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+        // This has no sense if no synchronization is disabled,
+        // but if it is, it is a good idea to process all the events between frames.
+        // Here, in the meanwhile, the Main thread will copy the renderables to us,
+        // so we have some time to handle events.
+        // It also guarantees that all the events the user produced will be processed
+        // before the next frame.
+        self.monitor.events_start();
+        for event in self.renderer_in.try_iter() {
+            self.chain.as_mut().unwrap().dispatch(event);
+        }
+        self.monitor.events_stop();
+
+        // Meet with the Main thread
+        self.before_frame.wait();
+
+        // Process View. Usually this will produce input events
+        self.monitor.view_start();
+        for event in self.view_in.try_iter() {
+            match event {}
+        }
+    }
+
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        #[cfg(not(web_platform))]
+        let window_attributes = WindowAttributes::default();
+        #[cfg(web_platform)]
+        let window_attributes = WindowAttributes::default()
+            .with_platform_attributes(Box::new(WindowAttributesWeb::default().with_append(true)));
+
+        self.window = match event_loop.create_window(window_attributes) {
+            Ok(window) => Some(window),
+            Err(err) => {
+                eprintln!("error creating window: {err}");
+                event_loop.exit();
+                panic!("Failed to create window");
+            }
+        };
+
+        event_loop.set_control_flow(ControlFlow::Poll);
+
+        let raw = self
+            .window
+            .as_ref()
+            .unwrap()
+            .window_handle()
+            .unwrap()
+            .as_raw();
+
+        self.backend = Some(RendererBackend::<E>::new(self.backend_config.clone(), raw).unwrap());
+
+        let constructor = self.constructor.as_mut();
+        self.chain = Some((constructor)(&mut self.backend.as_mut().unwrap()).unwrap());
+
+        // Notify the monitor about the pass names
+        let pass_names = self.chain.as_ref().unwrap().get_names().clone();
+        self.monitor.set_pass_names(&pass_names);
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        todo!()
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.monitor.view_stop();
+
+        // Render the frame
+        self.monitor.render_start();
+        if let Err(e) = self.backend.as_mut().unwrap().before_frame() {
+            todo!()
+        }
+
+        let frame = self.data_stream.read();
+        if frame.epoch != self.frame_index {
+            warn!(
+                "Renderer is out of sync! Expected epoch {}, got {}",
+                self.frame_index, frame.epoch
+            );
+            self.frame_index = frame.epoch;
+        } else {
+            self.frame_index += 1;
+        }
+
+        let mut ctx = ChainExecuteCtx::new(frame, self.backend.as_mut().unwrap());
+
+        let pass_result = self.chain.as_mut().unwrap().execute(&mut ctx);
+        if let RenderResult::Failed = pass_result {
+            todo!()
+        }
+
+        // Do not include after frame in the monitoring, because it usually synchronizes
+        // the rendered frame with the OS by swapping buffer, that usually is synchronized
+        // with the refresh rate of the display. So this will not be informative.
+        self.monitor.render_stop(pass_result, &ctx.durations);
+
+        if let Err(e) = self.backend.as_mut().unwrap().after_frame() {
+            todo!()
+        }
+
+        // Meet with the Main thread again.
+        self.after_frame.wait();
+    }
+}

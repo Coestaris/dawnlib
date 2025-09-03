@@ -2,18 +2,16 @@ use crate::ecs::{
     InvalidateRendererCache, ObjectAreaLight, ObjectMesh, ObjectPointLight, ObjectPosition,
     ObjectRotation, ObjectScale, ObjectSpotLight, ObjectSunLight,
 };
-use crate::input::InputEvent;
 use crate::passes::events::{PassEventTrait, RenderPassEvent};
 use crate::renderable::{
     Renderable, RenderableAreaLight, RenderablePointLight, RenderableSpotLight, RenderableSunLight,
 };
 use crate::renderer::monitor::RendererMonitorEvent;
-use crate::renderer::{Renderer, ViewEvent};
-use crate::view::ViewGeometry;
+use crate::renderer::{InputEvent, Renderer, ViewEvent};
 use dawn_ecs::events::{ExitEvent, InterSyncEvent, TickEvent};
 use evenio::component::Component;
 use evenio::entity::EntityId;
-use evenio::event::{Receiver, Sender};
+use evenio::event::{GlobalEvent, Receiver, Sender};
 use evenio::fetch::{Fetcher, Single};
 use evenio::handler::IntoHandler;
 use evenio::query::Query;
@@ -23,6 +21,7 @@ use log::info;
 use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::atomic::Ordering;
+use winit::event::WindowEvent;
 
 #[derive(Query)]
 struct RenderableQuery<'a> {

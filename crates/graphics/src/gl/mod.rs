@@ -14,15 +14,16 @@ use crate::gl::assets::{
 use crate::gl::debug::{Debugger, MessageType};
 use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
-use crate::view::{ViewError, ViewHandle};
 use dawn_assets::factory::FactoryBinding;
 use log::{error, info, warn};
 use std::fmt::{Display, Formatter};
+use winit::raw_window_handle::RawWindowHandle;
 
 pub struct GLRenderer<E: PassEventTrait> {
     _marker: std::marker::PhantomData<E>,
 
-    view_handle: ViewHandle,
+    view_handle: RawWindowHandle,
+
     _debugger: Debugger,
 
     // Factories for texture and shader assets
@@ -33,6 +34,7 @@ pub struct GLRenderer<E: PassEventTrait> {
     font_factory: Option<FontAssetFactory>,
 }
 
+#[derive(Clone)]
 pub struct GLRendererConfig {
     // pub fps: usize,
     // pub vsync: bool,
@@ -44,19 +46,7 @@ pub struct GLRendererConfig {
 }
 
 #[derive(Debug, Clone)]
-pub enum GLRendererError {
-    ViewError(ViewError),
-}
-
-// OpenGL has a lot of platform-dependent code,
-// so we define a trait for the view handle.
-// Bless the Rust for dealing with circular dependencies with such ease.
-#[cfg(feature = "gl")]
-pub(crate) trait ViewHandleOpenGL {
-    fn create_context(&mut self, fps: usize, vsync: bool) -> Result<(), ViewError>;
-    fn get_proc_addr(&mut self, symbol: &str) -> Result<*const std::ffi::c_void, ViewError>;
-    fn swap_buffers(&self) -> Result<(), ViewError>;
-}
+pub enum GLRendererError {}
 
 impl Display for GLRendererError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -97,25 +87,25 @@ unsafe fn stat_opengl_context() {
 impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     fn new(
         cfg: RendererBackendConfig,
-        mut view_handle: ViewHandle,
+        view_handle: RawWindowHandle,
     ) -> Result<Self, RendererBackendError>
     where
         Self: Sized,
     {
-        // Create the OpenGL context
-        view_handle.create_context(0, false).unwrap();
-        // Load OpenGL functions using the OS-specific loaders
-        bindings::load_with(|symbol| {
-            // Warn if the symbol is not found
-            match view_handle.get_proc_addr(symbol) {
-                Ok(addr) => addr,
-                Err(e) => {
-                    // That's not a catastrophic, but we should know about it
-                    warn!("Failed to load OpenGL symbol: {}: {}", symbol, e);
-                    std::ptr::null()
-                }
-            }
-        });
+        // // Create the OpenGL context
+        // view_handle.create_context(0, false).unwrap();
+        // // Load OpenGL functions using the OS-specific loaders
+        // bindings::load_with(|symbol| {
+        //     // Warn if the symbol is not found
+        //     match view_handle.get_proc_addr(symbol) {
+        //         Ok(addr) => addr,
+        //         Err(e) => {
+        //             // That's not a catastrophic, but we should know about it
+        //             warn!("Failed to load OpenGL symbol: {}: {}", symbol, e);
+        //             std::ptr::null()
+        //         }
+        //     }
+        // });
 
         // Stat the OpenGL context
         unsafe {
@@ -211,9 +201,9 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
 
     #[inline(always)]
     fn after_frame(&mut self) -> Result<(), RendererBackendError> {
-        self.view_handle
-            .swap_buffers()
-            .map_err(GLRendererError::ViewError)?;
+        // self.view_handle
+        //     .swap_buffers()
+        //     .map_err(GLRendererError::ViewError)?;
 
         Ok(())
     }

@@ -4,7 +4,6 @@ use log::debug;
 use std::fmt::Debug;
 use std::time::Duration;
 
-#[derive(Clone)]
 pub struct Binding<T, F>
 where
     T: Send + 'static + Debug,
@@ -12,6 +11,19 @@ where
 {
     sender: Sender<F>,
     receiver: Receiver<T>,
+}
+
+impl<T, F> Clone for Binding<T, F>
+where
+    T: Send + 'static + Debug,
+    F: Send + 'static + Debug,
+{
+    fn clone(&self) -> Self {
+        Binding {
+            sender: self.sender.clone(),
+            receiver: self.receiver.clone(),
+        }
+    }
 }
 
 impl<T, F> Binding<T, F>

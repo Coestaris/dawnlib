@@ -9,20 +9,20 @@ use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::time::Duration;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LoadFactoryMessage {
     pub asset_header: AssetHeader,
     pub ir: IRAsset,
     pub dependencies: HashMap<AssetID, Asset>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ToFactoryMessage {
     Load(AssetTaskID, AssetID, LoadFactoryMessage),
     Free(AssetTaskID, AssetID),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LoadedFactoryMessage {
     pub usage: AssetMemoryUsage,
     pub asset_type: TypeId,
@@ -41,6 +41,7 @@ unsafe impl Send for ToFactoryMessage {}
 unsafe impl Sync for FromFactoryMessage {}
 unsafe impl Sync for ToFactoryMessage {}
 
+#[derive(Clone)]
 pub struct FactoryBinding {
     asset_type: AssetType,
     inner: Binding<ToFactoryMessage, FromFactoryMessage>,

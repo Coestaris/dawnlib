@@ -14,6 +14,7 @@ use evenio::prelude::World;
 use log::{debug, error, info};
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
+use std::sync::Arc;
 use thiserror::Error;
 
 /// AssetHub events are used to notify the ECS world about asset-related events.

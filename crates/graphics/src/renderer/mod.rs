@@ -1,42 +1,56 @@
 pub(crate) mod backend;
+mod cycle;
 mod ecs;
 mod monitor;
 
-use crate::input::InputEvent;
 use crate::passes::chain::RenderChain;
 use crate::passes::events::{PassEventTrait, RenderPassEvent};
 use crate::passes::pipeline::RenderPipeline;
-use crate::passes::result::RenderResult;
-use crate::passes::ChainExecuteCtx;
 use crate::renderable::{
     Renderable, RenderableAreaLight, RenderablePointLight, RenderableSpotLight, RenderableSunLight,
 };
-use crate::renderer::backend::{RendererBackendError, RendererBackendTrait};
+use crate::renderer::backend::RendererBackendError;
+use crate::renderer::cycle::Cycle;
 use crate::renderer::ecs::attach_to_ecs;
 use crate::renderer::monitor::{DummyRendererMonitor, RendererMonitor, RendererMonitorTrait};
-use crate::view::{TickResult, View, ViewConfig, ViewCursor, ViewError, ViewGeometry, ViewTrait};
+pub use backend::{RendererBackend, RendererBackendConfig};
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use dawn_util::rendezvous::Rendezvous;
 use evenio::component::Component;
 use evenio::event::GlobalEvent;
 use evenio::world::World;
-use log::{info, warn};
+use log::{debug, info, warn};
+pub use monitor::RendererMonitorEvent;
 use std::panic::UnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{Builder, JoinHandle};
-use triple_buffer::{triple_buffer, Input, Output};
+use triple_buffer::{triple_buffer, Input};
+use winit::event::WindowEvent;
+use winit::event_loop::EventLoop;
 
-// Re-export the necessary types for user
-pub use backend::{RendererBackend, RendererBackendConfig};
-use dawn_util::rendezvous::Rendezvous;
-pub use monitor::RendererMonitorEvent;
+#[derive(Clone)]
+pub struct ViewConfig {
+    /// Allows to enable additional synchronization between threads.
+    /// For example, to synchronize rendering and logic threads.
+    pub synchronization: Option<ViewSynchronization>,
+
+    /// Title of the window
+    pub title: String,
+}
+
+#[derive(Clone)]
+pub struct ViewSynchronization {
+    pub before_frame: Rendezvous,
+    pub after_frame: Rendezvous,
+}
 
 #[derive(GlobalEvent, Clone)]
-pub enum ViewEvent {
-    SetGeometry(ViewGeometry),
-    SetCursor(ViewCursor),
-    SetTitle(String),
-}
+#[repr(transparent)]
+pub struct InputEvent(pub WindowEvent);
+
+#[derive(GlobalEvent, Clone)]
+pub enum ViewEvent {}
 
 #[derive(Clone)]
 pub struct DataStreamFrame {
@@ -78,36 +92,13 @@ pub struct Renderer<E: PassEventTrait> {
 
 #[derive(Debug)]
 pub enum RendererError {
-    ViewCreateError(ViewError),
     RendererThreadSetupFailed,
     BackendCreateError(RendererBackendError),
     PipelineCreateError(String),
-    ViewTickError(ViewError),
     BackendRenderError(RendererBackendError),
     PipelineExecuteError(),
     MonitoringSetupFailed,
 }
-
-impl std::fmt::Display for RendererError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RendererError::ViewCreateError(e) => write!(f, "Failed to create view: {}", e),
-            RendererError::RendererThreadSetupFailed => {
-                write!(f, "Failed to setup renderer thread")
-            }
-            RendererError::BackendCreateError(e) => write!(f, "Failed to create backend: {}", e),
-            RendererError::ViewTickError(e) => write!(f, "View tick error: {}", e),
-            RendererError::BackendRenderError(e) => write!(f, "Backend tick error: {}", e),
-            RendererError::MonitoringSetupFailed => write!(f, "Failed to setup monitor"),
-            RendererError::PipelineExecuteError() => write!(f, "Failed to execute render pipeline"),
-            RendererError::PipelineCreateError(s) => {
-                write!(f, "Failed to create render pipeline: {}", s)
-            }
-        }
-    }
-}
-
-impl std::error::Error for RendererError {}
 
 impl<E: PassEventTrait> Drop for Renderer<E> {
     fn drop(&mut self) {
@@ -145,7 +136,7 @@ struct DummyRendezvous;
 impl RendezvousTrait for DummyRendezvous {}
 
 pub trait RenderChainConstructor<C, E> =
-    FnOnce(&mut RendererBackend<E>) -> Result<RenderPipeline<C, E>, String> + Send + Sync + 'static
+    Fn(&mut RendererBackend<E>) -> Result<RenderPipeline<C, E>, String> + Send + Sync + 'static
     where
         C: RenderChain<E>,
         E: PassEventTrait;
@@ -261,78 +252,38 @@ impl<E: PassEventTrait> Renderer<E> {
             });
         let stop_signal = Arc::new(AtomicBool::new(false));
 
-        let stop_signal_clone = stop_signal.clone();
+        let stop_signal_clone_1 = stop_signal.clone();
+        let stop_signal_clone_2 = stop_signal.clone();
         let handle = Builder::new()
             .name("renderer".to_string())
             .spawn(move || {
                 info!("Renderer thread started");
 
-                let func = || {
-                    // Create the view, backend and the rendering pipeline
-                    let mut view = View::open(view_config, inputs_sender)
-                        .map_err(RendererError::ViewCreateError)?;
-                    let mut backend = RendererBackend::<E>::new(backend_config, view.get_handle())
-                        .map_err(RendererError::BackendCreateError)?;
-                    let mut pipeline =
-                        constructor(&mut backend).map_err(RendererError::PipelineCreateError)?;
+                let mut cycle = Cycle::new(
+                    // Here we go
+                    view_config,
+                    backend_config,
+                    monitor,
+                    constructor,
+                    before_frame,
+                    after_frame,
+                    stop_signal_clone_1,
+                    renderer_receiver,
+                    view_receiver,
+                    stream_output,
+                    inputs_sender,
+                )
+                .unwrap();
 
-                    // Notify the monitor about the pass names
-                    let pass_names = pipeline.get_names();
-                    monitor.set_pass_names(&pass_names);
+                let event_loop = EventLoop::new();
 
-                    info!("Starting renderer loop");
-                    let mut frame_index = 0;
-                    while !stop_signal_clone.load(Ordering::SeqCst) {
-                        // This has no sense if no synchronization is disabled,
-                        // but if it is, it is a good idea to process all the events between frames.
-                        // Here, in the meanwhile, the Main thread will copy the renderables to us,
-                        // so we have some time to handle events.
-                        // It also guarantees that all the events the user produced will be processed
-                        // before the next frame.
-                        Self::handle_events(&mut monitor, &mut pipeline, &renderer_receiver)?;
-
-                        // Meet with the Main thread
-                        before_frame.wait();
-
-                        // Get the new events from the OS
-                        match Self::handle_view(&mut view, &mut monitor, &view_receiver) {
-                            Ok(false) => {
-                                before_frame.unlock();
-                                after_frame.unlock();
-                                return Ok(());
-                            }
-                            Err(e) => {
-                                Err(e)?;
-                            }
-                            _ => {}
-                        }
-
-                        // Render the frame
-                        frame_index = Self::handle_render(
-                            frame_index,
-                            &mut monitor,
-                            &mut backend,
-                            &mut stream_output,
-                            &mut pipeline,
-                        )?;
-
-                        // Meet with the Main thread again.
-                        after_frame.wait();
-                    }
-
-                    Ok(())
-                };
-
-                // TODO: Handle panics in the renderer thread
-                let err: Result<(), RendererError> = func();
+                info!("Starting event loop");
+                event_loop.unwrap().run_app(&mut cycle).unwrap();
 
                 // Request other threads to stop
-                stop_signal_clone.store(true, Ordering::SeqCst);
-                info!("Renderer thread finished");
+                stop_signal_clone_2.store(true, Ordering::SeqCst);
 
-                if let Err(e) = err {
-                    warn!("Renderer thread error: {:?}", e);
-                }
+                info!("Renderer thread finished");
             })
             .map_err(|_| RendererError::RendererThreadSetupFailed)?;
 
@@ -345,118 +296,6 @@ impl<E: PassEventTrait> Renderer<E> {
             monitor_receiver,
             handle: Some(handle),
         })
-    }
-
-    #[inline(always)]
-    fn handle_view(
-        view: &mut View,
-        monitor: &mut impl RendererMonitorTrait,
-        view_receiver: &Receiver<ViewEvent>,
-    ) -> Result<bool, RendererError> {
-        // Process View. Usually this will produce input events
-        monitor.view_start();
-        for event in view_receiver.try_iter() {
-            match event {
-                ViewEvent::SetGeometry(geo) => {
-                    if let Err(e) = view.set_geometry(geo) {
-                        warn!("Failed to set view geometry: {:?}", e);
-                    }
-                }
-                ViewEvent::SetCursor(cursor) => {
-                    if let Err(e) = view.set_cursor(cursor) {
-                        warn!("Failed to set view cursor: {:?}", e);
-                    }
-                }
-                ViewEvent::SetTitle(title) => {
-                    if let Err(e) = view.set_title(&title) {
-                        warn!("Failed to set view title: {:?}", e);
-                    }
-                }
-            }
-        }
-
-        match view.tick() {
-            TickResult::Continue => {
-                // View tick was successful, continue processing
-                return Ok(true);
-            }
-            TickResult::Closed => {
-                // View tick returned false, which means the view was closed
-                info!("View closed, stopping renderer thread");
-                return Ok(false);
-            }
-            TickResult::Failed(e) => {
-                // An error occurred during the view tick
-                warn!("View tick error: {:?}", e);
-                Err(RendererError::ViewTickError(e))?;
-            }
-        }
-        monitor.view_stop();
-        Ok(true)
-    }
-
-    #[inline(always)]
-    fn handle_events<C>(
-        monitor: &mut impl RendererMonitorTrait,
-        pipeline: &mut RenderPipeline<C, E>,
-        renderer_queue: &Receiver<RenderPassEvent<E>>,
-    ) -> Result<(), RendererError>
-    where
-        C: RenderChain<E>,
-    {
-        monitor.events_start();
-        for event in renderer_queue.try_iter() {
-            pipeline.dispatch(event);
-        }
-        monitor.events_stop();
-
-        Ok(())
-    }
-
-    #[inline(always)]
-    fn handle_render<C>(
-        mut frame_index: usize,
-        monitor: &mut impl RendererMonitorTrait,
-        backend: &mut RendererBackend<E>,
-        stream: &mut Output<DataStreamFrame>,
-        pipeline: &mut RenderPipeline<C, E>,
-    ) -> Result<usize, RendererError>
-    where
-        C: RenderChain<E>,
-    {
-        monitor.render_start();
-        if let Err(e) = backend.before_frame() {
-            return Err(RendererError::BackendRenderError(e));
-        }
-
-        let frame = stream.read();
-        if frame.epoch != frame_index {
-            warn!(
-                "Renderer is out of sync! Expected epoch {}, got {}",
-                frame_index, frame.epoch
-            );
-            frame_index = frame.epoch;
-        } else {
-            frame_index += 1;
-        }
-
-        let mut ctx = ChainExecuteCtx::new(frame, backend);
-
-        let pass_result = pipeline.execute(&mut ctx);
-        if let RenderResult::Failed = pass_result {
-            return Err(RendererError::PipelineExecuteError());
-        }
-
-        // Do not include after frame in the monitoring, because it usually synchronizes
-        // the rendered frame with the OS by swapping buffer, that usually is synchronized
-        // with the refresh rate of the display. So this will not be informative.
-        monitor.render_stop(pass_result, &ctx.durations);
-
-        if let Err(e) = backend.after_frame() {
-            return Err(RendererError::BackendRenderError(e))?;
-        }
-
-        Ok(frame_index)
     }
 
     /// After attaching the renderer to the ECS, it will automatically collect the renderables
