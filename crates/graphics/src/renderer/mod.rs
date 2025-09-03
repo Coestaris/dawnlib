@@ -19,12 +19,12 @@ use dawn_util::rendezvous::Rendezvous;
 use evenio::component::Component;
 use evenio::event::GlobalEvent;
 use evenio::world::World;
-use log::{debug, info, warn};
+use log::{info, warn};
 pub use monitor::RendererMonitorEvent;
 use std::panic::UnwindSafe;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::thread::{Builder, JoinHandle};
+use std::thread::JoinHandle;
 use triple_buffer::{triple_buffer, Input};
 use winit::event::WindowEvent;
 use winit::event_loop::EventLoop;
@@ -73,8 +73,12 @@ impl DataStreamFrame {
     }
 }
 
+pub struct Renderer {
+    run: Box<dyn FnOnce() + Send + 'static>,
+}
+
 #[derive(Component)]
-pub struct Renderer<E: PassEventTrait> {
+pub struct RendererProxy<E: PassEventTrait> {
     stop_signal: Arc<AtomicBool>,
     // Used for streaming renderables to the renderer thread
     // This is a triple buffer, so it can be used to read and write renderables
@@ -87,7 +91,14 @@ pub struct Renderer<E: PassEventTrait> {
     // Used for transferring render pass events from the ECS to the renderer thread.
     renderer_sender: Sender<RenderPassEvent<E>>,
     monitor_receiver: Receiver<RendererMonitorEvent>,
-    handle: Option<JoinHandle<()>>,
+}
+
+impl<E: PassEventTrait> Drop for RendererProxy<E> {
+    fn drop(&mut self) {
+        info!("RendererProxy dropped, stopping renderer");
+        self.stop_signal
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 #[derive(Debug)]
@@ -98,23 +109,6 @@ pub enum RendererError {
     BackendRenderError(RendererBackendError),
     PipelineExecuteError(),
     MonitoringSetupFailed,
-}
-
-impl<E: PassEventTrait> Drop for Renderer<E> {
-    fn drop(&mut self) {
-        info!("Stopping renderer thread");
-
-        // Ask the renderer thread to stop
-        self.stop_signal.store(true, Ordering::Relaxed);
-
-        // Wait for the renderer thread to finish
-        // If the thread is already finished, this will do nothing
-        if let Some(handle) = self.handle.take() {
-            if let Err(e) = handle.join() {
-                warn!("Failed to join renderer thread: {:?}", e);
-            }
-        }
-    }
 }
 
 trait RendezvousTrait: Send + Sync + 'static + UnwindSafe {
@@ -141,7 +135,7 @@ pub trait RenderChainConstructor<C, E> =
         C: RenderChain<E>,
         E: PassEventTrait;
 
-impl<E: PassEventTrait> Renderer<E> {
+impl Renderer {
     /// Creates a new renderer instance that will immediately try to spawn a View,
     /// RendererBackend and all the necessary threads to run the rendering loop.
     ///
@@ -157,12 +151,13 @@ impl<E: PassEventTrait> Renderer<E> {
     /// `constructor` is a function that will be called to create the render pipeline.
     /// It is called once after the view and backend are created. So you can safely
     /// allocate resources in it.
-    pub fn new<C>(
+    pub fn new<C, E>(
         view_config: ViewConfig,
         backend_config: RendererBackendConfig,
         constructor: impl RenderChainConstructor<C, E>,
-    ) -> Result<Self, RendererError>
+    ) -> Result<(Renderer, RendererProxy<E>), RendererError>
     where
+        E: PassEventTrait,
         C: RenderChain<E>,
     {
         if let Some(sync) = view_config.synchronization.clone() {
@@ -192,12 +187,13 @@ impl<E: PassEventTrait> Renderer<E> {
     /// That may affect the performance of the renderer.
     ///
     /// See more information on the function `new`.
-    pub fn new_with_monitoring<C>(
+    pub fn new_with_monitoring<C, E>(
         view_config: ViewConfig,
         backend_config: RendererBackendConfig,
         constructor: impl RenderChainConstructor<C, E>,
-    ) -> Result<Self, RendererError>
+    ) -> Result<(Renderer, RendererProxy<E>), RendererError>
     where
+        E: PassEventTrait,
         C: RenderChain<E>,
     {
         if let Some(sync) = view_config.synchronization.clone() {
@@ -221,15 +217,16 @@ impl<E: PassEventTrait> Renderer<E> {
         }
     }
 
-    fn new_inner<P, C>(
+    fn new_inner<P, C, E>(
         view_config: ViewConfig,
         backend_config: RendererBackendConfig,
         constructor: impl RenderChainConstructor<C, E>,
         before_frame: impl RendezvousTrait,
         after_frame: impl RendezvousTrait,
         mut monitor: P,
-    ) -> Result<Self, RendererError>
+    ) -> Result<(Renderer, RendererProxy<E>), RendererError>
     where
+        E: PassEventTrait,
         P: RendererMonitorTrait,
         C: RenderChain<E>,
     {
@@ -251,53 +248,52 @@ impl<E: PassEventTrait> Renderer<E> {
                 sun_lights: vec![],
             });
         let stop_signal = Arc::new(AtomicBool::new(false));
+        let stop_signal_clone = stop_signal.clone();
 
-        let stop_signal_clone_1 = stop_signal.clone();
-        let stop_signal_clone_2 = stop_signal.clone();
-        let handle = Builder::new()
-            .name("renderer".to_string())
-            .spawn(move || {
-                info!("Renderer thread started");
+        Ok((
+            Renderer {
+                run: Box::new(move || {
+                    let mut cycle = Cycle::new(
+                        view_config,
+                        backend_config,
+                        monitor,
+                        constructor,
+                        before_frame,
+                        after_frame,
+                        stop_signal.clone(),
+                        renderer_receiver,
+                        view_receiver,
+                        stream_output,
+                        inputs_sender,
+                    )
+                    .unwrap();
 
-                let mut cycle = Cycle::new(
-                    // Here we go
-                    view_config,
-                    backend_config,
-                    monitor,
-                    constructor,
-                    before_frame,
-                    after_frame,
-                    stop_signal_clone_1,
-                    renderer_receiver,
-                    view_receiver,
-                    stream_output,
-                    inputs_sender,
-                )
-                .unwrap();
-
-                let event_loop = EventLoop::new();
-
-                info!("Starting event loop");
-                event_loop.unwrap().run_app(&mut cycle).unwrap();
-
-                // Request other threads to stop
-                stop_signal_clone_2.store(true, Ordering::SeqCst);
-
-                info!("Renderer thread finished");
-            })
-            .map_err(|_| RendererError::RendererThreadSetupFailed)?;
-
-        Ok(Self {
-            stop_signal,
-            data_stream: stream_input,
-            inputs_receiver,
-            view_sender,
-            renderer_sender,
-            monitor_receiver,
-            handle: Some(handle),
-        })
+                    info!("Starting renderer event loop");
+                    let event_loop = EventLoop::new().unwrap();
+                    event_loop.run_app(&mut cycle).unwrap();
+                    info!("Renderer event loop has exited");
+                }),
+            },
+            RendererProxy::<E> {
+                stop_signal: stop_signal_clone,
+                data_stream: stream_input,
+                inputs_receiver,
+                view_sender,
+                renderer_sender,
+                monitor_receiver,
+            },
+        ))
     }
 
+    /// Consumes the renderer and runs it in the current thread.
+    /// This function will block the current thread until the renderer
+    /// exits (for example, when the window is closed).
+    pub fn run(self) {
+        (self.run)()
+    }
+}
+
+impl<E: PassEventTrait> RendererProxy<E> {
     /// After attaching the renderer to the ECS, it will automatically collect the renderables
     /// and send them to the renderer thread (see `renderable` mod for more details).
     ///

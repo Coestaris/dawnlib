@@ -1,24 +1,24 @@
-use crate::main_loop::MainLoopMonitorEvent;
+use crate::game_loop::GameLoopMonitorEvent;
 use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 use evenio::world::World;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-pub(crate) trait MainLoopMonitorTrait {
+pub(crate) trait GameLoopMonitorTrait: Send + Sync + 'static {
     fn cycle_start(&mut self) {}
     fn tick_end(&mut self) {}
     fn cycle(&mut self, _world: &mut World) {}
 }
 
-pub(crate) struct MainLoopMonitor {
+pub(crate) struct GameLoopMonitor {
     cycle_time: Stopwatch,
     tps: Counter,
     las_update: Instant,
     counter: usize,
 }
 
-impl MainLoopMonitor {
+impl GameLoopMonitor {
     pub fn new() -> Self {
-        MainLoopMonitor {
+        GameLoopMonitor {
             cycle_time: Stopwatch::new(0.5),
             tps: Counter::new(0.5),
             las_update: Instant::now(),
@@ -27,7 +27,7 @@ impl MainLoopMonitor {
     }
 }
 
-impl MainLoopMonitorTrait for MainLoopMonitor {
+impl GameLoopMonitorTrait for GameLoopMonitor {
     #[inline(always)]
     fn cycle_start(&mut self) {
         self.cycle_time.start();
@@ -47,7 +47,7 @@ impl MainLoopMonitorTrait for MainLoopMonitor {
             self.las_update = Instant::now();
             self.tps.update();
 
-            // Calculate the average load of the main loop
+            // Calculate the average load of the game loop
             let cycle_time = self.cycle_time.get().unwrap_or_default();
             let tps = self.tps.get().unwrap_or_default();
 
@@ -65,7 +65,7 @@ impl MainLoopMonitorTrait for MainLoopMonitor {
             self.counter += 1;
 
             // Send the data to the ECS
-            world.send(MainLoopMonitorEvent {
+            world.send(GameLoopMonitorEvent {
                 cycle_time,
                 tps,
                 load,
@@ -74,6 +74,6 @@ impl MainLoopMonitorTrait for MainLoopMonitor {
     }
 }
 
-pub(crate) struct DummyMainLoopMonitor;
+pub(crate) struct DummyGameLoopMonitor;
 
-impl MainLoopMonitorTrait for DummyMainLoopMonitor {}
+impl GameLoopMonitorTrait for DummyGameLoopMonitor {}

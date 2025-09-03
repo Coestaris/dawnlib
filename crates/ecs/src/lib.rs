@@ -1,2 +1,4 @@
+#![feature(trait_alias)]
+
 pub mod events;
-pub mod main_loop;
+pub mod game_loop;

@@ -7,21 +7,19 @@ use crate::renderable::{
     Renderable, RenderableAreaLight, RenderablePointLight, RenderableSpotLight, RenderableSunLight,
 };
 use crate::renderer::monitor::RendererMonitorEvent;
-use crate::renderer::{InputEvent, Renderer, ViewEvent};
+use crate::renderer::{InputEvent, RendererProxy, ViewEvent};
 use dawn_ecs::events::{ExitEvent, InterSyncEvent, TickEvent};
 use evenio::component::Component;
 use evenio::entity::EntityId;
-use evenio::event::{GlobalEvent, Receiver, Sender};
+use evenio::event::{Receiver, Sender};
 use evenio::fetch::{Fetcher, Single};
 use evenio::handler::IntoHandler;
 use evenio::query::Query;
 use evenio::world::World;
-use glam::{Mat4, Quat, Vec3};
+use glam::{Quat, Vec3};
 use log::info;
-use std::collections::HashMap;
 use std::ptr::NonNull;
 use std::sync::atomic::Ordering;
-use winit::event::WindowEvent;
 
 #[derive(Query)]
 struct RenderableQuery<'a> {
@@ -62,21 +60,21 @@ struct Boxed {
 }
 
 impl Boxed {
-    fn new<E: PassEventTrait>(renderer: Renderer<E>) -> Self {
+    fn new<E: PassEventTrait>(renderer: RendererProxy<E>) -> Self {
         let raw = unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(renderer)) as *mut ()) };
         Boxed { raw }
     }
 
-    fn cast<E: PassEventTrait>(&self) -> &Renderer<E> {
+    fn cast<E: PassEventTrait>(&self) -> &RendererProxy<E> {
         // SAFETY: We are guaranteed that the raw pointer is valid
-        // and points to a Renderer<E> because we created it from a Box<Renderer<E>>.
-        unsafe { &*(self.raw.as_ptr() as *const Renderer<E>) }
+        // and points to a RendererProxy<E> because we created it from a Box<RendererProxy<E>>.
+        unsafe { &*(self.raw.as_ptr() as *const RendererProxy<E>) }
     }
 
-    fn cast_mut<E: PassEventTrait>(&mut self) -> &mut Renderer<E> {
+    fn cast_mut<E: PassEventTrait>(&mut self) -> &mut RendererProxy<E> {
         // SAFETY: We are guaranteed that the raw pointer is valid
-        // and points to a Renderer<E> because we created it from a Box<Renderer<E>>.
-        unsafe { &mut *(self.raw.as_ptr() as *mut Renderer<E>) }
+        // and points to a RendererProxy<E> because we created it from a Box<RendererProxy<E>>.
+        unsafe { &mut *(self.raw.as_ptr() as *mut RendererProxy<E>) }
     }
 }
 
@@ -89,7 +87,7 @@ impl Drop for Boxed {
         struct Empty {}
 
         unsafe {
-            let _ = Box::from_raw(self.raw.as_ptr() as *mut Renderer<Empty>);
+            let _ = Box::from_raw(self.raw.as_ptr() as *mut RendererProxy<Empty>);
         };
     }
 }
@@ -160,7 +158,7 @@ impl UpdateTracker {
     }
 }
 
-pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World) {
+pub fn attach_to_ecs<E: PassEventTrait>(renderer: RendererProxy<E>, world: &mut World) {
     // Setup the renderer player entity in the ECS
     let boxed = world.spawn();
     world.insert(boxed, Boxed::new(renderer));
@@ -249,7 +247,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: Renderer<E>, world: &mut World
     // Ideally this should be done AFTER the main loop, but before the renderer
     // thread is started. Like so (one frame):
     // ╔═══════╤════════════════════════════╤═══════════════════╗
-    // ║  ...  │ (Peek data)  [ Rendering ] │              ...  ║ Renderer
+    // ║  ...  │ (Peek data)  [ Rendering ] │              ...  ║ RendererProxy
     // ║       │      [ Processing ]        │ (Post data)       ║ Main Thread
     // ╟───────┼────────────────────────────┼───────────────────╣
     // ║     [Sync]                       [Sync]                ║
