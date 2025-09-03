@@ -173,7 +173,8 @@ impl RendererMonitorTrait for RendererMonitor {
                     load,
                 };
 
-                sender.send(frame).unwrap();
+                // Dont care if it fails, the receiver might be gone
+                let _ = sender.send(frame);
             }
 
             // Reset the counters each 5 seconds to get more smooth data

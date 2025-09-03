@@ -1,5 +1,6 @@
 pub mod assets;
 pub mod bindings;
+mod context;
 mod debug;
 pub mod font;
 pub mod material;
@@ -11,18 +12,20 @@ use crate::gl::assets::{
     FontAssetFactory, MaterialAssetFactory, MeshAssetFactory, ShaderAssetFactory,
     TextureAssetFactory,
 };
+use crate::gl::context::Context;
 use crate::gl::debug::{Debugger, MessageType};
 use crate::passes::events::PassEventTrait;
-use crate::renderer::backend::{RendererConfig, RendererBackendError, RendererBackendTrait};
+use crate::renderer::backend::{RendererBackendError, RendererBackendTrait, RendererConfig};
 use dawn_assets::factory::FactoryBinding;
 use log::{error, info, warn};
 use std::fmt::{Display, Formatter};
-use winit::raw_window_handle::RawWindowHandle;
+use thiserror::Error;
+use winit::raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 pub struct GLRenderer<E: PassEventTrait> {
     _marker: std::marker::PhantomData<E>,
 
-    view_handle: RawWindowHandle,
+    context: Context,
 
     _debugger: Debugger,
 
@@ -45,16 +48,11 @@ pub struct GLRendererConfig {
     pub font_factory_binding: Option<FactoryBinding>,
 }
 
-#[derive(Debug, Clone)]
-pub enum GLRendererError {}
-
-impl Display for GLRendererError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "An error occurred in the graphics module")
-    }
+#[derive(Debug, Error)]
+pub enum GLRendererError {
+    #[error("Failed to create OpenGL context: {0}")]
+    ContextCreateError(#[from] anyhow::Error),
 }
-
-impl std::error::Error for GLRendererError {}
 
 unsafe fn stat_opengl_context() {
     info!("OpenGL information:");
@@ -87,25 +85,27 @@ unsafe fn stat_opengl_context() {
 impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     fn new(
         cfg: RendererConfig,
-        view_handle: RawWindowHandle,
+        raw_window: RawWindowHandle,
+        raw_display: RawDisplayHandle,
     ) -> Result<Self, RendererBackendError>
     where
         Self: Sized,
     {
-        // // Create the OpenGL context
-        // view_handle.create_context(0, false).unwrap();
-        // // Load OpenGL functions using the OS-specific loaders
-        // bindings::load_with(|symbol| {
-        //     // Warn if the symbol is not found
-        //     match view_handle.get_proc_addr(symbol) {
-        //         Ok(addr) => addr,
-        //         Err(e) => {
-        //             // That's not a catastrophic, but we should know about it
-        //             warn!("Failed to load OpenGL symbol: {}: {}", symbol, e);
-        //             std::ptr::null()
-        //         }
-        //     }
-        // });
+        // Create the OpenGL context
+        let mut context = Context::new(raw_window, raw_display)?;
+
+        // Load OpenGL functions using the OS-specific loaders
+        bindings::load_with(|symbol| {
+            // Warn if the symbol is not found
+            match context.load_fn(symbol) {
+                Ok(addr) => addr,
+                Err(e) => {
+                    // That's not a catastrophic, but we should know about it
+                    warn!("Failed to load OpenGL symbol: {}: {}", symbol, e);
+                    std::ptr::null()
+                }
+            }
+        });
 
         // Stat the OpenGL context
         unsafe {
@@ -166,7 +166,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         Ok(GLRenderer::<E> {
             _marker: Default::default(),
             _debugger: debugger,
-            view_handle,
+            context,
             texture_factory,
             shader_factory,
             mesh_factory,
@@ -201,9 +201,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
 
     #[inline(always)]
     fn after_frame(&mut self) -> Result<(), RendererBackendError> {
-        // self.view_handle
-        //     .swap_buffers()
-        //     .map_err(GLRendererError::ViewError)?;
+        self.context.swap_buffers();
 
         Ok(())
     }

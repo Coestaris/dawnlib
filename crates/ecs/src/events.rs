@@ -1,6 +1,6 @@
 use evenio::event::GlobalEvent;
 
-/// Event sent every tick in the main loop (usually 60 times per second).
+/// Event sent every tick in the World loop (usually 60 times per second).
 /// Can be used to update game logic, render frames, etc.
 /// It should not be sent by the user.
 #[derive(GlobalEvent)]
@@ -9,7 +9,7 @@ pub struct TickEvent {
     pub frame: usize,
     /// The time since the last tick in seconds in milliseconds.
     pub delta: f32,
-    /// The total time since the start of the main loop in milliseconds.
+    /// The total time since the start of the World loop in milliseconds.
     pub time: f32,
 }
 
@@ -23,6 +23,6 @@ pub struct InterSyncEvent {
     pub frame: usize,
 }
 
-/// Event sent to stop the main loop.
+/// Event sent to stop the World loop.
 #[derive(GlobalEvent)]
 pub struct ExitEvent;

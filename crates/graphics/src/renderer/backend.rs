@@ -1,5 +1,5 @@
 use crate::passes::events::PassEventTrait;
-use winit::raw_window_handle::RawWindowHandle;
+use winit::raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 pub(crate) trait RendererBackendTrait<E: PassEventTrait>
 where
@@ -7,7 +7,8 @@ where
 {
     fn new(
         config: RendererConfig,
-        handle: RawWindowHandle,
+        raw_window: RawWindowHandle,
+        raw_display: RawDisplayHandle,
     ) -> Result<Self, RendererBackendError>;
 
     fn before_frame(&mut self) -> Result<(), RendererBackendError>;

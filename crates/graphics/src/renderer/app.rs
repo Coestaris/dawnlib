@@ -21,7 +21,7 @@ use winit::application::ApplicationHandler;
 use winit::error::EventLoopError;
 use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
-use winit::raw_window_handle::HasWindowHandle;
+use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 #[derive(Debug, Error)]
@@ -116,6 +116,15 @@ where
         }
         self.monitor.events_stop();
 
+        if self.external_stop.load(std::sync::atomic::Ordering::SeqCst) {
+            event_loop.exit();
+            info!("External stop requested, exiting renderer loop");
+
+            self.before_frame.unlock();
+            self.after_frame.unlock();
+            return;
+        }
+
         // Meet with the Main thread
         self.before_frame.wait();
 
@@ -144,15 +153,25 @@ where
 
         event_loop.set_control_flow(ControlFlow::Poll);
 
-        let raw = self
+        let raw_window = self
             .window
             .as_ref()
             .unwrap()
             .window_handle()
             .unwrap()
             .as_raw();
+        let raw_display = self
+            .window
+            .as_ref()
+            .unwrap()
+            .display_handle()
+            .unwrap()
+            .as_raw();
 
-        self.backend = Some(RendererBackend::<E>::new(self.backend_config.clone(), raw).unwrap());
+        self.backend = Some(
+            RendererBackend::<E>::new(self.backend_config.clone(), raw_window, raw_display)
+                .unwrap(),
+        );
 
         let constructor = self.constructor.as_mut();
         self.chain = Some((constructor)(&mut self.backend.as_mut().unwrap()).unwrap());
@@ -165,10 +184,37 @@ where
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        window_id: WindowId,
+        _window_id: WindowId,
         event: WindowEvent,
     ) {
-        todo!()
+        // Receiver may be dead. We don't care.
+        let _ = self.input_out.send(InputEvent(event.clone()));
+
+        match event {
+            WindowEvent::CloseRequested => {
+                info!("Window close requested");
+
+                // Tell other threads to stop
+                self.external_stop
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
+
+                event_loop.exit();
+
+                self.before_frame.unlock();
+                self.after_frame.unlock();
+            }
+            WindowEvent::RedrawRequested => {
+                // RedrawRequested is sent when the window is first created
+                // We don't want to render a frame at this point, because
+                // we want to be synchronized with the Main thread.
+                // So we just ignore this event.
+
+                // Notify that you're about to draw.
+                let window = self.window.as_ref().unwrap();
+                window.pre_present_notify();
+            }
+            _ => {}
+        }
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {

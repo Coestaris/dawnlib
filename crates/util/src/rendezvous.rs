@@ -1,4 +1,5 @@
 use std::sync::{Arc, Condvar, Mutex};
+use std::sync::atomic::AtomicBool;
 
 /// Sync point that allows threads to synchronize at specific points.
 /// Allows threads to wait for each other before proceeding.
@@ -7,6 +8,7 @@ pub struct Rendezvous(Arc<RendezvousInner>);
 
 struct RendezvousInner {
     mutex: Mutex<Inner>,
+    unlocked: Arc<AtomicBool>,
     condvar: Condvar,
     max_val: u32,
 }
@@ -23,6 +25,7 @@ impl Rendezvous {
                 count: 0,
                 broken: false,
             }),
+            unlocked: Arc::new(AtomicBool::new(false)),
             condvar: Condvar::new(),
             max_val,
         }))
@@ -31,6 +34,11 @@ impl Rendezvous {
     /// Waits until `max_val` threads have called `wait()` or `unlock()` is called.
     /// Returns `true` if rendezvous succeeded, `false` if it was broken.
     pub fn wait(&self) -> bool {
+        // Special case: if already unlocked, return false immediately
+        if self.0.unlocked.load(std::sync::atomic::Ordering::SeqCst) {
+            return false;
+        }
+
         let mut inner = self.0.mutex.lock().unwrap();
 
         if inner.broken {
@@ -54,6 +62,10 @@ impl Rendezvous {
 
     /// Allows a third party to break the rendezvous and wake all waiting threads.
     pub fn unlock(&self) {
+        // Mark as unlocked
+        self.0.unlocked.store(true, std::sync::atomic::Ordering::SeqCst);
+
+        // Wake all waiting threads
         let mut inner = self.0.mutex.lock().unwrap();
         inner.broken = true;
         inner.count = 0;

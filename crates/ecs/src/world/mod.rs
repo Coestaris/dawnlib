@@ -131,7 +131,7 @@ impl WorldLoopProxy {
         let stop_signal_clone = stop_signal.clone();
         let handle = Some(
             Builder::new()
-                .name("worldloop".to_string())
+                .name("world".to_string())
                 .spawn(move || {
                     info!("World loop thread started");
 

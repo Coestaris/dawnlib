@@ -267,7 +267,7 @@ impl Renderer {
                 sun_lights: vec![],
             });
         let stop_signal = Arc::new(AtomicBool::new(false));
-        let stop_signal_clone = stop_signal.clone();
+        let stop_signal_clone = Arc::clone(&stop_signal);
 
         Ok((
             Renderer {
