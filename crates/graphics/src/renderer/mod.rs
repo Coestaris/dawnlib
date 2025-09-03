@@ -1,5 +1,5 @@
+mod app;
 pub(crate) mod backend;
-mod cycle;
 mod ecs;
 mod monitor;
 
@@ -9,11 +9,11 @@ use crate::passes::pipeline::RenderPipeline;
 use crate::renderable::{
     Renderable, RenderableAreaLight, RenderablePointLight, RenderableSpotLight, RenderableSunLight,
 };
+use crate::renderer::app::Application;
 use crate::renderer::backend::RendererBackendError;
-use crate::renderer::cycle::Cycle;
 use crate::renderer::ecs::attach_to_ecs;
 use crate::renderer::monitor::{DummyRendererMonitor, RendererMonitor, RendererMonitorTrait};
-pub use backend::{RendererBackend, RendererBackendConfig};
+pub use backend::{RendererBackend, RendererConfig};
 use crossbeam_channel::{unbounded, Receiver, Sender};
 use dawn_util::rendezvous::Rendezvous;
 use evenio::component::Component;
@@ -30,36 +30,51 @@ use winit::event::WindowEvent;
 use winit::event_loop::EventLoop;
 
 #[derive(Clone)]
-pub struct ViewConfig {
+pub struct WindowConfig {
     /// Allows to enable additional synchronization between threads.
     /// For example, to synchronize rendering and logic threads.
-    pub synchronization: Option<ViewSynchronization>,
+    pub synchronization: Option<RendererSynchronization>,
 
-    /// Title of the window
+    /// Initial title of the window.
     pub title: String,
 }
 
 #[derive(Clone)]
-pub struct ViewSynchronization {
+pub struct RendererSynchronization {
     pub before_frame: Rendezvous,
     pub after_frame: Rendezvous,
 }
 
+/// Input events from the Window/OS to the ECS.
+/// For example, keyboard and mouse events, window resize, etc.
+/// See `winit::event::WindowEvent` for more details.
+/// Forced to wrap in a struct to implement GlobalEvent.
 #[derive(GlobalEvent, Clone)]
 #[repr(transparent)]
 pub struct InputEvent(pub WindowEvent);
 
+/// Output events from the ECS to the Window/OS.
+/// For example, window resize, set cursor, set title, etc.
 #[derive(GlobalEvent, Clone)]
-pub enum ViewEvent {}
+pub enum OutputEvent {}
 
+/// Frame data that is streamed to the renderer thread.
+/// It contains all the renderables and lights to be rendered in the current frame.
+/// This structure is sent via a triple buffer, so it can be updated
+/// in the ECS thread without blocking the renderer thread.
 #[derive(Clone)]
 pub struct DataStreamFrame {
+    /// Incremented every time the frame is updated.
     pub epoch: usize,
+    /// All renderables to be rendered in the current frame.
     pub renderables: Vec<Renderable>,
-
+    /// All point lights to be rendered in the current frame.
     pub point_lights: Vec<RenderablePointLight>,
+    /// All spot lights to be rendered in the current frame.
     pub spot_lights: Vec<RenderableSpotLight>,
+    /// All area lights to be rendered in the current frame.
     pub area_lights: Vec<RenderableAreaLight>,
+    /// All sun lights to be rendered in the current frame.
     pub sun_lights: Vec<RenderableSunLight>,
 }
 
@@ -77,6 +92,11 @@ pub struct Renderer {
     run: Box<dyn FnOnce() + Send + 'static>,
 }
 
+/// Thread-shared proxy to communicate with the renderer thread.
+/// It contains channels and triple buffers to send and receive data.
+/// After attaching the renderer to the ECS, it will automatically
+/// collect the renderables and send them to the renderer thread.
+/// See `renderable` mod for more details.
 #[derive(Component)]
 pub struct RendererProxy<E: PassEventTrait> {
     stop_signal: Arc<AtomicBool>,
@@ -85,9 +105,9 @@ pub struct RendererProxy<E: PassEventTrait> {
     // without blocking the renderer thread.
     data_stream: Input<DataStreamFrame>,
     // Used for transferring input events from the renderer thread to the ECS.
-    inputs_receiver: Receiver<InputEvent>,
-    // Used for transferring view events from the ECS to the View.
-    view_sender: Sender<ViewEvent>,
+    input_receiver: Receiver<InputEvent>,
+    // Used for transferring events to the Window from the ECS to the renderer thread.
+    output_sender: Sender<OutputEvent>,
     // Used for transferring render pass events from the ECS to the renderer thread.
     renderer_sender: Sender<RenderPassEvent<E>>,
     monitor_receiver: Receiver<RendererMonitorEvent>,
@@ -136,33 +156,32 @@ pub trait RenderChainConstructor<C, E> =
         E: PassEventTrait;
 
 impl Renderer {
-    /// Creates a new renderer instance that will immediately try to spawn a View,
-    /// RendererBackend and all the necessary threads to run the rendering loop.
-    ///
-    /// `view_config` is the configuration for the View that will be created. The
-    /// content of this structure is OS-dependent, so you should wrap it in a
-    /// `cfg` attribute.
-    ///
-    /// `backend_config` is the configuration for the RendererBackend that will be created.
-    /// The content of this structure is renderer-backend-dependent, so you should
-    /// wrap it in a `cfg` attribute as well. The renderer backend is selected via
-    /// feature flags, so you can choose which backend to use.
-    ///
-    /// `constructor` is a function that will be called to create the render pipeline.
-    /// It is called once after the view and backend are created. So you can safely
-    /// allocate resources in it.
+    /// Creates a new renderer instance and its proxy.
+    /// The renderer instance should be run in a main thread using the `run` method.
+    /// 
+    /// Usually you want to attach the renderer proxy to the ECS using the `attach_to_ecs` method
+    /// to control it from the ECS.
+    /// 
+    /// If you want to enable synchronization between the renderer and logic threads,
+    /// you can provide a `RendererSynchronization` in the `WindowConfig`.
+    /// This will allow you to synchronize the threads using the provided `Rendezvous`.
+    /// 
+    /// Monitoring is disabled by default - if you want to enable it, use the `new_with_monitoring` method.
+    /// Monitoring is only beneficial if the renderer is attached to the ECS -
+    /// it will eventually send monitoring data to the ECS.
+    /// That may affect the performance of the renderer.
     pub fn new<C, E>(
-        view_config: ViewConfig,
-        backend_config: RendererBackendConfig,
+        window_config: WindowConfig,
+        backend_config: RendererConfig,
         constructor: impl RenderChainConstructor<C, E>,
     ) -> Result<(Renderer, RendererProxy<E>), RendererError>
     where
         E: PassEventTrait,
         C: RenderChain<E>,
     {
-        if let Some(sync) = view_config.synchronization.clone() {
+        if let Some(sync) = window_config.synchronization.clone() {
             Self::new_inner(
-                view_config,
+                window_config,
                 backend_config,
                 constructor,
                 RendezvousWrapper(sync.before_frame),
@@ -171,7 +190,7 @@ impl Renderer {
             )
         } else {
             Self::new_inner(
-                view_config,
+                window_config,
                 backend_config,
                 constructor,
                 DummyRendezvous {},
@@ -183,22 +202,22 @@ impl Renderer {
 
     /// Creates a new renderer instance with enabled monitoring.
     /// Monitoring is only beneficial if the renderer is attached to the ECS -
-    /// it will send monitoring data to the ECS every second.
+    /// it will eventually send monitoring data to the ECS.
     /// That may affect the performance of the renderer.
     ///
     /// See more information on the function `new`.
     pub fn new_with_monitoring<C, E>(
-        view_config: ViewConfig,
-        backend_config: RendererBackendConfig,
+        window_config: WindowConfig,
+        backend_config: RendererConfig,
         constructor: impl RenderChainConstructor<C, E>,
     ) -> Result<(Renderer, RendererProxy<E>), RendererError>
     where
         E: PassEventTrait,
         C: RenderChain<E>,
     {
-        if let Some(sync) = view_config.synchronization.clone() {
+        if let Some(sync) = window_config.synchronization.clone() {
             Self::new_inner(
-                view_config,
+                window_config,
                 backend_config,
                 constructor,
                 RendezvousWrapper(sync.before_frame),
@@ -207,7 +226,7 @@ impl Renderer {
             )
         } else {
             Self::new_inner(
-                view_config,
+                window_config,
                 backend_config,
                 constructor,
                 DummyRendezvous {},
@@ -218,8 +237,8 @@ impl Renderer {
     }
 
     fn new_inner<P, C, E>(
-        view_config: ViewConfig,
-        backend_config: RendererBackendConfig,
+        window_config: WindowConfig,
+        backend_config: RendererConfig,
         constructor: impl RenderChainConstructor<C, E>,
         before_frame: impl RendezvousTrait,
         after_frame: impl RendezvousTrait,
@@ -235,8 +254,8 @@ impl Renderer {
         monitor.set_sender(monitor_sender.clone());
 
         // Setup renderer
-        let (inputs_sender, inputs_receiver) = unbounded();
-        let (view_sender, view_receiver) = unbounded();
+        let (input_sender, input_receiver) = unbounded();
+        let (output_sender, output_receiver) = unbounded();
         let (renderer_sender, renderer_receiver) = unbounded();
         let (stream_input, mut stream_output) =
             triple_buffer::<DataStreamFrame>(&DataStreamFrame {
@@ -253,8 +272,8 @@ impl Renderer {
         Ok((
             Renderer {
                 run: Box::new(move || {
-                    let mut cycle = Cycle::new(
-                        view_config,
+                    let mut app = Application::new(
+                        window_config,
                         backend_config,
                         monitor,
                         constructor,
@@ -262,23 +281,23 @@ impl Renderer {
                         after_frame,
                         stop_signal.clone(),
                         renderer_receiver,
-                        view_receiver,
+                        output_receiver,
                         stream_output,
-                        inputs_sender,
+                        input_sender,
                     )
                     .unwrap();
 
                     info!("Starting renderer event loop");
                     let event_loop = EventLoop::new().unwrap();
-                    event_loop.run_app(&mut cycle).unwrap();
+                    event_loop.run_app(&mut app).unwrap();
                     info!("Renderer event loop has exited");
                 }),
             },
             RendererProxy::<E> {
                 stop_signal: stop_signal_clone,
                 data_stream: stream_input,
-                inputs_receiver,
-                view_sender,
+                input_receiver,
+                output_sender,
                 renderer_sender,
                 monitor_receiver,
             },
@@ -294,17 +313,18 @@ impl Renderer {
 }
 
 impl<E: PassEventTrait> RendererProxy<E> {
-    /// After attaching the renderer to the ECS, it will automatically collect the renderables
-    /// and send them to the renderer thread (see `renderable` mod for more details).
+    /// After attaching the renderer proxy to the ECS, it will automatically collect the 
+    /// information about renderables and lights from the ECS every 
+    /// frame and send it to the renderer thread.
     ///
     /// Input events from the ECS:
-    ///    - `ViewEvent` - to control the view (resize, set cursor, set title)
+    ///    - `OutputEvent` - to control the Window (resize, set cursor, set title)
     ///    - `RenderPassEvent<E>` - to send events to the render passes
     ///
     /// Output events to the ECS:
     ///   - `InputEvent` - when any input event is received from the OS
     ///   - `RendererMonitorEvent` - when monitoring is enabled, it will send monitoring data every second
-    ///   - `ExitEvent` - when the view is closed or the renderer fails, it will send an exit event to stop the ECS
+    ///   - `ExitEvent` - when the Window is closed or the renderer fails, it will send an exit event to stop the ECS
     ///
     /// This function moves the renderer into the ECS world.
     pub fn attach_to_ecs(self, world: &mut World) {

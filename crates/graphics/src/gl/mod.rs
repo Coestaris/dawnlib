@@ -13,7 +13,7 @@ use crate::gl::assets::{
 };
 use crate::gl::debug::{Debugger, MessageType};
 use crate::passes::events::PassEventTrait;
-use crate::renderer::backend::{RendererBackendConfig, RendererBackendError, RendererBackendTrait};
+use crate::renderer::backend::{RendererConfig, RendererBackendError, RendererBackendTrait};
 use dawn_assets::factory::FactoryBinding;
 use log::{error, info, warn};
 use std::fmt::{Display, Formatter};
@@ -86,7 +86,7 @@ unsafe fn stat_opengl_context() {
 // So OpenGL renderer handles events for these assets on each draw tick.
 impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     fn new(
-        cfg: RendererBackendConfig,
+        cfg: RendererConfig,
         view_handle: RawWindowHandle,
     ) -> Result<Self, RendererBackendError>
     where

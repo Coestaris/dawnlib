@@ -5,8 +5,10 @@ use crate::passes::result::RenderResult;
 use crate::passes::ChainExecuteCtx;
 use crate::renderer::backend::RendererBackendTrait;
 use crate::renderer::monitor::RendererMonitorTrait;
-use crate::renderer::{DataStreamFrame, InputEvent, PassEventTrait, RendezvousTrait, ViewConfig, ViewEvent};
-use crate::renderer::{RenderChainConstructor, RendererBackendConfig};
+use crate::renderer::{
+    DataStreamFrame, InputEvent, OutputEvent, PassEventTrait, RendezvousTrait, WindowConfig,
+};
+use crate::renderer::{RenderChainConstructor, RendererConfig};
 use crate::renderer::{RendererBackend, RendererError};
 use crossbeam_channel::{Receiver, Sender};
 use dawn_util::rendezvous::Rendezvous;
@@ -22,36 +24,13 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::raw_window_handle::HasWindowHandle;
 use winit::window::{Window, WindowAttributes, WindowId};
 
-#[derive(Clone, Debug)]
-pub enum ViewCursor {
-    Default,
-    Hidden,
-
-    Crosshair,
-    Hand,
-    Arrow,
-    Move,
-    Text,
-    Wait,
-    Help,
-    NotAllowed,
-}
-
-#[derive(Debug)]
-#[allow(dead_code)]
-pub(crate) enum TickResult {
-    Continue,
-    Closed,
-    Failed(ViewError),
-}
-
 #[derive(Debug, Error)]
-pub enum ViewError {
+pub enum ApplicationError {
     #[error("Event loop error: {0}")]
     EventLoopError(#[from] EventLoopError),
 }
 
-pub(crate) struct Cycle<P, C, E>
+pub(crate) struct Application<P, C, E>
 where
     E: PassEventTrait,
     P: RendererMonitorTrait,
@@ -61,10 +40,10 @@ where
     chain: Option<RenderPipeline<C, E>>,
     backend: Option<RendererBackend<E>>,
 
-    config: ViewConfig,
+    config: WindowConfig,
     frame_index: usize,
 
-    backend_config: RendererBackendConfig,
+    backend_config: RendererConfig,
     external_stop: Arc<AtomicBool>,
     constructor: Box<dyn RenderChainConstructor<C, E>>,
     before_frame: Box<dyn RendezvousTrait>,
@@ -73,12 +52,12 @@ where
 
     // In/Out queues
     renderer_in: Receiver<RenderPassEvent<E>>,
-    view_in: Receiver<ViewEvent>,
+    view_in: Receiver<OutputEvent>,
     data_stream: Output<DataStreamFrame>,
     input_out: Sender<InputEvent>,
 }
 
-impl<P, C, E> Cycle<P, C, E>
+impl<P, C, E> Application<P, C, E>
 where
     E: PassEventTrait,
     P: RendererMonitorTrait,
@@ -86,19 +65,19 @@ where
 {
     // God forgive me for this abomination.
     pub(crate) fn new(
-        config: ViewConfig,
-        backend_config: RendererBackendConfig,
+        config: WindowConfig,
+        backend_config: RendererConfig,
         monitor: P,
         constructor: impl RenderChainConstructor<C, E>,
         before_frame: impl RendezvousTrait,
         after_frame: impl RendezvousTrait,
         external_stop: Arc<AtomicBool>,
         renderer_in: Receiver<RenderPassEvent<E>>,
-        view_in: Receiver<ViewEvent>,
+        output_in: Receiver<OutputEvent>,
         data_stream: Output<DataStreamFrame>,
         input_out: Sender<InputEvent>,
-    ) -> Result<Self, ViewError> {
-        Ok(Cycle {
+    ) -> Result<Self, ApplicationError> {
+        Ok(Application {
             constructor: Box::new(constructor),
             before_frame: Box::new(before_frame),
             after_frame: Box::new(after_frame),
@@ -108,7 +87,7 @@ where
             chain: None,
             monitor,
             renderer_in,
-            view_in,
+            view_in: output_in,
             data_stream,
             backend_config,
             frame_index: 0,
@@ -118,7 +97,7 @@ where
     }
 }
 
-impl<P, C, E> ApplicationHandler for Cycle<P, C, E>
+impl<P, C, E> ApplicationHandler for Application<P, C, E>
 where
     E: PassEventTrait,
     P: RendererMonitorTrait,

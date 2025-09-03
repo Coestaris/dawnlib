@@ -6,7 +6,7 @@ where
     Self: Sized,
 {
     fn new(
-        config: RendererBackendConfig,
+        config: RendererConfig,
         handle: RawWindowHandle,
     ) -> Result<Self, RendererBackendError>;
 
@@ -17,7 +17,7 @@ where
 #[cfg(feature = "gl")]
 mod backend_impl {
     pub type RendererBackend<E> = crate::gl::GLRenderer<E>;
-    pub type RendererBackendConfig = crate::gl::GLRendererConfig;
+    pub type RendererConfig = crate::gl::GLRendererConfig;
     pub type RendererBackendError = crate::gl::GLRendererError;
 }
 

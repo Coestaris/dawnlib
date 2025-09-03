@@ -7,7 +7,7 @@ use crate::renderable::{
     Renderable, RenderableAreaLight, RenderablePointLight, RenderableSpotLight, RenderableSunLight,
 };
 use crate::renderer::monitor::RendererMonitorEvent;
-use crate::renderer::{InputEvent, RendererProxy, ViewEvent};
+use crate::renderer::{InputEvent, RendererProxy, OutputEvent};
 use dawn_ecs::events::{ExitEvent, InterSyncEvent, TickEvent};
 use evenio::component::Component;
 use evenio::entity::EntityId;
@@ -226,7 +226,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: RendererProxy<E>, world: &mut 
         mut sender: Sender<InputEvent>,
     ) {
         let renderer = renderer.cast::<E>();
-        for event in renderer.inputs_receiver.try_iter() {
+        for event in renderer.input_receiver.try_iter() {
             sender.send(event);
         }
     }
@@ -311,9 +311,9 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: RendererProxy<E>, world: &mut 
         renderer.data_stream.publish();
     }
 
-    fn view_handler<E: PassEventTrait>(r: Receiver<ViewEvent>, mut renderer: Single<&mut Boxed>) {
+    fn view_handler<E: PassEventTrait>(r: Receiver<OutputEvent>, mut renderer: Single<&mut Boxed>) {
         let renderer = renderer.cast_mut::<E>();
-        renderer.view_sender.send(r.event.clone()).unwrap();
+        renderer.output_sender.send(r.event.clone()).unwrap();
     }
 
     world.add_handler(invalidate_cache_handler::<E>);
