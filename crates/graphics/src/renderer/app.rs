@@ -224,21 +224,6 @@ where
 
         event_loop.set_control_flow(ControlFlow::Poll);
 
-        let raw_window = self
-            .window
-            .as_ref()
-            .unwrap()
-            .window_handle()
-            .unwrap()
-            .as_raw();
-        let raw_display = self
-            .window
-            .as_ref()
-            .unwrap()
-            .display_handle()
-            .unwrap()
-            .as_raw();
-
         self.backend =
             Some(RendererBackend::<E>::new(self.backend_config.clone(), context).unwrap());
 

@@ -1,5 +1,4 @@
 pub mod assets;
-pub mod bindings;
 pub mod context;
 mod debug;
 pub mod font;
@@ -13,22 +12,19 @@ use crate::gl::assets::{
     TextureAssetFactory,
 };
 use crate::gl::context::Context;
-use crate::gl::debug::{Debugger, MessageType};
+use crate::gl::debug::{setup_debug_callback, MessageType};
 use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendError, RendererBackendTrait, RendererConfig};
 use dawn_assets::factory::FactoryBinding;
 use glam::UVec2;
 use log::{error, info, warn};
-use std::fmt::{Display, Formatter};
 use thiserror::Error;
-use winit::raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 pub struct GLRenderer<E: PassEventTrait> {
     _marker: std::marker::PhantomData<E>,
 
     context: Context,
-
-    _debugger: Debugger,
+    gl: glow::Context,
 
     // Factories for texture and shader assets
     texture_factory: Option<TextureAssetFactory>,
@@ -55,25 +51,25 @@ pub enum GLRendererError {
     ContextCreateError(#[from] anyhow::Error),
 }
 
-unsafe fn stat_opengl_context() {
+unsafe fn stat_opengl_context(gl: &glow::Context) {
     info!("OpenGL information:");
-    probe::get_version().map_or_else(
+    probe::get_version(gl).map_or_else(
         || warn!("Failed to get OpenGL version"),
         |v| info!("OpenGL version: {}.{}", v.major, v.minor),
     );
-    probe::get_renderer().map_or_else(
+    probe::get_renderer(gl).map_or_else(
         || warn!("Failed to get OpenGL renderer"),
         |r| info!("  Renderer: {}", r),
     );
-    probe::get_vendor().map_or_else(
+    probe::get_vendor(gl).map_or_else(
         || warn!("Failed to get OpenGL vendor"),
         |v| info!("  Vendor: {}", v),
     );
-    probe::get_shading_language_version().map_or_else(
+    probe::get_shading_language_version(gl).map_or_else(
         || warn!("Failed to get OpenGL shading language version"),
         |v| info!("  GLSL version: {}", v),
     );
-    probe::get_depth_bits().map_or_else(
+    probe::get_depth_bits(gl).map_or_else(
         || warn!("Failed to get OpenGL depth bits"),
         |b| info!("  Depth bits: {}", b),
     );
@@ -88,85 +84,88 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     where
         Self: Sized,
     {
-        // Load OpenGL functions using the OS-specific loaders
-        bindings::load_with(|symbol| {
-            // Warn if the symbol is not found
-            match context.load_fn(symbol) {
-                Ok(addr) => addr,
-                Err(e) => {
-                    // That's not a catastrophic, but we should know about it
-                    warn!("Failed to load OpenGL symbol: {}: {}", symbol, e);
-                    std::ptr::null()
-                }
-            }
-        });
-
-        // Stat the OpenGL context
         unsafe {
-            stat_opengl_context();
+            let mut gl = glow::Context::from_loader_function_cstr(|s| {
+                // Warn if the symbol is not found
+                match context.load_fn(s.to_str().unwrap_or("")) {
+                    Ok(addr) => addr,
+                    Err(e) => {
+                        // That's not a catastrophic, but we should know about it
+                        warn!(
+                            "Failed to load OpenGL symbol: {}: {}",
+                            s.to_str().unwrap_or(""),
+                            e
+                        );
+                        std::ptr::null()
+                    }
+                }
+            });
+
+            // Stat the OpenGL context
+            stat_opengl_context(&gl);
+
+            // Setup factories for texture and shader assets
+            // These factories are used to load and manage texture and shader assets.
+            let texture_factory = if let Some(binding) = cfg.texture_factory_binding {
+                let mut factory = TextureAssetFactory::new();
+                factory.bind(binding);
+                Some(factory)
+            } else {
+                None
+            };
+            let shader_factory = if let Some(binding) = cfg.shader_factory_binding {
+                let mut factory = ShaderAssetFactory::new();
+                factory.bind(binding);
+                Some(factory)
+            } else {
+                None
+            };
+            let mesh_factory = if let Some(binding) = cfg.mesh_factory_binding {
+                let mut factory = MeshAssetFactory::new();
+                factory.bind(binding);
+                Some(factory)
+            } else {
+                None
+            };
+            let material_factory = if let Some(binding) = cfg.material_factory_binding {
+                let mut factory = MaterialAssetFactory::new();
+                factory.bind(binding);
+                Some(factory)
+            } else {
+                None
+            };
+            let font_factory = if let Some(binding) = cfg.font_factory_binding {
+                let mut factory = FontAssetFactory::new();
+                factory.bind(binding);
+                Some(factory)
+            } else {
+                None
+            };
+
+            // Setup the debug output for OpenGL.
+            setup_debug_callback(&mut gl, |source, rtype, severity, message| match rtype {
+                MessageType::Error => {
+                    error!("OpenGL: {}: {}: {}", source, severity, message);
+                }
+                MessageType::DeprecatedBehavior | MessageType::UndefinedBehavior => {
+                    warn!("OpenGL: {}: {}: {}", source, severity, message);
+                }
+                _ => {
+                    info!("OpenGL: {}: {}: {}", source, severity, message);
+                }
+            });
+
+            Ok(GLRenderer::<E> {
+                _marker: Default::default(),
+                context,
+                texture_factory,
+                shader_factory,
+                mesh_factory,
+                material_factory,
+                font_factory,
+                gl,
+            })
         }
-
-        // Setup factories for texture and shader assets
-        // These factories are used to load and manage texture and shader assets.
-        let texture_factory = if let Some(binding) = cfg.texture_factory_binding {
-            let mut factory = TextureAssetFactory::new();
-            factory.bind(binding);
-            Some(factory)
-        } else {
-            None
-        };
-        let shader_factory = if let Some(binding) = cfg.shader_factory_binding {
-            let mut factory = ShaderAssetFactory::new();
-            factory.bind(binding);
-            Some(factory)
-        } else {
-            None
-        };
-        let mesh_factory = if let Some(binding) = cfg.mesh_factory_binding {
-            let mut factory = MeshAssetFactory::new();
-            factory.bind(binding);
-            Some(factory)
-        } else {
-            None
-        };
-        let material_factory = if let Some(binding) = cfg.material_factory_binding {
-            let mut factory = MaterialAssetFactory::new();
-            factory.bind(binding);
-            Some(factory)
-        } else {
-            None
-        };
-        let font_factory = if let Some(binding) = cfg.font_factory_binding {
-            let mut factory = FontAssetFactory::new();
-            factory.bind(binding);
-            Some(factory)
-        } else {
-            None
-        };
-
-        // Setup the debug output for OpenGL.
-        let debugger = Debugger::new(|source, rtype, severity, message| match rtype {
-            MessageType::Error => {
-                error!("OpenGL: {}: {}: {}", source, severity, message);
-            }
-            MessageType::DeprecatedBehavior | MessageType::UndefinedBehavior => {
-                warn!("OpenGL: {}: {}: {}", source, severity, message);
-            }
-            _ => {
-                info!("OpenGL: {}: {}: {}", source, severity, message);
-            }
-        });
-
-        Ok(GLRenderer::<E> {
-            _marker: Default::default(),
-            _debugger: debugger,
-            context,
-            texture_factory,
-            shader_factory,
-            mesh_factory,
-            material_factory,
-            font_factory,
-        })
     }
 
     #[inline(always)]

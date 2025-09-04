@@ -1,7 +1,4 @@
-use crate::gl::bindings;
-use crate::gl::bindings::types::{GLboolean, GLchar, GLenum, GLsizei, GLuint};
-use log::info;
-use std::ffi::c_void;
+use glow::HasContext;
 
 #[derive(Debug, Clone)]
 pub(crate) enum MessageSource {
@@ -33,13 +30,13 @@ pub(crate) enum MessageSeverity {
 }
 
 impl MessageSource {
-    pub fn new(source: GLenum) -> Self {
+    pub fn new(source: u32) -> Self {
         match source {
-            bindings::DEBUG_SOURCE_API => MessageSource::Api,
-            bindings::DEBUG_SOURCE_WINDOW_SYSTEM => MessageSource::WindowSystem,
-            bindings::DEBUG_SOURCE_SHADER_COMPILER => MessageSource::ShaderCompiler,
-            bindings::DEBUG_SOURCE_THIRD_PARTY => MessageSource::ThirdParty,
-            bindings::DEBUG_SOURCE_APPLICATION => MessageSource::Application,
+            glow::DEBUG_SOURCE_API => MessageSource::Api,
+            glow::DEBUG_SOURCE_WINDOW_SYSTEM => MessageSource::WindowSystem,
+            glow::DEBUG_SOURCE_SHADER_COMPILER => MessageSource::ShaderCompiler,
+            glow::DEBUG_SOURCE_THIRD_PARTY => MessageSource::ThirdParty,
+            glow::DEBUG_SOURCE_APPLICATION => MessageSource::Application,
             _ => MessageSource::Other,
         }
     }
@@ -60,13 +57,13 @@ impl std::fmt::Display for MessageSource {
 }
 
 impl MessageType {
-    pub fn new(gltype: GLenum) -> Self {
+    pub fn new(gltype: u32) -> Self {
         match gltype {
-            bindings::DEBUG_TYPE_ERROR => MessageType::Error,
-            bindings::DEBUG_TYPE_DEPRECATED_BEHAVIOR => MessageType::DeprecatedBehavior,
-            bindings::DEBUG_TYPE_UNDEFINED_BEHAVIOR => MessageType::UndefinedBehavior,
-            bindings::DEBUG_TYPE_PORTABILITY => MessageType::Portability,
-            bindings::DEBUG_TYPE_PERFORMANCE => MessageType::Performance,
+            glow::DEBUG_TYPE_ERROR => MessageType::Error,
+            glow::DEBUG_TYPE_DEPRECATED_BEHAVIOR => MessageType::DeprecatedBehavior,
+            glow::DEBUG_TYPE_UNDEFINED_BEHAVIOR => MessageType::UndefinedBehavior,
+            glow::DEBUG_TYPE_PORTABILITY => MessageType::Portability,
+            glow::DEBUG_TYPE_PERFORMANCE => MessageType::Performance,
             _ => MessageType::Other,
         }
     }
@@ -87,12 +84,12 @@ impl std::fmt::Display for MessageType {
 }
 
 impl MessageSeverity {
-    pub fn new(severity: GLenum) -> Self {
+    pub fn new(severity: u32) -> Self {
         match severity {
-            bindings::DEBUG_SEVERITY_HIGH => MessageSeverity::High,
-            bindings::DEBUG_SEVERITY_MEDIUM => MessageSeverity::Medium,
-            bindings::DEBUG_SEVERITY_LOW => MessageSeverity::Low,
-            bindings::DEBUG_SEVERITY_NOTIFICATION => MessageSeverity::Notification,
+            glow::DEBUG_SEVERITY_HIGH => MessageSeverity::High,
+            glow::DEBUG_SEVERITY_MEDIUM => MessageSeverity::Medium,
+            glow::DEBUG_SEVERITY_LOW => MessageSeverity::Low,
+            glow::DEBUG_SEVERITY_NOTIFICATION => MessageSeverity::Notification,
             _ => MessageSeverity::Other,
         }
     }
@@ -111,87 +108,17 @@ impl std::fmt::Display for MessageSeverity {
     }
 }
 
-type Callback = dyn Fn(MessageSource, MessageType, MessageSeverity, &str) + 'static;
-
-pub(crate) struct Debugger {
-    holder: *mut Box<Callback>,
-}
-
-impl Drop for Debugger {
-    fn drop(&mut self) {
-        info!("Disabling OpenGL debug output");
-
-        if !self.holder.is_null() {
-            unsafe {
-                // Disable OpenGL debug output
-                bindings::DebugMessageCallback(None, std::ptr::null_mut());
-                bindings::Disable(bindings::DEBUG_OUTPUT);
-
-                // Restore the outer Box from the raw pointer
-                // Inner and the outer now will be dropped automatically
-                let _outer: Box<Box<Callback>> = Box::from_raw(self.holder);
-                self.holder = std::ptr::null_mut(); // Prevent double free
-            }
-        }
-    }
-}
-
-impl Debugger {
-    pub(crate) fn new<F>(callback: F) -> Self
-    where
-        F: Fn(MessageSource, MessageType, MessageSeverity, &str) + Send + Sync + 'static,
-    {
-        info!("Enabling OpenGL debug output");
-
-        // Internal box with trait object (fat pointer)
-        let inner: Box<Callback> = Box::new(callback);
-        // Outer box to hold the inner Box (thin pointer)
-        // Convert the outer Box to a raw pointer. At this point
-        // we must manually manage the memory.
-        // This is safe because we will ensure to drop it in the destructor.
-        let holder = Box::into_raw(Box::new(inner));
-
-        extern "system" fn dbg_proc(
-            source: GLenum,
-            gltype: GLenum,
-            _id: GLuint,
-            severity: GLenum,
-            length: GLsizei,
-            message: *const GLchar,
-            user_param: *mut c_void,
-        ) {
+pub unsafe fn setup_debug_callback<F>(gl: &mut glow::Context, f: F)
+where
+    F: Fn(MessageSource, MessageType, MessageSeverity, &str) + 'static + Send + Sync,
+{
+    gl.debug_message_callback(
+        move |source: u32, msg_type: u32, id: u32, severity: u32, msg| {
             let source = MessageSource::new(source);
-            let message_type = MessageType::new(gltype);
+            let message_type = MessageType::new(msg_type);
             let severity = MessageSeverity::new(severity);
 
-            let bytes =
-                unsafe { std::slice::from_raw_parts(message as *const u8, length as usize) };
-            let msg = std::borrow::Cow::from(String::from_utf8_lossy(bytes)); // Cow<'_, str>
-
-            // Restore the outer Box from the raw pointer
-            let outer: &Box<Callback> = unsafe { &*(user_param as *mut Box<Callback>) };
-            // Convert the outer Box to a reference to the inner Box
-            let f = &**outer;
-            // Call stored callback function
-            f(source, message_type, severity, &*msg);
-        }
-
-        // Enable OpenGL debug output
-        unsafe {
-            bindings::Enable(bindings::DEBUG_OUTPUT);
-            bindings::Enable(bindings::DEBUG_OUTPUT_SYNCHRONOUS);
-            // Pass boxed function as user ctx
-            bindings::DebugMessageCallback(Some(dbg_proc), holder.cast());
-            bindings::DebugMessageControl(
-                bindings::DONT_CARE, // All sources
-                bindings::DONT_CARE, // All types
-                bindings::DONT_CARE, // All severities
-                0,
-                std::ptr::null(),
-                GLboolean::from(true),
-            );
-        }
-
-        Debugger { holder }
-    }
+            f(source, message_type, severity, msg);
+        },
+    );
 }
