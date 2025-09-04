@@ -267,51 +267,48 @@ where
                 self.after_frame.unlock();
             }
             WindowEvent::RedrawRequested => {
-                // RedrawRequested is sent when the window is first created
-                // We don't want to render a frame at this point, because
-                // we want to be synchronized with the Main thread.
-                // So we just ignore this event.
-
                 // Notify that you're about to draw.
                 let window = self.window.as_ref().unwrap();
                 window.pre_present_notify();
+
+                // Render the frame
+                self.monitor.render_start();
+                if let Err(e) = self.backend.as_mut().unwrap().before_frame() {
+                    todo!()
+                }
+
+                let frame = self.data_stream.read();
+                if frame.epoch != self.frame_index {
+                    warn!(
+                        "Renderer is out of sync! Expected epoch {}, got {}",
+                        self.frame_index, frame.epoch
+                    );
+                    self.frame_index = frame.epoch;
+                    self.frame_index += 1;
+                } else {
+                    self.frame_index += 1;
+                }
+
+                let mut ctx = ChainExecuteCtx::new(frame, self.backend.as_mut().unwrap());
+
+                let pass_result = self.chain.as_mut().unwrap().execute(&mut ctx);
+                if let RenderResult::Failed = pass_result {
+                    todo!()
+                }
+
+                // Do not include after frame in the monitoring, because it usually synchronizes
+                // the rendered frame with the OS by swapping buffer, that usually is synchronized
+                // with the refresh rate of the display. So this will not be informative.
+                self.monitor.render_stop(pass_result, &ctx.durations);
             }
             _ => {}
         }
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.window.as_ref().unwrap().request_redraw();
+
         self.monitor.view_stop();
-
-        // Render the frame
-        self.monitor.render_start();
-        if let Err(e) = self.backend.as_mut().unwrap().before_frame() {
-            todo!()
-        }
-
-        let frame = self.data_stream.read();
-        if frame.epoch != self.frame_index {
-            warn!(
-                "Renderer is out of sync! Expected epoch {}, got {}",
-                self.frame_index, frame.epoch
-            );
-            self.frame_index = frame.epoch;
-            self.frame_index += 1;
-        } else {
-            self.frame_index += 1;
-        }
-
-        let mut ctx = ChainExecuteCtx::new(frame, self.backend.as_mut().unwrap());
-
-        let pass_result = self.chain.as_mut().unwrap().execute(&mut ctx);
-        if let RenderResult::Failed = pass_result {
-            todo!()
-        }
-
-        // Do not include after frame in the monitoring, because it usually synchronizes
-        // the rendered frame with the OS by swapping buffer, that usually is synchronized
-        // with the refresh rate of the display. So this will not be informative.
-        self.monitor.render_stop(pass_result, &ctx.durations);
 
         if let Err(e) = self.backend.as_mut().unwrap().after_frame() {
             todo!()
