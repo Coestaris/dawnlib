@@ -260,6 +260,15 @@ where
         let _ = self.input_out.send(InputEvent(event.clone()));
 
         match event {
+            WindowEvent::Resized(size) => {
+                let backend = self.backend.as_mut().unwrap();
+                backend
+                    .resize(glam::UVec2::new(
+                        size.width.max(1) as u32,
+                        size.height.max(1) as u32,
+                    ))
+                    .unwrap();
+            }
             WindowEvent::CloseRequested => {
                 info!("Window close requested");
 

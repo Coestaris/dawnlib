@@ -17,6 +17,7 @@ use crate::gl::debug::{Debugger, MessageType};
 use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendError, RendererBackendTrait, RendererConfig};
 use dawn_assets::factory::FactoryBinding;
+use glam::UVec2;
 use log::{error, info, warn};
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
@@ -197,5 +198,9 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
         self.context.swap_buffers();
 
         Ok(())
+    }
+
+    fn resize(&self, size: UVec2) -> Result<(), RendererBackendError> {
+        Ok(self.context.resize(size))
     }
 }

@@ -1,3 +1,4 @@
+use glam::UVec2;
 use crate::passes::events::PassEventTrait;
 use winit::raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
@@ -12,6 +13,7 @@ where
 
     fn before_frame(&mut self) -> Result<(), RendererBackendError>;
     fn after_frame(&mut self) -> Result<(), RendererBackendError>;
+    fn resize(&self, size: UVec2) -> Result<(), RendererBackendError>;
 }
 
 mod backend_impl {
