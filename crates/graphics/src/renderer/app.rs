@@ -1,3 +1,4 @@
+use crate::gl::context::Context;
 use crate::passes::chain::RenderChain;
 use crate::passes::events::RenderPassEvent;
 use crate::passes::pipeline::RenderPipeline;
@@ -22,7 +23,6 @@ use winit::dpi::{LogicalSize, Size};
 use winit::error::EventLoopError;
 use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
-use winit::platform::windows::{WindowAttributesExtWindows, WindowExtWindows};
 use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::{Fullscreen, Window, WindowAttributes, WindowId};
 
@@ -164,6 +164,7 @@ where
                 }
                 OutputEvent::ChangeIcon(icon) => {
                     self.window.as_ref().unwrap().set_window_icon(icon.clone());
+                    #[cfg(target_os = "windows")]
                     self.window.as_ref().unwrap().set_taskbar_icon(icon);
                 }
                 OutputEvent::ChangeCursor(cursor) => {
@@ -189,7 +190,6 @@ where
             .with_resizable(self.config.resizable)
             .with_visible(true)
             .with_window_icon(self.config.icon.clone())
-            .with_taskbar_icon(self.config.icon.clone())
             .with_decorations(self.config.decorations);
 
         if self.config.fullscreen {
@@ -200,14 +200,21 @@ where
             window_attributes = window_attributes.with_cursor(cursor.clone());
         }
 
-        self.window = match event_loop.create_window(window_attributes) {
-            Ok(window) => Some(window),
-            Err(err) => {
-                eprintln!("error creating window: {err}");
-                event_loop.exit();
-                panic!("Failed to create window");
-            }
-        };
+        #[cfg(target_os = "windows")]
+        {
+            window_attributes = window_attributes.with_taskbar_icon(self.config.icon.clone());
+        }
+
+        let (window, context) =
+            match Context::create_contextual_window(window_attributes, event_loop) {
+                Ok(pair) => pair,
+                Err(err) => {
+                    eprintln!("error creating window: {err}");
+                    event_loop.exit();
+                    panic!("Failed to create window");
+                }
+            };
+        self.window = Some(window);
 
         if let Some(_) = &self.config.cursor {
             self.window.as_ref().unwrap().set_cursor_visible(true);
@@ -232,10 +239,8 @@ where
             .unwrap()
             .as_raw();
 
-        self.backend = Some(
-            RendererBackend::<E>::new(self.backend_config.clone(), raw_window, raw_display)
-                .unwrap(),
-        );
+        self.backend =
+            Some(RendererBackend::<E>::new(self.backend_config.clone(), context).unwrap());
 
         let constructor = self.constructor.as_mut();
         self.chain = Some((constructor)(&mut self.backend.as_mut().unwrap()).unwrap());
@@ -297,6 +302,7 @@ where
                 self.frame_index, frame.epoch
             );
             self.frame_index = frame.epoch;
+            self.frame_index += 1;
         } else {
             self.frame_index += 1;
         }

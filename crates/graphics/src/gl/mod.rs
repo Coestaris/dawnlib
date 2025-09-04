@@ -1,6 +1,6 @@
 pub mod assets;
 pub mod bindings;
-mod context;
+pub mod context;
 mod debug;
 pub mod font;
 pub mod material;
@@ -83,17 +83,10 @@ unsafe fn stat_opengl_context() {
 // loaded asynchronously.
 // So OpenGL renderer handles events for these assets on each draw tick.
 impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
-    fn new(
-        cfg: RendererConfig,
-        raw_window: RawWindowHandle,
-        raw_display: RawDisplayHandle,
-    ) -> Result<Self, RendererBackendError>
+    fn new(cfg: RendererConfig, context: Context) -> Result<Self, RendererBackendError>
     where
         Self: Sized,
     {
-        // Create the OpenGL context
-        let mut context = Context::new(raw_window, raw_display)?;
-
         // Load OpenGL functions using the OS-specific loaders
         bindings::load_with(|symbol| {
             // Warn if the symbol is not found

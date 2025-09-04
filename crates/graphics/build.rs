@@ -5,13 +5,8 @@ use std::fs::File;
 use std::path::Path;
 
 fn main() {
-    #[cfg(target_os = "linux")]
-    println!("cargo:rustc-link-lib=X11");
-
-    #[cfg(all(target_os = "linux", feature = "gl"))]
     println!("cargo:rustc-link-lib=GL");
 
-    #[cfg(feature = "gl")]
     {
         let dest = env::var("OUT_DIR").unwrap();
         let mut file = File::create(&Path::new(&dest).join("gl_bindings.rs")).unwrap();

@@ -7,15 +7,13 @@ where
 {
     fn new(
         config: RendererConfig,
-        raw_window: RawWindowHandle,
-        raw_display: RawDisplayHandle,
+        context: Context,
     ) -> Result<Self, RendererBackendError>;
 
     fn before_frame(&mut self) -> Result<(), RendererBackendError>;
     fn after_frame(&mut self) -> Result<(), RendererBackendError>;
 }
 
-#[cfg(feature = "gl")]
 mod backend_impl {
     pub type RendererBackend<E> = crate::gl::GLRenderer<E>;
     pub type RendererConfig = crate::gl::GLRendererConfig;
@@ -23,3 +21,4 @@ mod backend_impl {
 }
 
 pub use backend_impl::*;
+use crate::gl::context::Context;
