@@ -18,11 +18,13 @@ use std::sync::Arc;
 use thiserror::Error;
 use triple_buffer::Output;
 use winit::application::ApplicationHandler;
+use winit::dpi::{LogicalSize, Size};
 use winit::error::EventLoopError;
 use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
+use winit::platform::windows::{WindowAttributesExtWindows, WindowExtWindows};
 use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
-use winit::window::{Window, WindowAttributes, WindowId};
+use winit::window::{Fullscreen, Window, WindowAttributes, WindowId};
 
 #[derive(Debug, Error)]
 pub enum ApplicationError {
@@ -131,16 +133,72 @@ where
         // Process View. Usually this will produce input events
         self.monitor.view_start();
         for event in self.view_in.try_iter() {
-            match event {}
+            match event {
+                OutputEvent::ChangeTitle(title) => {
+                    self.window.as_ref().unwrap().set_title(&title);
+                }
+                OutputEvent::ChangeWindowSize(size) => {
+                    self.window
+                        .as_ref()
+                        .unwrap()
+                        .set_min_inner_size(Some(Size::Logical(LogicalSize::new(
+                            size.x as f64,
+                            size.y as f64,
+                        ))));
+                }
+                OutputEvent::ChangeResizable(resizable) => {
+                    self.window.as_ref().unwrap().set_resizable(resizable);
+                }
+                OutputEvent::ChangeDecorations(decorations) => {
+                    self.window.as_ref().unwrap().set_decorations(decorations);
+                }
+                OutputEvent::ChangeFullscreen(fullscreen) => {
+                    if fullscreen {
+                        self.window
+                            .as_ref()
+                            .unwrap()
+                            .set_fullscreen(Some(Fullscreen::Borderless(None)));
+                    } else {
+                        self.window.as_ref().unwrap().set_fullscreen(None);
+                    }
+                }
+                OutputEvent::ChangeIcon(icon) => {
+                    self.window.as_ref().unwrap().set_window_icon(icon.clone());
+                    self.window.as_ref().unwrap().set_taskbar_icon(icon);
+                }
+                OutputEvent::ChangeCursor(cursor) => {
+                    if let Some(cursor) = cursor {
+                        self.window.as_ref().unwrap().set_cursor(cursor.clone());
+                        self.window.as_ref().unwrap().set_cursor_visible(true);
+                    } else {
+                        self.window.as_ref().unwrap().set_cursor_visible(false);
+                    }
+                }
+            }
         }
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         #[cfg(not(web_platform))]
-        let window_attributes = WindowAttributes::default();
-        #[cfg(web_platform)]
-        let window_attributes = WindowAttributes::default()
-            .with_platform_attributes(Box::new(WindowAttributesWeb::default().with_append(true)));
+        let mut window_attributes = WindowAttributes::default()
+            .with_title(self.config.title.clone())
+            .with_inner_size(Size::Logical(LogicalSize::new(
+                self.config.dimensions.x as f64,
+                self.config.dimensions.y as f64,
+            )))
+            .with_resizable(self.config.resizable)
+            .with_visible(true)
+            .with_window_icon(self.config.icon.clone())
+            .with_taskbar_icon(self.config.icon.clone())
+            .with_decorations(self.config.decorations);
+
+        if self.config.fullscreen {
+            window_attributes =
+                window_attributes.with_fullscreen(Some(Fullscreen::Borderless(None)));
+        }
+        if let Some(cursor) = &self.config.cursor {
+            window_attributes = window_attributes.with_cursor(cursor.clone());
+        }
 
         self.window = match event_loop.create_window(window_attributes) {
             Ok(window) => Some(window),
@@ -150,6 +208,12 @@ where
                 panic!("Failed to create window");
             }
         };
+
+        if let Some(_) = &self.config.cursor {
+            self.window.as_ref().unwrap().set_cursor_visible(true);
+        } else {
+            self.window.as_ref().unwrap().set_cursor_visible(false);
+        }
 
         event_loop.set_control_flow(ControlFlow::Poll);
 

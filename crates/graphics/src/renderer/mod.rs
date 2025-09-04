@@ -25,9 +25,11 @@ use std::panic::UnwindSafe;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread::JoinHandle;
+use glam::UVec2;
 use triple_buffer::{triple_buffer, Input};
 use winit::event::WindowEvent;
 use winit::event_loop::EventLoop;
+use winit::window::{Cursor, Fullscreen, Icon};
 
 #[derive(Clone)]
 pub struct WindowConfig {
@@ -37,6 +39,18 @@ pub struct WindowConfig {
 
     /// Initial title of the window.
     pub title: String,
+    /// Initial dimensions of the window.
+    pub dimensions: UVec2,
+    /// Whether the window is resizable by the user.
+    pub resizable: bool,
+    /// Whether the window has decorations (title bar, borders, etc.).
+    pub decorations: bool,
+    /// Whether the window should start in fullscreen mode.
+    pub fullscreen: bool,
+    /// Initial position of the window.
+    pub icon: Option<Icon>,
+    /// Initial cursor of the window. None means hidden cursor.
+    pub cursor: Option<Cursor>
 }
 
 #[derive(Clone)]
@@ -56,7 +70,15 @@ pub struct InputEvent(pub WindowEvent);
 /// Output events from the ECS to the Window/OS.
 /// For example, window resize, set cursor, set title, etc.
 #[derive(GlobalEvent, Clone)]
-pub enum OutputEvent {}
+pub enum OutputEvent {
+    ChangeTitle(String),
+    ChangeWindowSize(UVec2),
+    ChangeResizable(bool),
+    ChangeDecorations(bool),
+    ChangeFullscreen(bool),
+    ChangeIcon(Option<Icon>),
+    ChangeCursor(Option<Cursor>),
+}
 
 /// Frame data that is streamed to the renderer thread.
 /// It contains all the renderables and lights to be rendered in the current frame.
