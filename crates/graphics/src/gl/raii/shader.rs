@@ -1,20 +1,19 @@
-use crate::gl::bindings;
-use crate::gl::bindings::types::GLuint;
 use dawn_assets::ir::shader::IRShaderSourceKind;
+use glow::HasContext;
 use log::{debug, error};
 use thiserror::Error;
 
-// RAII wrapper for OpenGL shader
-pub struct Shader {
-    id: GLuint,
+pub struct Shader<'g> {
+    gl: &'g glow::Context,
+    inner: glow::Shader,
 }
 
 #[derive(Debug, Error)]
 pub enum ShaderError {
     #[error("Failed to create shader")]
-    CreationError,
+    CreationError(String),
     #[error("Failed to create shader program")]
-    ProgramCreationError,
+    ProgramCreationError(String),
     #[error("Shader compilation error: {message}")]
     CompilationError { message: String },
     #[error("Failed to link shader program: {message}")]
@@ -27,54 +26,45 @@ pub enum ShaderError {
     UnknownUniformLocation(String),
 }
 
-impl Shader {
-    pub(crate) fn new(source_type: IRShaderSourceKind) -> Result<Shader, ShaderError> {
-        let id = unsafe {
-            bindings::CreateShader(match source_type {
-                IRShaderSourceKind::Vertex => bindings::VERTEX_SHADER,
-                IRShaderSourceKind::Fragment => bindings::FRAGMENT_SHADER,
-                IRShaderSourceKind::Geometry => bindings::GEOMETRY_SHADER,
-                IRShaderSourceKind::Compute => bindings::COMPUTE_SHADER,
-                IRShaderSourceKind::TessellationControl => bindings::TESS_CONTROL_SHADER,
-            })
-        };
-        if id == 0 {
-            return Err(ShaderError::CreationError);
-        }
+impl<'g> Shader<'g> {
+    pub(crate) fn new(
+        gl: &glow::Context,
+        source_type: IRShaderSourceKind,
+    ) -> Result<Shader, ShaderError> {
+        unsafe {
+            let id = gl
+                .create_shader(match source_type {
+                    IRShaderSourceKind::Vertex => glow::VERTEX_SHADER,
+                    IRShaderSourceKind::Fragment => glow::FRAGMENT_SHADER,
+                    IRShaderSourceKind::Geometry => glow::GEOMETRY_SHADER,
+                    IRShaderSourceKind::Compute => glow::COMPUTE_SHADER,
+                    IRShaderSourceKind::TessellationControl => glow::TESS_CONTROL_SHADER,
+                })
+                .map_err(ShaderError::CreationError)?;
 
-        debug!("Allocated shader ID: {}", id);
-        Ok(Shader { id })
+            debug!("Allocated shader ID: {:?}", id);
+            Ok(Shader { gl, inner: id })
+        }
     }
 
-    pub fn id(&self) -> GLuint {
-        self.id
+    pub fn as_inner(&self) -> glow::Shader {
+        self.inner
     }
 
     pub fn set_source(&self, source: String) -> Result<(), ShaderError> {
-        let c_source = std::ffi::CString::new(source)?;
         unsafe {
-            bindings::ShaderSource(self.id, 1, &c_source.as_ptr(), std::ptr::null());
+            self.gl.shader_source(self.inner, &source);
         }
         Ok(())
     }
 
     pub fn compile(&self) -> Result<(), ShaderError> {
         unsafe {
-            bindings::CompileShader(self.id);
-            let mut status = 0;
-            bindings::GetShaderiv(self.id, bindings::COMPILE_STATUS, &mut status);
-            if status == 0 {
-                let mut log_length = 0;
-                bindings::GetShaderiv(self.id, bindings::INFO_LOG_LENGTH, &mut log_length);
-                let mut log = vec![0; log_length as usize];
-                bindings::GetShaderInfoLog(
-                    self.id,
-                    log_length,
-                    std::ptr::null_mut(),
-                    log.as_mut_ptr() as *mut i8,
-                );
+            self.gl.compile_shader(self.inner);
+
+            if !self.gl.get_shader_compile_status(self.inner) {
                 return Err(ShaderError::CompilationError {
-                    message: String::from_utf8(log).unwrap(),
+                    message: self.gl.get_shader_info_log(self.inner),
                 });
             }
         }
@@ -82,11 +72,11 @@ impl Shader {
     }
 }
 
-impl Drop for Shader {
+impl<'g> Drop for Shader<'g> {
     fn drop(&mut self) {
-        debug!("Dropping shader ID: {}", self.id);
+        debug!("Dropping shader ID: {:?}", self.inner);
         unsafe {
-            bindings::DeleteShader(self.id);
+            self.gl.delete_shader(self.inner);
         }
     }
 }

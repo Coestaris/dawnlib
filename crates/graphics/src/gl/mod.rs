@@ -24,7 +24,7 @@ pub struct GLRenderer<E: PassEventTrait> {
     _marker: std::marker::PhantomData<E>,
 
     context: Context,
-    gl: glow::Context,
+    pub gl: glow::Context,
 
     // Factories for texture and shader assets
     texture_factory: Option<TextureAssetFactory>,
@@ -73,6 +73,15 @@ unsafe fn stat_opengl_context(gl: &glow::Context) {
         || warn!("Failed to get OpenGL depth bits"),
         |b| info!("  Depth bits: {}", b),
     );
+}
+
+impl<E: PassEventTrait> GLRenderer<E> {
+    fn static_gl(&self) -> &'static glow::Context {
+        // SAFETY: This is safe because the GL context is created once and lives
+        // as long as the renderer. The reference is only used for read-only
+        // operations (like querying capabilities) and not for modifying state.
+        unsafe { std::mem::transmute::<&glow::Context, &'static glow::Context>(&self.gl) }
+    }
 }
 
 // Texture and shader assets cannot be handled from the ECS (like other assets),
@@ -171,20 +180,21 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     #[inline(always)]
     fn before_frame(&mut self) -> Result<(), RendererBackendError> {
         // Process events asset factories
+        let gl = self.static_gl();
         if let Some(factory) = &mut self.texture_factory {
-            factory.process_events::<E>();
+            factory.process_events::<E>(gl);
         }
         if let Some(factory) = &mut self.shader_factory {
-            factory.process_events::<E>();
+            factory.process_events::<E>(gl);
         }
         if let Some(factory) = &mut self.mesh_factory {
-            factory.process_events::<E>();
+            factory.process_events::<E>(gl);
         }
         if let Some(factory) = &mut self.material_factory {
-            factory.process_events::<E>();
+            factory.process_events::<E>(gl);
         }
         if let Some(factory) = &mut self.font_factory {
-            factory.process_events::<E>();
+            factory.process_events::<E>(gl);
         }
 
         // User will handle clearing the screen in the render passes.

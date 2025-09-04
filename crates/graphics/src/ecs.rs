@@ -1,9 +1,9 @@
+use crate::gl::material::Material;
+use crate::gl::mesh::Mesh;
+use dawn_assets::TypedAsset;
 use evenio::component::Component;
 use evenio::event::GlobalEvent;
 use glam::{Quat, Vec3};
-use dawn_assets::TypedAsset;
-use crate::gl::material::Material;
-use crate::gl::mesh::Mesh;
 
 /// ECS component for specifying the rotation of a renderable object.
 /// If entity has no `Rotation` component, it will use the default rotation (0, 0, 0).
@@ -25,8 +25,7 @@ pub struct ObjectScale(pub Vec3);
 /// Also used as a marker to indicate that the entity is renderable.
 /// If entity has no `RenderableMesh` component, it will not be rendered.
 #[derive(Component)]
-pub struct ObjectMesh(pub TypedAsset<Mesh>);
-
+pub struct ObjectMesh(pub TypedAsset<Mesh<'static>>);
 
 /// ECS component for point light
 /// Can be rendered only if `ObjectPosition` is also present

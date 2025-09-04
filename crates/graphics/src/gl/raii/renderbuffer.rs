@@ -1,9 +1,9 @@
-use crate::gl::bindings;
-use crate::gl::bindings::types::GLuint;
+use glow::HasContext;
 use log::debug;
 
-pub struct Renderbuffer {
-    pub id: GLuint,
+pub struct Renderbuffer<'g> {
+    gl: &'g glow::Context,
+    inner: glow::Renderbuffer,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -21,52 +21,52 @@ pub enum RenderBufferStorage {
 }
 
 impl RenderBufferStorage {
-    fn to_gl(&self) -> GLuint {
+    fn to_gl(&self) -> u32 {
         match self {
-            RenderBufferStorage::DepthComponent16 => bindings::DEPTH_COMPONENT16,
-            RenderBufferStorage::DepthComponent24 => bindings::DEPTH_COMPONENT24,
-            RenderBufferStorage::DepthComponent32 => bindings::DEPTH_COMPONENT32,
-            RenderBufferStorage::DepthComponent32F => bindings::DEPTH_COMPONENT32F,
-            RenderBufferStorage::Depth24Stencil8 => bindings::DEPTH24_STENCIL8,
-            RenderBufferStorage::Depth32FStencil8 => bindings::DEPTH32F_STENCIL8,
-            RenderBufferStorage::R8 => bindings::R8,
-            RenderBufferStorage::R16 => bindings::R16,
-            RenderBufferStorage::R16F => bindings::R16F,
-            RenderBufferStorage::R32F => bindings::R32F,
+            RenderBufferStorage::DepthComponent16 => glow::DEPTH_COMPONENT16,
+            RenderBufferStorage::DepthComponent24 => glow::DEPTH_COMPONENT24,
+            RenderBufferStorage::DepthComponent32 => glow::DEPTH_COMPONENT32,
+            RenderBufferStorage::DepthComponent32F => glow::DEPTH_COMPONENT32F,
+            RenderBufferStorage::Depth24Stencil8 => glow::DEPTH24_STENCIL8,
+            RenderBufferStorage::Depth32FStencil8 => glow::DEPTH32F_STENCIL8,
+            RenderBufferStorage::R8 => glow::R8,
+            RenderBufferStorage::R16 => glow::R16,
+            RenderBufferStorage::R16F => glow::R16F,
+            RenderBufferStorage::R32F => glow::R32F,
         }
     }
 }
 
-impl Renderbuffer {
-    pub fn new() -> Option<Self> {
-        let mut id: u32 = 0;
+impl<'g> Renderbuffer<'g> {
+    pub fn new(gl: &'g glow::Context) -> Option<Self> {
         unsafe {
-            bindings::GenRenderbuffers(1, &mut id);
-            if id == 0 {
-                return None;
-            }
-        }
+            let id = gl.create_renderbuffer().ok()?;
 
-        debug!("Allocated RenderBuffer ID: {}", id);
-        Some(Renderbuffer { id })
-    }
-
-    pub fn bind(render_buffer: &Renderbuffer) {
-        unsafe {
-            bindings::BindRenderbuffer(bindings::RENDERBUFFER, render_buffer.id);
+            debug!("Allocated RenderBuffer ID: {:?}", id);
+            Some(Renderbuffer { gl, inner: id })
         }
     }
 
-    pub fn unbind() {
+    pub fn bind(gl: &glow::Context, render_buffer: &Renderbuffer) {
         unsafe {
-            bindings::BindRenderbuffer(bindings::RENDERBUFFER, 0);
+            gl.bind_renderbuffer(glow::RENDERBUFFER, Some(render_buffer.as_inner()));
         }
+    }
+
+    pub fn unbind(gl: &glow::Context) {
+        unsafe {
+            gl.bind_renderbuffer(glow::RENDERBUFFER, None);
+        }
+    }
+
+    pub fn as_inner(&self) -> glow::Renderbuffer {
+        self.inner
     }
 
     pub fn storage(&self, storage: RenderBufferStorage, width: usize, height: usize) {
         unsafe {
-            bindings::RenderbufferStorage(
-                bindings::RENDERBUFFER,
+            self.gl.renderbuffer_storage(
+                glow::RENDERBUFFER,
                 storage.to_gl(),
                 width as i32,
                 height as i32,
@@ -75,11 +75,11 @@ impl Renderbuffer {
     }
 }
 
-impl Drop for Renderbuffer {
+impl<'g> Drop for Renderbuffer<'g> {
     fn drop(&mut self) {
-        debug!("Dropping RenderBuffer ID: {}", self.id);
+        debug!("Dropping RenderBuffer ID: {:?}", self.inner);
         unsafe {
-            bindings::DeleteRenderbuffers(1, &self.id);
+            self.gl.delete_renderbuffer(self.inner);
         }
     }
 }

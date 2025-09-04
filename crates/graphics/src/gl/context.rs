@@ -49,8 +49,10 @@ impl Context {
     ) -> Result<NotCurrentContext, ContextError> {
         let raw_window_handle = window.window_handle().ok().map(|wh| wh.as_raw());
 
-        // The context creation part.
-        let context_attributes = ContextAttributesBuilder::new().build(raw_window_handle);
+        // The context creation part. 4.1 is the minimum version for macOS.
+        let context_attributes = ContextAttributesBuilder::new()
+            .with_context_api(ContextApi::OpenGl(Some(Version::new(4, 1))))
+            .build(raw_window_handle);
 
         // Since glutin by default tries to create OpenGL core context, which may not be
         // present we should try gles.

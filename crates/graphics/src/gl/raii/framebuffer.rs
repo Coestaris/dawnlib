@@ -1,8 +1,7 @@
-use crate::gl::bindings;
-use crate::gl::bindings::types::{GLint, GLuint};
 use crate::gl::raii::renderbuffer::Renderbuffer;
 use crate::gl::raii::texture::Texture;
 use glam::UVec2;
+use glow::HasContext;
 use log::debug;
 
 #[derive(Debug, Clone, Copy)]
@@ -22,20 +21,20 @@ pub enum FramebufferAttachment {
 }
 
 impl FramebufferAttachment {
-    fn to_gl(&self) -> GLuint {
+    fn to_gl(&self) -> u32 {
         match self {
-            FramebufferAttachment::Color0 => bindings::COLOR_ATTACHMENT0,
-            FramebufferAttachment::Color1 => bindings::COLOR_ATTACHMENT1,
-            FramebufferAttachment::Color2 => bindings::COLOR_ATTACHMENT2,
-            FramebufferAttachment::Color3 => bindings::COLOR_ATTACHMENT3,
-            FramebufferAttachment::Color4 => bindings::COLOR_ATTACHMENT4,
-            FramebufferAttachment::Color5 => bindings::COLOR_ATTACHMENT5,
-            FramebufferAttachment::Color6 => bindings::COLOR_ATTACHMENT6,
-            FramebufferAttachment::Color7 => bindings::COLOR_ATTACHMENT7,
-            FramebufferAttachment::Color8 => bindings::COLOR_ATTACHMENT8,
-            FramebufferAttachment::Depth => bindings::DEPTH_ATTACHMENT,
-            FramebufferAttachment::Stencil => bindings::STENCIL_ATTACHMENT,
-            FramebufferAttachment::DepthStencil => bindings::DEPTH_STENCIL_ATTACHMENT,
+            FramebufferAttachment::Color0 => glow::COLOR_ATTACHMENT0,
+            FramebufferAttachment::Color1 => glow::COLOR_ATTACHMENT1,
+            FramebufferAttachment::Color2 => glow::COLOR_ATTACHMENT2,
+            FramebufferAttachment::Color3 => glow::COLOR_ATTACHMENT3,
+            FramebufferAttachment::Color4 => glow::COLOR_ATTACHMENT4,
+            FramebufferAttachment::Color5 => glow::COLOR_ATTACHMENT5,
+            FramebufferAttachment::Color6 => glow::COLOR_ATTACHMENT6,
+            FramebufferAttachment::Color7 => glow::COLOR_ATTACHMENT7,
+            FramebufferAttachment::Color8 => glow::COLOR_ATTACHMENT8,
+            FramebufferAttachment::Depth => glow::DEPTH_ATTACHMENT,
+            FramebufferAttachment::Stencil => glow::STENCIL_ATTACHMENT,
+            FramebufferAttachment::DepthStencil => glow::DEPTH_STENCIL_ATTACHMENT,
         }
     }
 }
@@ -46,10 +45,10 @@ pub enum BlitFramebufferFilter {
 }
 
 impl BlitFramebufferFilter {
-    fn to_gl(&self) -> GLuint {
+    fn to_gl(&self) -> u32 {
         match self {
-            BlitFramebufferFilter::Nearest => bindings::NEAREST,
-            BlitFramebufferFilter::Linear => bindings::LINEAR,
+            BlitFramebufferFilter::Nearest => glow::NEAREST,
+            BlitFramebufferFilter::Linear => glow::LINEAR,
         }
     }
 }
@@ -61,66 +60,63 @@ pub enum BlitFramebufferMask {
 }
 
 impl BlitFramebufferMask {
-    fn to_gl(&self) -> GLuint {
+    fn to_gl(&self) -> u32 {
         match self {
-            BlitFramebufferMask::Color => bindings::COLOR_BUFFER_BIT,
-            BlitFramebufferMask::Depth => bindings::DEPTH_BUFFER_BIT,
-            BlitFramebufferMask::Stencil => bindings::STENCIL_BUFFER_BIT,
+            BlitFramebufferMask::Color => glow::COLOR_BUFFER_BIT,
+            BlitFramebufferMask::Depth => glow::DEPTH_BUFFER_BIT,
+            BlitFramebufferMask::Stencil => glow::STENCIL_BUFFER_BIT,
         }
     }
 }
 
-pub struct Framebuffer {
-    id: GLuint,
+pub struct Framebuffer<'g> {
+    gl: &'g glow::Context,
+    inner: glow::Framebuffer,
 }
 
-impl Framebuffer {
-    pub fn new() -> Option<Self> {
-        let mut id: u32 = 0;
+impl<'g> Framebuffer<'g> {
+    pub fn new(gl: &'g glow::Context) -> Option<Self> {
         unsafe {
-            bindings::GenFramebuffers(1, &mut id);
-            if id == 0 {
-                return None;
-            }
-        }
+            let id = gl.create_framebuffer().ok()?;
 
-        debug!("Allocated Framebuffer ID: {}", id);
-        Some(Framebuffer { id })
-    }
-
-    pub fn bind_read(buffer: &Framebuffer) {
-        unsafe {
-            bindings::BindFramebuffer(bindings::READ_FRAMEBUFFER, buffer.id());
+            debug!("Allocated Framebuffer ID: {:?}", id);
+            Some(Framebuffer { gl, inner: id })
         }
     }
 
-    pub fn bind_draw(buffer: &Framebuffer) {
+    pub fn bind_read(gl: &glow::Context, buffer: &Framebuffer) {
         unsafe {
-            bindings::BindFramebuffer(bindings::DRAW_FRAMEBUFFER, buffer.id());
+            gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(buffer.as_inner()));
         }
     }
 
-    pub fn bind(buffer: &Framebuffer) {
+    pub fn bind_draw(gl: &glow::Context, buffer: &Framebuffer) {
         unsafe {
-            bindings::BindFramebuffer(bindings::FRAMEBUFFER, buffer.id());
+            gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(buffer.as_inner()));
         }
     }
 
-    pub fn unbind() {
+    pub fn bind(gl: &glow::Context, buffer: &Framebuffer) {
         unsafe {
-            bindings::BindFramebuffer(bindings::FRAMEBUFFER, 0);
+            gl.bind_framebuffer(glow::FRAMEBUFFER, Some(buffer.as_inner()));
         }
     }
 
-    pub fn unbind_draw() {
+    pub fn unbind(gl: &glow::Context) {
         unsafe {
-            bindings::BindFramebuffer(bindings::DRAW_FRAMEBUFFER, 0);
+            gl.bind_framebuffer(glow::FRAMEBUFFER, None);
         }
     }
 
-    pub fn unbind_read() {
+    pub fn unbind_draw(gl: &glow::Context) {
         unsafe {
-            bindings::BindFramebuffer(bindings::READ_FRAMEBUFFER, 0);
+            gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, None);
+        }
+    }
+
+    pub fn unbind_read(gl: &glow::Context) {
+        unsafe {
+            gl.bind_framebuffer(glow::READ_FRAMEBUFFER, None);
         }
     }
 
@@ -130,11 +126,11 @@ impl Framebuffer {
         renderbuffer: &Renderbuffer,
     ) {
         unsafe {
-            bindings::FramebufferRenderbuffer(
-                bindings::FRAMEBUFFER,
+            self.gl.framebuffer_renderbuffer(
+                glow::FRAMEBUFFER,
                 attachment.to_gl(),
-                bindings::RENDERBUFFER,
-                renderbuffer.id,
+                glow::RENDERBUFFER,
+                Some(renderbuffer.as_inner()),
             );
         }
     }
@@ -146,66 +142,64 @@ impl Framebuffer {
         mip_level: i32,
     ) {
         unsafe {
-            bindings::FramebufferTexture2D(
-                bindings::FRAMEBUFFER,
+            self.gl.framebuffer_texture_2d(
+                glow::FRAMEBUFFER,
                 attachment.to_gl(),
-                bindings::TEXTURE_2D,
-                texture.id,
+                glow::TEXTURE_2D,
+                Some(texture.as_inner()),
                 mip_level,
             );
         }
     }
 
     pub fn draw_buffers(&self, attachments: &[FramebufferAttachment]) {
-        let buffers: Vec<GLuint> = attachments.iter().map(|a| a.to_gl()).collect();
         unsafe {
-            bindings::DrawBuffers(buffers.len() as i32, buffers.as_ptr());
+            self.gl
+                .draw_buffers(&attachments.iter().map(|a| a.to_gl()).collect::<Vec<_>>());
         }
     }
 
     pub fn is_complete(&self) -> bool {
-        unsafe {
-            bindings::CheckFramebufferStatus(bindings::FRAMEBUFFER)
-                == bindings::FRAMEBUFFER_COMPLETE
-        }
+        unsafe { self.gl.check_framebuffer_status(glow::FRAMEBUFFER) == glow::FRAMEBUFFER_COMPLETE }
     }
 
     pub fn blit_to_default(
+        gl: &glow::Context,
         framebuffer: &Framebuffer,
         usize: UVec2,
         mask: BlitFramebufferMask,
         filter: BlitFramebufferFilter,
     ) {
-        Framebuffer::bind_read(&framebuffer);
-        Framebuffer::unbind_draw();
+        Framebuffer::bind_read(gl, &framebuffer);
+        Framebuffer::unbind_draw(gl);
         unsafe {
-            bindings::BlitFramebuffer(
+            gl.blit_framebuffer(
                 0,
                 0,
-                usize.x as GLint,
-                usize.y as GLint,
+                usize.x as i32,
+                usize.y as i32,
                 0,
                 0,
-                usize.x as GLint,
-                usize.y as GLint,
+                usize.x as i32,
+                usize.y as i32,
                 mask.to_gl(),
                 filter.to_gl(),
             );
         }
-        Framebuffer::unbind();
+        Framebuffer::unbind(gl);
     }
 
     #[inline(always)]
-    fn id(&self) -> u32 {
-        self.id
+    fn as_inner(&self) -> glow::Framebuffer {
+        self.inner
     }
 }
 
-impl Drop for Framebuffer {
+impl<'g> Drop for Framebuffer<'g> {
     fn drop(&mut self) {
-        debug!("Dropping Framebuffer ID: {}", self.id);
+        debug!("Dropping Framebuffer ID: {:?}", self.inner);
         unsafe {
-            bindings::DeleteFramebuffers(1, &self.id);
+            self.gl.delete_framebuffer(self.inner);
         }
     }
 }

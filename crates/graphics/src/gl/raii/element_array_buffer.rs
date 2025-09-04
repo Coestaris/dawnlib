@@ -1,5 +1,4 @@
-use crate::gl::bindings;
-use crate::gl::bindings::types::GLuint;
+use glow::HasContext;
 use log::debug;
 
 pub enum ElementArrayBufferUsage {
@@ -9,72 +8,75 @@ pub enum ElementArrayBufferUsage {
 
 impl ElementArrayBufferUsage {
     #[inline(always)]
-    fn gl_type(&self) -> GLuint {
+    fn gl_type(&self) -> u32 {
         match self {
-            ElementArrayBufferUsage::StaticDraw => bindings::STATIC_DRAW,
-            ElementArrayBufferUsage::DynamicDraw => bindings::DYNAMIC_DRAW,
+            ElementArrayBufferUsage::StaticDraw => glow::STATIC_DRAW,
+            ElementArrayBufferUsage::DynamicDraw => glow::DYNAMIC_DRAW,
         }
     }
 }
-pub struct ElementArrayBufferBinding<'a> {
-    array_buffer: &'a mut ElementArrayBuffer,
+pub struct ElementArrayBufferBinding<'g, 'a> {
+    gl: &'g glow::Context,
+    inner: &'a mut ElementArrayBuffer<'g>,
 }
 
-impl<'a> ElementArrayBufferBinding<'a> {
+impl<'g, 'a> ElementArrayBufferBinding<'g, 'a> {
     #[inline(always)]
-    fn new(array_buffer: &'a mut ElementArrayBuffer) -> Self {
-        debug!("Binding ElementArrayBuffer ID: {}", array_buffer.id());
+    fn new(gl: &'g glow::Context, array_buffer: &'a mut ElementArrayBuffer<'g>) -> Self {
+        debug!("Binding ElementArrayBuffer ID: {:?}", array_buffer.as_inner());
         unsafe {
-            bindings::BindBuffer(bindings::ELEMENT_ARRAY_BUFFER, array_buffer.id());
+            gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(array_buffer.as_inner()));
         }
-        Self { array_buffer }
+        Self {
+            gl,
+            inner: array_buffer,
+        }
     }
 
     pub fn feed<T>(&self, data: &[T], usage: ElementArrayBufferUsage) {
         unsafe {
-            bindings::BufferData(
-                bindings::ELEMENT_ARRAY_BUFFER,
-                (data.len() * size_of::<T>()) as isize,
-                data.as_ptr() as *const _,
+            self.gl.buffer_data_u8_slice(
+                glow::ELEMENT_ARRAY_BUFFER,
+                std::slice::from_raw_parts(
+                    data.as_ptr() as *const u8,
+                    data.len() * std::mem::size_of::<T>(),
+                ),
                 usage.gl_type(),
             );
         }
     }
 }
 
-pub struct ElementArrayBuffer {
-    id: GLuint,
+pub struct ElementArrayBuffer<'g> {
+    gl: &'g glow::Context,
+    inner: glow::Buffer,
 }
 
-impl ElementArrayBuffer {
-    pub fn new() -> Option<Self> {
-        let mut id: GLuint = 0;
+impl<'g> ElementArrayBuffer<'g> {
+    pub fn new(gl: &'g glow::Context) -> Option<Self> {
         unsafe {
-            bindings::GenBuffers(1, &mut id);
-            if id == 0 {
-                return None;
-            }
-        }
+            let id = gl.create_buffer().ok()?;
 
-        debug!("Allocated ElementArrayBuffer ID: {}", id);
-        Some(ElementArrayBuffer { id })
+            debug!("Allocated ElementArrayBuffer ID: {:?}", id);
+            Some(ElementArrayBuffer { gl, inner: id })
+        }
     }
 
-    pub fn bind(&mut self) -> ElementArrayBufferBinding<'_> {
-        ElementArrayBufferBinding::new(self)
+    pub fn bind(&mut self) -> ElementArrayBufferBinding<'g, '_> {
+        ElementArrayBufferBinding::new(self.gl, self)
     }
 
     #[inline(always)]
-    fn id(&self) -> GLuint {
-        self.id
+    fn as_inner(&self) -> glow::Buffer {
+        self.inner
     }
 }
 
-impl Drop for ElementArrayBuffer {
+impl<'g> Drop for ElementArrayBuffer<'g> {
     fn drop(&mut self) {
-        debug!("Dropping ElementArrayBuffer ID: {}", self.id);
+        debug!("Dropping ElementArrayBuffer ID: {:?}", self.inner);
         unsafe {
-            bindings::DeleteBuffers(1, &self.id);
+            self.gl.delete_buffer(self.inner);
         }
     }
 }

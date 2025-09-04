@@ -30,16 +30,16 @@ pub struct SubMesh {
     pub index_count: usize,   // In units (u32 or u16)
 }
 
-pub struct TopologyBucket {
-    pub vao: VertexArray,
-    pub vbo: ArrayBuffer,
-    pub ebo: ElementArrayBuffer,
+pub struct TopologyBucket<'g> {
+    pub vao: VertexArray<'g>,
+    pub vbo: ArrayBuffer<'g>,
+    pub ebo: ElementArrayBuffer<'g>,
     pub indices_count: usize, // In units (u32 or u16)
     pub submesh: Vec<SubMesh>,
 }
 
-pub struct Mesh {
-    pub buckets: Vec<TopologyBucket>,
+pub struct Mesh<'g> {
+    pub buckets: Vec<TopologyBucket<'g>>,
     pub min: Vec3,
     pub max: Vec3,
 }
@@ -51,12 +51,16 @@ struct IRBucket {
 }
 
 impl IRBucket {
-    pub fn into_bucket(self, deps: &HashMap<AssetID, Asset>) -> Result<TopologyBucket, MeshError> {
-        let vao = VertexArray::new(self.topology, self.index_type.clone())
+    pub fn into_bucket<'g>(
+        self,
+        gl: &'g glow::Context,
+        deps: &HashMap<AssetID, Asset>,
+    ) -> Result<TopologyBucket<'g>, MeshError> {
+        let vao = VertexArray::new(gl, self.topology, self.index_type.clone())
             .ok_or(MeshError::VertexArrayAllocationFailed)?;
-        let mut vbo = ArrayBuffer::new().ok_or(MeshError::ArrayBufferAllocationFailed)?;
+        let mut vbo = ArrayBuffer::new(gl).ok_or(MeshError::ArrayBufferAllocationFailed)?;
         let mut ebo =
-            ElementArrayBuffer::new().ok_or(MeshError::ElementArrayBufferAllocationFailed)?;
+            ElementArrayBuffer::new(gl).ok_or(MeshError::ElementArrayBufferAllocationFailed)?;
 
         let vao_binding = vao.bind();
         let vbo_binding = vbo.bind();
@@ -77,7 +81,7 @@ impl IRBucket {
         ebo_binding.feed(&joined_indices, ElementArrayBufferUsage::StaticDraw);
 
         for (i, layout) in IRMeshVertex::layout().iter().enumerate() {
-            vao_binding.setup_attribute(i, layout);
+            vao_binding.setup_attribute(i as u32, layout);
         }
 
         drop(vbo_binding);
@@ -124,10 +128,11 @@ impl IRBucket {
     }
 }
 
-impl AssetCastable for Mesh {}
+impl AssetCastable for Mesh<'static> {}
 
-impl Mesh {
+impl<'g> Mesh<'g> {
     pub fn from_ir(
+        gl: &'g glow::Context,
         ir: IRMesh,
         deps: HashMap<AssetID, Asset>,
     ) -> Result<(Self, AssetMemoryUsage), MeshError> {
@@ -148,7 +153,7 @@ impl Mesh {
 
         let mut buckets = Vec::with_capacity(ir_buckets.len());
         for bucket in ir_buckets.into_values() {
-            buckets.push(bucket.into_bucket(&deps)?);
+            buckets.push(bucket.into_bucket(gl, &deps)?);
         }
 
         Ok((
@@ -160,9 +165,7 @@ impl Mesh {
             AssetMemoryUsage::new(size_of::<Mesh>(), 0),
         ))
     }
-}
 
-impl Mesh {
     #[inline(always)]
     pub fn draw(&self, on_submesh: impl Fn(&SubMesh) -> (bool, RenderResult)) -> RenderResult {
         let mut result = RenderResult::default();

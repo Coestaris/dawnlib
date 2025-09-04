@@ -1,31 +1,30 @@
-use crate::gl::bindings;
-use crate::gl::bindings::types::GLuint;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::shader::IRShader;
 use dawn_assets::{AssetCastable, AssetMemoryUsage};
+use glow::HasContext;
 use log::debug;
 
-// RAII wrapper for OpenGL shader program
 #[derive(Debug)]
-pub struct ShaderProgram {
-    id: GLuint,
+pub struct Program<'g> {
+    gl: &'g glow::Context,
+    inner: glow::Program,
 }
 
-pub type UniformLocation = GLuint;
+pub type UniformLocation = glow::UniformLocation;
 
-impl AssetCastable for ShaderProgram {}
+impl AssetCastable for Program<'static> {}
 
 pub trait UniformTarget {
-    fn set_uniform(location: UniformLocation, value: Self);
+    fn set_uniform(gl: &glow::Context, location: UniformLocation, value: Self);
 }
 
 macro_rules! define_target(
     ($type:ty, $binding:expr) => {
         impl UniformTarget for $type {
             #[inline(always)]
-            fn set_uniform(location: UniformLocation, value: Self) {
+            fn set_uniform(gl: &glow::Context, location: UniformLocation, value: Self) {
                 unsafe {
-                    $binding(location as GLint, value);
+                    $binding(gl, location, value);
                 }
             }
         }
@@ -34,41 +33,41 @@ macro_rules! define_target(
 
 #[rustfmt::skip]
 mod targets {
-use crate::gl::bindings;
-use crate::gl::bindings::types::GLint;
-use crate::gl::raii::shader_program::UniformLocation;
-use crate::gl::raii::shader_program::UniformTarget;
-use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
+    use crate::gl::raii::shader_program::UniformLocation;
+    use crate::gl::raii::shader_program::UniformTarget;
+    use glam::{IVec2, IVec3, IVec4, UVec2, UVec3, UVec4, Vec2, Vec3, Vec4};
+    use glow::{Context, HasContext};
 
-    define_target!(u32, |l, v| bindings::Uniform1ui(l, v));
-    define_target!(i32, |l, v| bindings::Uniform1i(l, v));
-    define_target!(f32, |l, v| bindings::Uniform1f(l, v));
-    define_target!(Vec2, |l, v: Vec2| bindings::Uniform2f(l, v.x, v.y));
-    define_target!(Vec3, |l, v: Vec3| bindings::Uniform3f(l, v.x, v.y, v.z));
-    define_target!(Vec4, |l, v: Vec4| bindings::Uniform4f(l, v.x, v.y, v.z, v.w));
-    define_target!(UVec2, |l, v: UVec2| bindings::Uniform2ui(l, v.x, v.y));
-    define_target!(UVec3, |l, v: UVec3| bindings::Uniform3ui(l, v.x, v.y, v.z));
-    define_target!(UVec4, |l, v: UVec4| bindings::Uniform4ui(l, v.x, v.y, v.z, v.w));
-    define_target!(IVec2, |l, v: IVec2| bindings::Uniform2i(l, v.x, v.y));
-    define_target!(IVec3, |l, v: IVec3| bindings::Uniform3i(l, v.x, v.y, v.z));
-    define_target!(IVec4, |l, v: IVec4| bindings::Uniform4i(l, v.x, v.y, v.z, v.w));
-    define_target!(bool, |l, v| bindings::Uniform1i(l, if v { 1 } else { 0 }));
-    define_target!(glam::Mat2, |l, v: glam::Mat2| { bindings::UniformMatrix2fv(l, 1, bindings::FALSE, v.as_ref().as_ptr()) });
-    define_target!(glam::Mat3, |l, v: glam::Mat3| { bindings::UniformMatrix3fv(l, 1, bindings::FALSE, v.as_ref().as_ptr()) });
-    define_target!(glam::Mat4, |l, v: glam::Mat4| { bindings::UniformMatrix4fv(l, 1, bindings::FALSE, v.as_ref().as_ptr()) });
-    define_target!(glam::Quat, |l, v: glam::Quat| { bindings::Uniform4fv(l, 1, v.as_ref().as_ptr()) });
+    define_target!(u32, |g: &Context, l, v| g.uniform_1_u32(Some(&l), v));
+    define_target!(i32, |g: &Context, l, v| g.uniform_1_i32(Some(&l), v));
+    define_target!(f32, |g: &Context, l, v| g.uniform_1_f32(Some(&l), v));
+    define_target!(Vec2, |g: &Context, l, v: Vec2| g.uniform_2_f32(Some(&l), v.x, v.y));
+    define_target!(Vec3, |g: &Context, l, v: Vec3| g.uniform_3_f32(Some(&l), v.x, v.y, v.z));
+    define_target!(Vec4, |g: &Context, l, v: Vec4| g.uniform_4_f32(Some(&l), v.x, v.y, v.z, v.w));
+    define_target!(UVec2, |g: &Context, l, v: UVec2| g.uniform_2_u32(Some(&l), v.x, v.y));
+    define_target!(UVec3, |g: &Context, l, v: UVec3| g.uniform_3_u32(Some(&l), v.x, v.y, v.z));
+    define_target!(UVec4, |g: &Context, l, v: UVec4| g.uniform_4_u32(Some(&l), v.x, v.y, v.z, v.w));
+    define_target!(IVec2, |g: &Context, l, v: IVec2| g.uniform_2_i32(Some(&l), v.x, v.y));
+    define_target!(IVec3, |g: &Context, l, v: IVec3| g.uniform_3_i32(Some(&l), v.x, v.y, v.z));
+    define_target!(IVec4, |g: &Context, l, v: IVec4| g.uniform_4_i32(Some(&l), v.x, v.y, v.z, v.w));
+    define_target!(bool, |g: &Context, l, v| g.uniform_1_i32(Some(&l), if v { 1 } else { 0 }));
+    define_target!(glam::Mat2, |g: &Context, l, v: glam::Mat2| { g.uniform_matrix_2_f32_slice(Some(&l), false, v.as_ref().as_slice()) });
+    define_target!(glam::Mat3, |g: &Context, l, v: glam::Mat3| { g.uniform_matrix_3_f32_slice(Some(&l), false, v.as_ref().as_slice()) });
+    define_target!(glam::Mat4, |g: &Context, l, v: glam::Mat4| { g.uniform_matrix_4_f32_slice(Some(&l), false, v.as_ref().as_slice()) });
+    define_target!(glam::Quat, |g: &Context, l, v: glam::Quat| { g.uniform_4_f32_slice(Some(&l), v.as_ref().as_slice()) });
 }
 
 use crate::gl::raii::shader::{Shader, ShaderError};
 
-impl ShaderProgram {
+impl<'g> Program<'g> {
     pub(crate) fn from_ir<E: PassEventTrait>(
+        gl: &'g glow::Context,
         ir: IRShader,
     ) -> Result<(Self, AssetMemoryUsage), ShaderError> {
-        let program = ShaderProgram::new()?;
+        let program = Program::new(gl)?;
 
         for (source_type, source) in &ir.sources {
-            let shader = Shader::new(*source_type)?;
+            let shader = Shader::new(gl, *source_type)?;
             let source = String::from_utf8(source.clone())?;
             shader.set_source(source)?;
             shader.compile()?;
@@ -77,94 +76,77 @@ impl ShaderProgram {
 
         program.link()?;
 
-        debug!("Allocated shader program ID: {}", program.id);
+        debug!("Allocated shader program ID: {:?}", program.as_inner());
         // TODO: Approximate memory usage
-        Ok((
-            program,
-            AssetMemoryUsage::new(size_of::<ShaderProgram>(), 0),
-        ))
+        Ok((program, AssetMemoryUsage::new(size_of::<Program>(), 0)))
     }
 
-    fn new() -> Result<ShaderProgram, ShaderError> {
-        debug!("Creating program");
-        let id = unsafe { bindings::CreateProgram() };
-        if id == 0 {
-            return Err(ShaderError::ProgramCreationError);
-        }
+    fn new(gl: &'g glow::Context) -> Result<Program, ShaderError> {
+        unsafe {
+            let id = gl
+                .create_program()
+                .map_err(ShaderError::ProgramCreationError)?;
 
-        Ok(ShaderProgram { id })
+            Ok(Program { gl, inner: id })
+        }
     }
 
     fn attach_shader(&self, shader: Shader) {
         unsafe {
-            bindings::AttachShader(self.id, shader.id());
+            self.gl.attach_shader(self.inner, shader.as_inner());
         }
     }
 
     fn link(&self) -> Result<(), ShaderError> {
         unsafe {
-            bindings::LinkProgram(self.id);
-            let mut status = 0;
-            bindings::GetProgramiv(self.id, bindings::LINK_STATUS, &mut status);
-            if status == 0 {
-                let mut log_length = 0;
-                bindings::GetProgramiv(self.id, bindings::INFO_LOG_LENGTH, &mut log_length);
-                let mut log = vec![0; log_length as usize];
-                bindings::GetProgramInfoLog(
-                    self.id,
-                    log_length,
-                    std::ptr::null_mut(),
-                    log.as_mut_ptr() as *mut i8,
-                );
-                return Err(ShaderError::LinkError {
-                    message: String::from_utf8(log).unwrap(),
-                });
+            self.gl.link_program(self.inner);
+            if !self.gl.get_program_link_status(self.inner) {
+                let log = self.gl.get_program_info_log(self.inner);
+                return Err(ShaderError::LinkError { message: log });
             }
         }
         Ok(())
     }
 
     #[inline(always)]
-    pub fn id(&self) -> GLuint {
-        self.id
+    pub fn as_inner(&self) -> glow::Program {
+        self.inner
     }
 
     #[inline(always)]
-    pub fn bind(shader: &Self) {
+    pub fn bind(gl: &glow::Context, shader: &Self) {
         unsafe {
-            bindings::UseProgram(shader.id);
+            gl.use_program(Some(shader.as_inner()));
         }
     }
 
     #[inline(always)]
-    pub fn unbind() {
+    pub fn unbind(gl: &glow::Context) {
         unsafe {
-            bindings::UseProgram(0);
+            gl.use_program(None);
         }
     }
 
     #[inline(always)]
     pub fn set_uniform<T: UniformTarget>(&self, location: UniformLocation, value: T) {
-        T::set_uniform(location, value);
+        T::set_uniform(self.gl, location, value);
     }
 
     #[inline(always)]
     pub fn get_uniform_location(&self, name: &str) -> Result<UniformLocation, ShaderError> {
-        let c_name = std::ffi::CString::new(name)?;
-        let location = unsafe { bindings::GetUniformLocation(self.id, c_name.as_ptr()) };
-        if location == -1 {
-            Err(ShaderError::UnknownUniformLocation(name.to_string()))
-        } else {
-            Ok(location as UniformLocation)
+        unsafe {
+            self.gl
+                .get_uniform_location(self.inner, name)
+                .ok_or_else(|| ShaderError::UnknownUniformLocation(name.to_string()))
         }
     }
 }
 
-impl Drop for ShaderProgram {
+impl<'g> Drop for Program<'g> {
     fn drop(&mut self) {
-        debug!("Dropping shader program ID: {}", self.id);
+        debug!("Dropping shader program ID: {:?}", self.as_inner());
         unsafe {
-            bindings::DeleteProgram(self.id);
+            self.gl.delete_program(self.inner);
         }
     }
 }

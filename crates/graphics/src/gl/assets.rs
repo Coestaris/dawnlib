@@ -1,7 +1,7 @@
 use crate::gl::font::Font;
 use crate::gl::material::Material;
 use crate::gl::mesh::Mesh;
-use crate::gl::raii::shader_program::ShaderProgram;
+use crate::gl::raii::shader_program::Program;
 use crate::gl::raii::texture::Texture;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
@@ -10,7 +10,9 @@ use dawn_assets::AssetType;
 use std::time::Duration;
 
 pub(crate) struct ShaderAssetFactory {
-    basic_factory: BasicFactory<ShaderProgram>,
+    // Using 'static lifetime here because shader programs are
+    // expected to live as long as the application.
+    basic_factory: BasicFactory<Program<'static>>,
 }
 
 impl ShaderAssetFactory {
@@ -25,11 +27,11 @@ impl ShaderAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self) {
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &'static glow::Context) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Shader(shader) = message.ir {
-                    let res = ShaderProgram::from_ir::<E>(shader)?;
+                    let res = Program::from_ir::<E>(gl, shader)?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected shader metadata"))
@@ -44,7 +46,7 @@ impl ShaderAssetFactory {
 }
 
 pub(crate) struct TextureAssetFactory {
-    basic_factory: BasicFactory<Texture>,
+    basic_factory: BasicFactory<Texture<'static>>,
 }
 
 impl TextureAssetFactory {
@@ -59,11 +61,11 @@ impl TextureAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self) {
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &'static glow::Context) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Texture(texture) = message.ir {
-                    let res = Texture::from_ir::<E>(texture)?;
+                    let res = Texture::from_ir::<E>(gl, texture)?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected texture metadata"))
@@ -78,7 +80,8 @@ impl TextureAssetFactory {
 }
 
 pub(crate) struct MeshAssetFactory {
-    basic_factory: BasicFactory<Mesh>,
+    // About lifetimes see shader program comment
+    basic_factory: BasicFactory<Mesh<'static>>,
 }
 
 impl MeshAssetFactory {
@@ -93,11 +96,11 @@ impl MeshAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self) {
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &'static glow::Context) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Mesh(mesh) = message.ir {
-                    let res = Mesh::from_ir(mesh, message.dependencies)?;
+                    let res = Mesh::from_ir(gl, mesh, message.dependencies)?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected mesh metadata"))
@@ -127,7 +130,7 @@ impl MaterialAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self) {
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &'static glow::Context) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Material(material) = message.ir {
@@ -146,7 +149,8 @@ impl MaterialAssetFactory {
 }
 
 pub(crate) struct FontAssetFactory {
-    basic_factory: BasicFactory<Font>,
+    // About lifetimes see shader program comment
+    basic_factory: BasicFactory<Font<'static>>,
 }
 
 impl FontAssetFactory {
@@ -161,11 +165,11 @@ impl FontAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self) {
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &'static glow::Context) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Font(font) = message.ir {
-                    let res = Font::from_ir::<E>(font, message.dependencies)?;
+                    let res = Font::from_ir::<E>(gl, font, message.dependencies)?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected font metadata"))

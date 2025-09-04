@@ -1,45 +1,47 @@
-use crate::gl::bindings;
-use crate::gl::bindings::types::{GLint, GLsizei, GLuint};
 use crate::passes::result::RenderResult;
 use dawn_assets::ir::mesh::{IRIndexType, IRLayout, IRLayoutSampleType, IRTopology};
+use glow::HasContext;
 use log::debug;
 
 #[derive(Debug)]
-pub struct VertexArray {
-    id: GLuint,
-    draw_mode: GLuint,
+pub struct VertexArray<'g> {
+    gl: &'g glow::Context,
+    id: glow::VertexArray,
+    draw_mode: u32,
     topology_size: usize,
-    index_type: GLuint,
+    index_type: u32,
     index_size: usize,
 }
 
-pub struct VertexArrayBinding<'a> {
-    vertex_array: &'a VertexArray,
+pub struct VertexArrayBinding<'g, 'a> {
+    gl: &'g glow::Context,
+    vertex_array: &'a VertexArray<'g>,
 }
 
-impl<'a> VertexArrayBinding<'a> {
+impl<'g, 'a> VertexArrayBinding<'g, 'a> {
     #[inline(always)]
-    fn new(vertex_array: &'a VertexArray) -> Self {
+    fn new(gl: &'g glow::Context, vertex_array: &'a VertexArray<'g>) -> Self {
         unsafe {
-            bindings::BindVertexArray(vertex_array.id());
+            gl.bind_vertex_array(Some(vertex_array.as_inner()));
         }
-        Self { vertex_array }
+        Self { gl, vertex_array }
     }
 
-    pub fn setup_attribute(&self, index: usize, attribute: &IRLayout) {
+    pub fn setup_attribute(&self, index: u32, attribute: &IRLayout) {
         let gl_format = match attribute.sample_type {
-            IRLayoutSampleType::Float => bindings::FLOAT,
-            IRLayoutSampleType::U32 => bindings::UNSIGNED_INT,
+            IRLayoutSampleType::Float => glow::FLOAT,
+            IRLayoutSampleType::U32 => glow::UNSIGNED_INT,
         };
+
         unsafe {
-            bindings::EnableVertexAttribArray(index as GLuint);
-            bindings::VertexAttribPointer(
-                index as GLuint,
-                attribute.samples as GLint,
+            self.gl.enable_vertex_attrib_array(index);
+            self.gl.vertex_attrib_pointer_f32(
+                index,
+                attribute.samples as i32,
                 gl_format,
-                bindings::FALSE,
-                attribute.stride_bytes as GLsizei,
-                attribute.offset_bytes as *const _,
+                false,
+                attribute.stride_bytes as i32,
+                attribute.offset_bytes as i32,
             );
         }
     }
@@ -52,12 +54,12 @@ impl<'a> VertexArrayBinding<'a> {
         base_vertex: usize,
     ) -> RenderResult {
         unsafe {
-            bindings::DrawElementsBaseVertex(
+            self.gl.draw_elements_base_vertex(
                 self.vertex_array.draw_mode,
-                index_count as GLsizei,
+                index_count as i32,
                 self.vertex_array.index_type,
-                (index_offset * self.vertex_array.index_size) as *const _,
-                base_vertex as GLint,
+                (index_offset * self.vertex_array.index_size) as i32,
+                base_vertex as i32,
             );
         }
 
@@ -66,11 +68,11 @@ impl<'a> VertexArrayBinding<'a> {
 
     pub fn draw_elements(&self, index_count: usize, index_offset: usize) -> RenderResult {
         unsafe {
-            bindings::DrawElements(
+            self.gl.draw_elements(
                 self.vertex_array.draw_mode,
-                index_count as GLsizei,
+                index_count as i32,
                 self.vertex_array.index_type,
-                (index_offset * self.vertex_array.index_size) as *const _,
+                (index_offset * self.vertex_array.index_size) as i32,
             );
         }
 
@@ -78,66 +80,63 @@ impl<'a> VertexArrayBinding<'a> {
     }
 }
 
-impl<'a> Drop for VertexArrayBinding<'a> {
+impl<'g, 'a> Drop for VertexArrayBinding<'g, 'a> {
     #[inline(always)]
     fn drop(&mut self) {
         unsafe {
-            bindings::BindVertexArray(0);
+            self.gl.bind_vertex_array(None);
         }
     }
 }
 
-impl VertexArray {
-    pub fn new(primitive: IRTopology, index: IRIndexType) -> Option<Self> {
-        let mut id: GLuint = 0;
+impl<'g> VertexArray<'g> {
+    pub fn new(gl: &'g glow::Context, primitive: IRTopology, index: IRIndexType) -> Option<Self> {
         unsafe {
-            bindings::GenVertexArrays(1, &mut id);
-            if id == 0 {
-                return None;
-            }
-        }
+            let id = gl.create_vertex_array().ok()?;
 
-        debug!("Allocated VBO ID: {}", id);
-        Some(VertexArray {
-            id,
-            draw_mode: match primitive {
-                IRTopology::Points => bindings::POINTS,
-                IRTopology::Lines => bindings::LINES,
-                IRTopology::Triangles => bindings::TRIANGLES,
-            },
-            topology_size: match primitive {
-                IRTopology::Points => 1,
-                IRTopology::Lines => 2,
-                IRTopology::Triangles => 3,
-            },
-            index_type: match index {
-                IRIndexType::U16 => bindings::UNSIGNED_SHORT,
-                IRIndexType::U32 => bindings::UNSIGNED_INT,
-            },
-            index_size: match index {
-                IRIndexType::U16 => 2,
-                IRIndexType::U32 => 4,
-            },
-        })
+            debug!("Allocated VBO ID: {:?}", id);
+            Some(VertexArray {
+                gl,
+                id,
+                draw_mode: match primitive {
+                    IRTopology::Points => glow::POINTS,
+                    IRTopology::Lines => glow::LINES,
+                    IRTopology::Triangles => glow::TRIANGLES,
+                },
+                topology_size: match primitive {
+                    IRTopology::Points => 1,
+                    IRTopology::Lines => 2,
+                    IRTopology::Triangles => 3,
+                },
+                index_type: match index {
+                    IRIndexType::U16 => glow::UNSIGNED_SHORT,
+                    IRIndexType::U32 => glow::UNSIGNED_INT,
+                },
+                index_size: match index {
+                    IRIndexType::U16 => 2,
+                    IRIndexType::U32 => 4,
+                },
+            })
+        }
     }
 
     #[inline(always)]
     #[must_use]
-    pub fn bind(&self) -> VertexArrayBinding<'_> {
-        VertexArrayBinding::new(self)
+    pub fn bind(&self) -> VertexArrayBinding<'g, '_> {
+        VertexArrayBinding::new(self.gl, self)
     }
 
     #[inline(always)]
-    pub(crate) fn id(&self) -> GLuint {
+    pub(crate) fn as_inner(&self) -> glow::VertexArray {
         self.id
     }
 }
 
-impl Drop for VertexArray {
+impl<'g> Drop for VertexArray<'g> {
     fn drop(&mut self) {
-        debug!("Dropping VBO ID: {}", self.id);
+        debug!("Dropping VBO ID: {:?}", self.id);
         unsafe {
-            bindings::DeleteVertexArrays(1, &self.id);
+            self.gl.delete_vertex_array(self.id);
         }
     }
 }

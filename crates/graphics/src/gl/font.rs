@@ -23,30 +23,31 @@ pub enum FontError {
 }
 
 #[derive(Debug)]
-pub struct Font {
+pub struct Font<'g> {
+    vao: VertexArray<'g>,
+    vbo: ArrayBuffer<'g>,
+
     pub glyphs: HashMap<char, IRGlyph>,
     pub atlas: Asset,
     pub y_advance: f32,
     pub space_advance: f32,
-
-    pub vao: VertexArray,
-    pub vbo: ArrayBuffer,
 }
 
-impl AssetCastable for Font {}
+impl AssetCastable for Font<'static> {}
 
-impl Font {
+impl<'g> Font<'g> {
     pub(crate) fn from_ir<E: PassEventTrait>(
+        gl: &'g glow::Context,
         ir: IRFont,
         deps: HashMap<AssetID, Asset>,
     ) -> Result<(Self, AssetMemoryUsage), FontError> {
         debug!("Creating Font from IR: {ir:?}");
 
-        let vao = VertexArray::new(ir.topology, ir.index_type)
+        let vao = VertexArray::new(gl, ir.topology, ir.index_type)
             .ok_or(FontError::VertexArrayAllocationFailed)?;
-        let mut vbo = ArrayBuffer::new().ok_or(FontError::ArrayBufferAllocationFailed)?;
+        let mut vbo = ArrayBuffer::new(gl).ok_or(FontError::ArrayBufferAllocationFailed)?;
         let mut ebo =
-            ElementArrayBuffer::new().ok_or(FontError::ElementArrayBufferAllocationFailed)?;
+            ElementArrayBuffer::new(gl).ok_or(FontError::ElementArrayBufferAllocationFailed)?;
 
         let vao_binding = vao.bind();
         let vbo_binding = vbo.bind();
@@ -56,7 +57,7 @@ impl Font {
         ebo_binding.feed(&ir.indices, ElementArrayBufferUsage::StaticDraw);
 
         for (i, layout) in IRGlyphVertex::layout().iter().enumerate() {
-            vao_binding.setup_attribute(i, layout);
+            vao_binding.setup_attribute(i as u32, layout);
         }
 
         drop(vbo_binding);

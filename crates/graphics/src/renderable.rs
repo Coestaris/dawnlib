@@ -128,7 +128,7 @@ pub fn default_material() -> TypedAsset<Material> {
 pub struct Renderable {
     pub meta: RenderableMeta,
     pub model: Mat4,
-    pub mesh: TypedAsset<Mesh>,
+    pub mesh: TypedAsset<Mesh<'static>>,
 }
 
 impl Renderable {
@@ -137,7 +137,7 @@ impl Renderable {
         position: Vec3,
         rotation: Quat,
         scale: Vec3,
-        mesh: TypedAsset<Mesh>,
+        mesh: TypedAsset<Mesh<'static>>,
     ) -> Self {
         let model = Mat4::from_scale_rotation_translation(scale, rotation, position);
 
