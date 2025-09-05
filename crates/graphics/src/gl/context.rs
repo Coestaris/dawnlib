@@ -1,5 +1,5 @@
 use glam::UVec2;
-use glutin::config::{ColorBufferType, Config, ConfigTemplate, ConfigTemplateBuilder};
+use glutin::config::{ColorBufferType, Config, ConfigTemplateBuilder};
 use glutin::context::{
     ContextApi, ContextAttributesBuilder, NotCurrentContext, NotCurrentGlContext,
     PossiblyCurrentContext, PossiblyCurrentGlContext, Version,
@@ -13,7 +13,7 @@ use std::error::Error;
 use std::ffi::c_void;
 use std::num::NonZeroU32;
 use thiserror::Error;
-use winit::event_loop::{ActiveEventLoop, EventLoop};
+use winit::event_loop::ActiveEventLoop;
 use winit::raw_window_handle::{HandleError, HasWindowHandle};
 use winit::window::{Window, WindowAttributes};
 

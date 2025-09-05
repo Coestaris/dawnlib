@@ -123,7 +123,7 @@ pub struct IRDictionary {
 
 impl IRDictionary {
     pub fn memory_usage(&self) -> usize {
-        let mut sum = size_of::<IRDictionary>();
+        let sum = size_of::<IRDictionary>();
         sum
     }
 }

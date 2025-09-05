@@ -1,4 +1,3 @@
-use crate::gl::material::Material;
 use crate::gl::mesh::Mesh;
 use dawn_assets::TypedAsset;
 use evenio::component::Component;

@@ -1,6 +1,5 @@
 use crate::passes::events::PassEventTrait;
 use glam::UVec2;
-use winit::raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 pub(crate) trait RendererBackendTrait<E: PassEventTrait>
 where

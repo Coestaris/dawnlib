@@ -6,13 +6,12 @@ use crate::passes::result::RenderResult;
 use crate::passes::ChainExecuteCtx;
 use crate::renderer::backend::RendererBackendTrait;
 use crate::renderer::monitor::RendererMonitorTrait;
+use crate::renderer::RendererBackend;
 use crate::renderer::{
     DataStreamFrame, InputEvent, OutputEvent, PassEventTrait, RendezvousTrait, WindowConfig,
 };
 use crate::renderer::{RenderChainConstructor, RendererConfig};
-use crate::renderer::{RendererBackend, RendererError};
 use crossbeam_channel::{Receiver, Sender};
-use dawn_util::rendezvous::Rendezvous;
 use log::{info, warn};
 use std::mem;
 use std::sync::atomic::AtomicBool;
@@ -24,7 +23,6 @@ use winit::dpi::{LogicalSize, Size};
 use winit::error::EventLoopError;
 use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
-use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::{Fullscreen, Window, WindowAttributes, WindowId};
 
 #[derive(Debug, Error)]

@@ -9,7 +9,6 @@ use dawn_assets::ir::texture::{
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use glam::Vec2;
-use image::DynamicImage;
 use rusttype::{point, Font, Point, Scale};
 use std::collections::HashMap;
 use std::path::Path;

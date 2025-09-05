@@ -20,16 +20,15 @@ use evenio::component::Component;
 use evenio::event::GlobalEvent;
 use evenio::world::World;
 use glam::UVec2;
-use log::{info, warn};
+use log::info;
 pub use monitor::RendererMonitorEvent;
 use std::panic::UnwindSafe;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use std::thread::JoinHandle;
 use triple_buffer::{triple_buffer, Input};
 use winit::event::WindowEvent;
 use winit::event_loop::EventLoop;
-use winit::window::{Cursor, Fullscreen, Icon};
+use winit::window::{Cursor, Icon};
 
 #[derive(Clone)]
 pub struct WindowConfig {
@@ -281,15 +280,14 @@ impl Renderer {
         let (input_sender, input_receiver) = unbounded();
         let (output_sender, output_receiver) = unbounded();
         let (renderer_sender, renderer_receiver) = unbounded();
-        let (stream_input, mut stream_output) =
-            triple_buffer::<DataStreamFrame>(&DataStreamFrame {
-                epoch: 0,
-                renderables: vec![],
-                point_lights: vec![],
-                spot_lights: vec![],
-                area_lights: vec![],
-                sun_lights: vec![],
-            });
+        let (stream_input, stream_output) = triple_buffer::<DataStreamFrame>(&DataStreamFrame {
+            epoch: 0,
+            renderables: vec![],
+            point_lights: vec![],
+            spot_lights: vec![],
+            area_lights: vec![],
+            sun_lights: vec![],
+        });
         let stop_signal = Arc::new(AtomicBool::new(false));
         let stop_signal_clone = Arc::clone(&stop_signal);
 

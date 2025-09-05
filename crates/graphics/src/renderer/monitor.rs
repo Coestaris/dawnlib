@@ -4,7 +4,6 @@ use crossbeam_channel::Sender;
 use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 use evenio::event::GlobalEvent;
 use log::debug;
-use std::collections::HashMap;
 use std::panic::UnwindSafe;
 use std::time::Duration;
 
