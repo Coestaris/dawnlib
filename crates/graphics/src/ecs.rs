@@ -32,6 +32,7 @@ pub struct ObjectMesh(pub TypedAsset<Mesh<'static>>);
 pub struct ObjectPointLight {
     pub color: Vec3,
     pub intensity: f32,
+    pub range: f32,
 }
 
 #[derive(Component)]

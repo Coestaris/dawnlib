@@ -94,6 +94,7 @@ fn pf_to_gl(format: &IRPixelFormat) -> Result<GLPF, TextureError> {
         IRPixelFormat::RG16 => GLPF::new(glow::RG, glow::RG, glow::UNSIGNED_SHORT),
         IRPixelFormat::RGB16 => GLPF::new(glow::RGB, glow::RGB, glow::UNSIGNED_SHORT),
         IRPixelFormat::RGBA16 => GLPF::new(glow::RGBA, glow::RGBA, glow::UNSIGNED_SHORT),
+        IRPixelFormat::RG16F => GLPF::new(glow::RG16F, glow::RG, glow::FLOAT),
         IRPixelFormat::RGB16F => GLPF::new(glow::RGB16F, glow::RGB, glow::FLOAT),
         IRPixelFormat::RGBA16F => GLPF::new(glow::RGBA16F, glow::RGBA, glow::FLOAT),
         IRPixelFormat::RGB32F => GLPF::new(glow::RGB, glow::RGB, glow::FLOAT),
@@ -144,7 +145,7 @@ impl<'g> Texture<'g> {
         gl: &glow::Context,
         texture_type: TextureBind,
         texture: &Self,
-        texture_index: usize,
+        texture_index: u32,
     ) {
         assert!(texture_index < 32);
         assert_eq!(texture_type, texture.texture_type);
@@ -154,7 +155,7 @@ impl<'g> Texture<'g> {
         }
     }
 
-    pub fn unbind(gl: &glow::Context, texture_type: TextureBind, texture_index: usize) {
+    pub fn unbind(gl: &glow::Context, texture_type: TextureBind, texture_index: u32) {
         assert!(texture_index < 32);
         unsafe {
             gl.active_texture(glow::TEXTURE0 + texture_index as u32);

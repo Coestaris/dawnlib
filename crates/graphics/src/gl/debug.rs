@@ -121,4 +121,6 @@ where
             f(source, message_type, severity, msg);
         },
     );
+    gl.enable(glow::DEBUG_OUTPUT);
+    gl.enable(glow::DEBUG_OUTPUT_SYNCHRONOUS);
 }

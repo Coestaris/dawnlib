@@ -38,6 +38,7 @@ pub struct RenderablePointLight {
     pub position: Vec3,
     pub color: Vec3,
     pub intensity: f32,
+    pub range: f32,
 }
 
 impl RenderablePointLight {
@@ -47,6 +48,7 @@ impl RenderablePointLight {
             position,
             color: object.color,
             intensity: object.intensity,
+            range: object.range,
         }
     }
 
@@ -61,6 +63,7 @@ impl PartialEq for RenderablePointLight {
             && self.color.abs_diff_eq(other.color, 0.0001)
             && (self.intensity - other.intensity).abs() < 0.0001
             && self.meta == other.meta
+            && self.range == other.range
     }
 }
 

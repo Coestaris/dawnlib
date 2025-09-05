@@ -23,6 +23,10 @@ pub struct UserAssetHeader {
 pub struct ShaderSource {
     pub kind: IRShaderSourceKind,
     pub origin: ShaderOrigin,
+    #[serde(default)]
+    pub pre_include: Vec<ShaderOrigin>,
+    #[serde(default)]
+    pub post_include: Vec<ShaderOrigin>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -207,10 +211,9 @@ pub(crate) struct UserAsset {
     pub properties: UserAssetProperties,
 }
 
-impl DeepHash for ShaderSource {
+impl DeepHash for ShaderOrigin {
     fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
-        with_std(&self.kind, state);
-        match &self.origin {
+        match &self {
             ShaderOrigin::Inline { code } => {
                 0u8.deep_hash(state, ctx)?;
                 code.deep_hash(state, ctx)?;
@@ -220,6 +223,17 @@ impl DeepHash for ShaderSource {
                 source.deep_hash(state, ctx)?;
             }
         }
+
+        Ok(())
+    }
+}
+
+impl DeepHash for ShaderSource {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
+        with_std(&self.kind, state);
+        self.origin.deep_hash(state, ctx)?;
+        self.pre_include.deep_hash(state, ctx)?;
+        self.post_include.deep_hash(state, ctx)?;
         Ok(())
     }
 }
