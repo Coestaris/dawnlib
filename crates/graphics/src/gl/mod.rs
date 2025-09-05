@@ -55,7 +55,7 @@ unsafe fn stat_opengl_context(gl: &glow::Context) {
     info!("OpenGL information:");
     probe::get_version(gl).map_or_else(
         || warn!("Failed to get OpenGL version"),
-        |v| info!("OpenGL version: {}.{}", v.major, v.minor),
+        |v| info!("  OpenGL version: {}.{}", v.major, v.minor),
     );
     probe::get_renderer(gl).map_or_else(
         || warn!("Failed to get OpenGL renderer"),

@@ -92,9 +92,8 @@ impl Context {
         }
     }
 
-    // Find the config with the maximum number of samples, so our triangle will be
-    // smooth.
-    pub fn gl_config_picker(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
+    // Find the config with the maximum number of samples
+    pub fn config_picker(configs: Box<dyn Iterator<Item = Config> + '_>) -> Config {
         configs
             .reduce(|accum, config| {
                 let transparency_check = config.supports_transparency().unwrap_or(false)
@@ -116,6 +115,8 @@ impl Context {
         let template = ConfigTemplateBuilder::new()
             .with_depth_size(24)
             .with_stencil_size(8)
+            .with_transparency(false)
+            .with_alpha_size(0)
             .with_single_buffering(false)
             .with_buffer_type(ColorBufferType::Rgb {
                 r_size: 8,
@@ -128,8 +129,7 @@ impl Context {
             template, attributes
         );
         let display_builder = DisplayBuilder::new().with_window_attributes(Some(attributes));
-        let (window, config) =
-            display_builder.build(event_loop, template, Self::gl_config_picker)?;
+        let (window, config) = display_builder.build(event_loop, template, Self::config_picker)?;
         if window.is_none() {
             return Err(ContextError::WindowResultNone);
         }
