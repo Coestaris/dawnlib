@@ -1,5 +1,5 @@
-use std::sync::{Arc, Condvar, Mutex};
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Condvar, Mutex};
 
 /// Sync point that allows threads to synchronize at specific points.
 /// Allows threads to wait for each other before proceeding.
@@ -63,7 +63,9 @@ impl Rendezvous {
     /// Allows a third party to break the rendezvous and wake all waiting threads.
     pub fn unlock(&self) {
         // Mark as unlocked
-        self.0.unlocked.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.0
+            .unlocked
+            .store(true, std::sync::atomic::Ordering::SeqCst);
 
         // Wake all waiting threads
         let mut inner = self.0.mutex.lock().unwrap();

@@ -7,7 +7,7 @@ use crate::renderable::{
     Renderable, RenderableAreaLight, RenderablePointLight, RenderableSpotLight, RenderableSunLight,
 };
 use crate::renderer::monitor::RendererMonitorEvent;
-use crate::renderer::{InputEvent, RendererProxy, OutputEvent};
+use crate::renderer::{InputEvent, OutputEvent, RendererProxy};
 use dawn_ecs::events::{ExitEvent, InterSyncEvent, TickEvent};
 use evenio::component::Component;
 use evenio::entity::EntityId;

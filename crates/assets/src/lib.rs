@@ -97,7 +97,7 @@ pub enum AssetType {
     Material,
     Mesh,
     Font,
-    Dictionary
+    Dictionary,
 }
 
 impl std::fmt::Display for AssetType {

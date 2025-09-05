@@ -1,20 +1,20 @@
 pub mod audio;
+pub mod dictionary;
 pub mod font;
 pub mod material;
 pub mod mesh;
 pub mod notes;
 pub mod shader;
 pub mod texture;
-pub mod dictionary;
 
 use crate::ir::audio::IRAudio;
+use crate::ir::dictionary::IRDictionary;
 use crate::ir::font::IRFont;
 use crate::ir::material::IRMaterial;
 use crate::ir::mesh::IRMesh;
 use crate::ir::notes::IRNotes;
 use crate::ir::shader::IRShader;
 use crate::ir::texture::IRTexture;
-use crate::ir::dictionary::IRDictionary;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 

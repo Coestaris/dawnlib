@@ -1,4 +1,3 @@
-use std::mem;
 use crate::gl::context::Context;
 use crate::passes::chain::RenderChain;
 use crate::passes::events::RenderPassEvent;
@@ -15,6 +14,7 @@ use crate::renderer::{RendererBackend, RendererError};
 use crossbeam_channel::{Receiver, Sender};
 use dawn_util::rendezvous::Rendezvous;
 use log::{info, warn};
+use std::mem;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use thiserror::Error;

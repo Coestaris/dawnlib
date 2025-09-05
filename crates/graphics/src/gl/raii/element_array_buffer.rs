@@ -23,7 +23,10 @@ pub struct ElementArrayBufferBinding<'g, 'a> {
 impl<'g, 'a> ElementArrayBufferBinding<'g, 'a> {
     #[inline(always)]
     fn new(gl: &'g glow::Context, array_buffer: &'a mut ElementArrayBuffer<'g>) -> Self {
-        debug!("Binding ElementArrayBuffer ID: {:?}", array_buffer.as_inner());
+        debug!(
+            "Binding ElementArrayBuffer ID: {:?}",
+            array_buffer.as_inner()
+        );
         unsafe {
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(array_buffer.as_inner()));
         }

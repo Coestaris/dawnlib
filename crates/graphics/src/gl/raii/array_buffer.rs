@@ -27,7 +27,10 @@ impl<'g, 'a> ArrayBufferBinding<'g, 'a> {
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(array_buffer.as_inner()));
         }
 
-        Self { gl, inner: array_buffer }
+        Self {
+            gl,
+            inner: array_buffer,
+        }
     }
 
     pub fn feed<T>(&self, data: &[T], usage: ArrayBufferUsage) {
