@@ -1,3 +1,4 @@
+use std::mem;
 use crate::gl::context::Context;
 use crate::passes::chain::RenderChain;
 use crate::passes::events::RenderPassEvent;
@@ -228,7 +229,13 @@ where
             Some(RendererBackend::<E>::new(self.backend_config.clone(), context).unwrap());
 
         let constructor = self.constructor.as_mut();
-        self.chain = Some((constructor)(&mut self.backend.as_mut().unwrap()).unwrap());
+        let backend = self.backend.as_mut().unwrap();
+        let backend_static = unsafe {
+            // SAFETY: We are the only thread that can access the backend.
+            // and it's guaranteed to pipeline be dropped before the backend.
+            mem::transmute::<&mut RendererBackend<E>, &'static mut RendererBackend<E>>(backend)
+        };
+        self.chain = Some((constructor)(backend_static).unwrap());
 
         // Notify the monitor about the pass names
         let pass_names = self.chain.as_ref().unwrap().get_names().clone();

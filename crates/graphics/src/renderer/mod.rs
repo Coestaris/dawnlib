@@ -19,13 +19,13 @@ use dawn_util::rendezvous::Rendezvous;
 use evenio::component::Component;
 use evenio::event::GlobalEvent;
 use evenio::world::World;
+use glam::UVec2;
 use log::{info, warn};
 pub use monitor::RendererMonitorEvent;
 use std::panic::UnwindSafe;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use glam::UVec2;
 use triple_buffer::{triple_buffer, Input};
 use winit::event::WindowEvent;
 use winit::event_loop::EventLoop;
@@ -50,7 +50,7 @@ pub struct WindowConfig {
     /// Initial position of the window.
     pub icon: Option<Icon>,
     /// Initial cursor of the window. None means hidden cursor.
-    pub cursor: Option<Cursor>
+    pub cursor: Option<Cursor>,
 }
 
 #[derive(Clone)]
@@ -171,23 +171,25 @@ impl RendezvousTrait for RendezvousWrapper {
 struct DummyRendezvous;
 impl RendezvousTrait for DummyRendezvous {}
 
-pub trait RenderChainConstructor<C, E> =
-    Fn(&mut RendererBackend<E>) -> Result<RenderPipeline<C, E>, String> + Send + Sync + 'static
-    where
-        C: RenderChain<E>,
-        E: PassEventTrait;
+pub trait RenderChainConstructor<C, E> = Fn(&'static mut RendererBackend<E>) -> Result<RenderPipeline<C, E>, String>
+    + Send
+    + Sync
+    + 'static
+where
+    C: RenderChain<E>,
+    E: PassEventTrait;
 
 impl Renderer {
     /// Creates a new renderer instance and its proxy.
     /// The renderer instance should be run in a main thread using the `run` method.
-    /// 
+    ///
     /// Usually you want to attach the renderer proxy to the ECS using the `attach_to_ecs` method
     /// to control it from the ECS.
-    /// 
+    ///
     /// If you want to enable synchronization between the renderer and logic threads,
     /// you can provide a `RendererSynchronization` in the `WindowConfig`.
     /// This will allow you to synchronize the threads using the provided `Rendezvous`.
-    /// 
+    ///
     /// Monitoring is disabled by default - if you want to enable it, use the `new_with_monitoring` method.
     /// Monitoring is only beneficial if the renderer is attached to the ECS -
     /// it will eventually send monitoring data to the ECS.
@@ -335,8 +337,8 @@ impl Renderer {
 }
 
 impl<E: PassEventTrait> RendererProxy<E> {
-    /// After attaching the renderer proxy to the ECS, it will automatically collect the 
-    /// information about renderables and lights from the ECS every 
+    /// After attaching the renderer proxy to the ECS, it will automatically collect the
+    /// information about renderables and lights from the ECS every
     /// frame and send it to the renderer thread.
     ///
     /// Input events from the ECS:
