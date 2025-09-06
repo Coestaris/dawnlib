@@ -12,7 +12,7 @@ use std::time::Duration;
 pub(crate) struct ShaderAssetFactory {
     // Using 'static lifetime here because shader programs are
     // expected to live as long as the application.
-    basic_factory: BasicFactory<Program<'static>>,
+    basic_factory: BasicFactory<Program>,
 }
 
 impl ShaderAssetFactory {
@@ -46,7 +46,7 @@ impl ShaderAssetFactory {
 }
 
 pub(crate) struct TextureAssetFactory {
-    basic_factory: BasicFactory<Texture<'static>>,
+    basic_factory: BasicFactory<Texture>,
 }
 
 impl TextureAssetFactory {
@@ -81,7 +81,7 @@ impl TextureAssetFactory {
 
 pub(crate) struct MeshAssetFactory {
     // About lifetimes see shader program comment
-    basic_factory: BasicFactory<Mesh<'static>>,
+    basic_factory: BasicFactory<Mesh>,
 }
 
 impl MeshAssetFactory {
@@ -150,7 +150,7 @@ impl MaterialAssetFactory {
 
 pub(crate) struct FontAssetFactory {
     // About lifetimes see shader program comment
-    basic_factory: BasicFactory<Font<'static>>,
+    basic_factory: BasicFactory<Font>,
 }
 
 impl FontAssetFactory {

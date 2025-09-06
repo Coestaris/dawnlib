@@ -12,7 +12,7 @@ pub mod result;
 
 pub(crate) const MAX_RENDER_PASSES: usize = 32;
 
-pub trait RenderPass<E: PassEventTrait> {
+pub trait RenderPass<E: PassEventTrait>: 'static {
     /// Declare the targets for this render pass.
     /// This is used to address events that are relevant to this pass.
     #[inline(always)]

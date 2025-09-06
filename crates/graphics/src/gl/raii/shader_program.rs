@@ -5,14 +5,14 @@ use glow::HasContext;
 use log::debug;
 
 #[derive(Debug)]
-pub struct Program<'g> {
-    gl: &'g glow::Context,
+pub struct Program {
+    gl: &'static glow::Context,
     inner: glow::Program,
 }
 
 pub type UniformLocation = glow::UniformLocation;
 
-impl AssetCastable for Program<'static> {}
+impl AssetCastable for Program {}
 
 pub trait UniformTarget {
     fn set_uniform(gl: &glow::Context, location: UniformLocation, value: Self);
@@ -59,9 +59,9 @@ mod targets {
 
 use crate::gl::raii::shader::{Shader, ShaderError};
 
-impl<'g> Program<'g> {
+impl Program {
     pub(crate) fn from_ir<E: PassEventTrait>(
-        gl: &'g glow::Context,
+        gl: &'static glow::Context,
         ir: IRShader,
     ) -> Result<(Self, AssetMemoryUsage), ShaderError> {
         let program = Program::new(gl)?;
@@ -81,7 +81,7 @@ impl<'g> Program<'g> {
         Ok((program, AssetMemoryUsage::new(size_of::<Program>(), 0)))
     }
 
-    fn new(gl: &'g glow::Context) -> Result<Program, ShaderError> {
+    fn new(gl: &'static glow::Context) -> Result<Program, ShaderError> {
         unsafe {
             let id = gl
                 .create_program()
@@ -142,7 +142,7 @@ impl<'g> Program<'g> {
     }
 }
 
-impl<'g> Drop for Program<'g> {
+impl Drop for Program {
     fn drop(&mut self) {
         debug!("Dropping shader program ID: {:?}", self.as_inner());
         unsafe {

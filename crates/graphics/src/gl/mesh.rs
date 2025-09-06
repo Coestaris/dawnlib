@@ -30,16 +30,16 @@ pub struct SubMesh {
     pub index_count: usize,   // In units (u32 or u16)
 }
 
-pub struct TopologyBucket<'g> {
-    pub vao: VertexArray<'g>,
-    pub vbo: ArrayBuffer<'g>,
-    pub ebo: ElementArrayBuffer<'g>,
+pub struct TopologyBucket {
+    pub vao: VertexArray,
+    pub vbo: ArrayBuffer,
+    pub ebo: ElementArrayBuffer,
     pub indices_count: usize, // In units (u32 or u16)
     pub submesh: Vec<SubMesh>,
 }
 
-pub struct Mesh<'g> {
-    pub buckets: Vec<TopologyBucket<'g>>,
+pub struct Mesh {
+    pub buckets: Vec<TopologyBucket>,
     pub min: Vec3,
     pub max: Vec3,
 }
@@ -51,11 +51,11 @@ struct IRBucket {
 }
 
 impl IRBucket {
-    pub fn into_bucket<'g>(
+    pub fn into_bucket(
         self,
-        gl: &'g glow::Context,
+        gl: &'static glow::Context,
         deps: &HashMap<AssetID, Asset>,
-    ) -> Result<TopologyBucket<'g>, MeshError> {
+    ) -> Result<TopologyBucket, MeshError> {
         let vao = VertexArray::new(gl, self.topology, self.index_type.clone())
             .ok_or(MeshError::VertexArrayAllocationFailed)?;
         let mut vbo = ArrayBuffer::new(gl).ok_or(MeshError::ArrayBufferAllocationFailed)?;
@@ -128,11 +128,11 @@ impl IRBucket {
     }
 }
 
-impl AssetCastable for Mesh<'static> {}
+impl AssetCastable for Mesh {}
 
-impl<'g> Mesh<'g> {
+impl Mesh {
     pub fn from_ir(
-        gl: &'g glow::Context,
+        gl: &'static glow::Context,
         ir: IRMesh,
         deps: HashMap<AssetID, Asset>,
     ) -> Result<(Self, AssetMemoryUsage), MeshError> {

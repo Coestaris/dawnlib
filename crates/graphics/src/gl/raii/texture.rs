@@ -8,8 +8,8 @@ use log::debug;
 use thiserror::Error;
 
 #[derive(Debug)]
-pub struct Texture<'g> {
-    gl: &'g glow::Context,
+pub struct Texture {
+    gl: &'static glow::Context,
     inner: glow::Texture,
     texture_type: TextureBind,
 }
@@ -30,7 +30,7 @@ pub enum TextureError {
     UnsupportedPixelType(IRPixelFormat),
 }
 
-impl AssetCastable for Texture<'static> {}
+impl AssetCastable for Texture {}
 
 fn tex_type_to_gl(tex_type: &IRTextureType) -> Result<TextureBind, TextureError> {
     Ok(match tex_type {
@@ -106,9 +106,9 @@ fn pf_to_gl(format: &IRPixelFormat) -> Result<GLPF, TextureError> {
     })
 }
 
-impl<'g> Texture<'g> {
+impl Texture {
     pub fn from_ir<E: PassEventTrait>(
-        gl: &'g glow::Context,
+        gl: &'static glow::Context,
         ir: IRTexture,
     ) -> Result<(Self, AssetMemoryUsage), TextureError> {
         let texture = Self::new(gl, ir.texture_type.clone())?;
@@ -235,7 +235,7 @@ impl<'g> Texture<'g> {
         self.inner
     }
 
-    pub fn new2d(gl: &'g glow::Context) -> Result<Self, TextureError> {
+    pub fn new2d(gl: &'static glow::Context) -> Result<Self, TextureError> {
         Self::new(
             gl,
             IRTextureType::Texture2D {
@@ -245,7 +245,7 @@ impl<'g> Texture<'g> {
         )
     }
 
-    pub fn new(gl: &'g glow::Context, texture_type: IRTextureType) -> Result<Self, TextureError> {
+    pub fn new(gl: &'static glow::Context, texture_type: IRTextureType) -> Result<Self, TextureError> {
         unsafe {
             let id = gl
                 .create_texture()
@@ -261,7 +261,7 @@ impl<'g> Texture<'g> {
     }
 }
 
-impl<'g> Drop for Texture<'g> {
+impl Drop for Texture {
     fn drop(&mut self) {
         debug!("Dropping Texture ID: {:?}", self.inner);
         unsafe {

@@ -28,7 +28,7 @@ use std::sync::Arc;
 use triple_buffer::{triple_buffer, Input};
 use winit::event::WindowEvent;
 use winit::event_loop::EventLoop;
-use winit::window::{Cursor, Icon};
+use winit::window::{Cursor, Icon, Window};
 
 #[derive(Clone)]
 pub struct WindowConfig {
@@ -110,7 +110,7 @@ impl DataStreamFrame {
 }
 
 pub struct Renderer {
-    run: Box<dyn FnOnce() + Send + 'static>,
+    run: Box<dyn FnOnce() + 'static>,
 }
 
 /// Thread-shared proxy to communicate with the renderer thread.
@@ -170,13 +170,32 @@ impl RendezvousTrait for RendezvousWrapper {
 struct DummyRendezvous;
 impl RendezvousTrait for DummyRendezvous {}
 
-pub trait RenderChainConstructor<C, E> = Fn(&'static mut RendererBackend<E>) -> Result<RenderPipeline<C, E>, String>
-    + Send
-    + Sync
-    + 'static
+pub trait CustomRenderer<C, E>: 'static
 where
     C: RenderChain<E>,
-    E: PassEventTrait;
+    E: PassEventTrait,
+{
+    fn spawn_chain(
+        &mut self,
+        window: &Window,
+        backend: &'static mut RendererBackend<E>,
+    ) -> anyhow::Result<C>;
+
+    fn on_window_event(
+        &mut self,
+        _window: &Window,
+        _backend: &RendererBackend<E>,
+        _event: &WindowEvent,
+    ) {
+    }
+
+    // This is helper function to call before and after each frame. The actual
+    // rendering should be done in the RenderChain implementation.
+    fn before_frame(&mut self, _window: &Window, _backend: &RendererBackend<E>) {}
+    fn before_render(&mut self, _window: &Window, _backend: &RendererBackend<E>) {}
+    fn after_render(&mut self, _window: &Window, _backend: &RendererBackend<E>) {}
+    fn after_frame(&mut self, _window: &Window, _backend: &RendererBackend<E>) {}
+}
 
 impl Renderer {
     /// Creates a new renderer instance and its proxy.
@@ -196,7 +215,7 @@ impl Renderer {
     pub fn new<C, E>(
         window_config: WindowConfig,
         backend_config: RendererConfig,
-        constructor: impl RenderChainConstructor<C, E>,
+        renderer: impl CustomRenderer<C, E>,
     ) -> Result<(Renderer, RendererProxy<E>), RendererError>
     where
         E: PassEventTrait,
@@ -206,7 +225,7 @@ impl Renderer {
             Self::new_inner(
                 window_config,
                 backend_config,
-                constructor,
+                renderer,
                 RendezvousWrapper(sync.before_frame),
                 RendezvousWrapper(sync.after_frame),
                 DummyRendererMonitor {},
@@ -215,7 +234,7 @@ impl Renderer {
             Self::new_inner(
                 window_config,
                 backend_config,
-                constructor,
+                renderer,
                 DummyRendezvous {},
                 DummyRendezvous {},
                 DummyRendererMonitor {},
@@ -232,7 +251,7 @@ impl Renderer {
     pub fn new_with_monitoring<C, E>(
         window_config: WindowConfig,
         backend_config: RendererConfig,
-        constructor: impl RenderChainConstructor<C, E>,
+        renderer: impl CustomRenderer<C, E>,
     ) -> Result<(Renderer, RendererProxy<E>), RendererError>
     where
         E: PassEventTrait,
@@ -242,7 +261,7 @@ impl Renderer {
             Self::new_inner(
                 window_config,
                 backend_config,
-                constructor,
+                renderer,
                 RendezvousWrapper(sync.before_frame),
                 RendezvousWrapper(sync.after_frame),
                 RendererMonitor::new(),
@@ -251,7 +270,7 @@ impl Renderer {
             Self::new_inner(
                 window_config,
                 backend_config,
-                constructor,
+                renderer,
                 DummyRendezvous {},
                 DummyRendezvous {},
                 RendererMonitor::new(),
@@ -262,7 +281,7 @@ impl Renderer {
     fn new_inner<P, C, E>(
         window_config: WindowConfig,
         backend_config: RendererConfig,
-        constructor: impl RenderChainConstructor<C, E>,
+        renderer: impl CustomRenderer<C, E>,
         before_frame: impl RendezvousTrait,
         after_frame: impl RendezvousTrait,
         mut monitor: P,
@@ -298,7 +317,7 @@ impl Renderer {
                         window_config,
                         backend_config,
                         monitor,
-                        constructor,
+                        renderer,
                         before_frame,
                         after_frame,
                         stop_signal.clone(),

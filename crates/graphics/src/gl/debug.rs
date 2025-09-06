@@ -121,6 +121,14 @@ where
             f(source, message_type, severity, msg);
         },
     );
+    // Filter out notifications
+    gl.debug_message_control(
+        glow::DONT_CARE,
+        glow::DONT_CARE,
+        glow::DEBUG_SEVERITY_NOTIFICATION,
+        &[],
+        false,
+    );
     gl.enable(glow::DEBUG_OUTPUT);
     gl.enable(glow::DEBUG_OUTPUT_SYNCHRONOUS);
 }

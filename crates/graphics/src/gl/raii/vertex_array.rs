@@ -4,8 +4,8 @@ use glow::HasContext;
 use log::debug;
 
 #[derive(Debug)]
-pub struct VertexArray<'g> {
-    gl: &'g glow::Context,
+pub struct VertexArray {
+    gl: &'static glow::Context,
     id: glow::VertexArray,
     draw_mode: u32,
     topology_size: usize,
@@ -13,14 +13,14 @@ pub struct VertexArray<'g> {
     index_size: usize,
 }
 
-pub struct VertexArrayBinding<'g, 'a> {
-    gl: &'g glow::Context,
-    vertex_array: &'a VertexArray<'g>,
+pub struct VertexArrayBinding<'a> {
+    gl: &'static glow::Context,
+    vertex_array: &'a VertexArray,
 }
 
-impl<'g, 'a> VertexArrayBinding<'g, 'a> {
+impl<'a> VertexArrayBinding<'a> {
     #[inline(always)]
-    fn new(gl: &'g glow::Context, vertex_array: &'a VertexArray<'g>) -> Self {
+    fn new(gl: &'static glow::Context, vertex_array: &'a VertexArray) -> Self {
         unsafe {
             gl.bind_vertex_array(Some(vertex_array.as_inner()));
         }
@@ -80,7 +80,7 @@ impl<'g, 'a> VertexArrayBinding<'g, 'a> {
     }
 }
 
-impl<'g, 'a> Drop for VertexArrayBinding<'g, 'a> {
+impl<'a> Drop for VertexArrayBinding<'a> {
     #[inline(always)]
     fn drop(&mut self) {
         unsafe {
@@ -89,8 +89,8 @@ impl<'g, 'a> Drop for VertexArrayBinding<'g, 'a> {
     }
 }
 
-impl<'g> VertexArray<'g> {
-    pub fn new(gl: &'g glow::Context, primitive: IRTopology, index: IRIndexType) -> Option<Self> {
+impl VertexArray {
+    pub fn new(gl: &'static glow::Context, primitive: IRTopology, index: IRIndexType) -> Option<Self> {
         unsafe {
             let id = gl.create_vertex_array().ok()?;
 
@@ -122,7 +122,7 @@ impl<'g> VertexArray<'g> {
 
     #[inline(always)]
     #[must_use]
-    pub fn bind(&self) -> VertexArrayBinding<'g, '_> {
+    pub fn bind(&self) -> VertexArrayBinding<'_> {
         VertexArrayBinding::new(self.gl, self)
     }
 
@@ -132,7 +132,7 @@ impl<'g> VertexArray<'g> {
     }
 }
 
-impl<'g> Drop for VertexArray<'g> {
+impl Drop for VertexArray {
     fn drop(&mut self) {
         debug!("Dropping VBO ID: {:?}", self.id);
         unsafe {

@@ -15,14 +15,14 @@ impl ElementArrayBufferUsage {
         }
     }
 }
-pub struct ElementArrayBufferBinding<'g, 'a> {
-    gl: &'g glow::Context,
-    inner: &'a mut ElementArrayBuffer<'g>,
+pub struct ElementArrayBufferBinding<'a> {
+    gl: &'static glow::Context,
+    inner: &'a mut ElementArrayBuffer,
 }
 
-impl<'g, 'a> ElementArrayBufferBinding<'g, 'a> {
+impl<'a> ElementArrayBufferBinding<'a> {
     #[inline(always)]
-    fn new(gl: &'g glow::Context, array_buffer: &'a mut ElementArrayBuffer<'g>) -> Self {
+    fn new(gl: &'static glow::Context, array_buffer: &'a mut ElementArrayBuffer) -> Self {
         debug!(
             "Binding ElementArrayBuffer ID: {:?}",
             array_buffer.as_inner()
@@ -50,13 +50,13 @@ impl<'g, 'a> ElementArrayBufferBinding<'g, 'a> {
     }
 }
 
-pub struct ElementArrayBuffer<'g> {
-    gl: &'g glow::Context,
+pub struct ElementArrayBuffer {
+    gl: &'static glow::Context,
     inner: glow::Buffer,
 }
 
-impl<'g> ElementArrayBuffer<'g> {
-    pub fn new(gl: &'g glow::Context) -> Option<Self> {
+impl ElementArrayBuffer {
+    pub fn new(gl: &'static glow::Context) -> Option<Self> {
         unsafe {
             let id = gl.create_buffer().ok()?;
 
@@ -65,7 +65,7 @@ impl<'g> ElementArrayBuffer<'g> {
         }
     }
 
-    pub fn bind(&mut self) -> ElementArrayBufferBinding<'g, '_> {
+    pub fn bind(&mut self) -> ElementArrayBufferBinding<'_> {
         ElementArrayBufferBinding::new(self.gl, self)
     }
 
@@ -75,7 +75,7 @@ impl<'g> ElementArrayBuffer<'g> {
     }
 }
 
-impl<'g> Drop for ElementArrayBuffer<'g> {
+impl Drop for ElementArrayBuffer {
     fn drop(&mut self) {
         debug!("Dropping ElementArrayBuffer ID: {:?}", self.inner);
         unsafe {

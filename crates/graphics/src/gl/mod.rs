@@ -82,19 +82,14 @@ impl<E: PassEventTrait> GLRenderer<E> {
         // operations (like querying capabilities) and not for modifying state.
         unsafe { std::mem::transmute::<&glow::Context, &'static glow::Context>(&self.gl) }
     }
-}
 
-// Texture and shader assets cannot be handled from the ECS (like other assets),
-// because they are tightly coupled with the OpenGL context and cannot be
-// loaded asynchronously.
-// So OpenGL renderer handles events for these assets on each draw tick.
-impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
-    fn new(cfg: RendererConfig, context: Context) -> Result<Self, RendererBackendError>
-    where
-        Self: Sized,
-    {
+    pub fn new_context(&self) -> Result<glow::Context, GLRendererError> {
+        Self::new_context_inner(&self.context)
+    }
+    
+    fn new_context_inner(context: &Context) -> Result<glow::Context, GLRendererError> {
         unsafe {
-            let mut gl = glow::Context::from_loader_function_cstr(|s| {
+            let gl = glow::Context::from_loader_function_cstr(|s| {
                 // Warn if the symbol is not found
                 match context.load_fn(s.to_str().unwrap_or("")) {
                     Ok(addr) => addr,
@@ -109,6 +104,23 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
                     }
                 }
             });
+            Ok(gl)
+        }
+    }
+}
+
+// Texture and shader assets cannot be handled from the ECS (like other assets),
+// because they are tightly coupled with the OpenGL context and cannot be
+// loaded asynchronously.
+// So OpenGL renderer handles events for these assets on each draw tick.
+impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
+    fn new(cfg: RendererConfig, context: Context) -> Result<Self, RendererBackendError>
+    where
+        Self: Sized,
+    {
+        unsafe {
+            // Create main OpenGL context
+            let mut gl = Self::new_context_inner(&context).unwrap();
 
             // Stat the OpenGL context
             stat_opengl_context(&gl);

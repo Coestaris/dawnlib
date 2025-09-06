@@ -10,7 +10,7 @@ const ROUTER_CAPACITY: usize = 64;
 /// The `E` type parameter represents the event type that can be dispatched
 /// to the passes. The `C` type parameter is a compile-time heterogeneous
 /// list of render passes that implements `ChainExecute`.
-pub struct RenderPipeline<C, E>
+pub(crate) struct RenderPipeline<C, E>
 where
     E: PassEventTrait,
     C: RenderChain<E>,

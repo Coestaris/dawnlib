@@ -23,9 +23,9 @@ pub enum FontError {
 }
 
 #[derive(Debug)]
-pub struct Font<'g> {
-    vao: VertexArray<'g>,
-    vbo: ArrayBuffer<'g>,
+pub struct Font {
+    vao: VertexArray,
+    vbo: ArrayBuffer,
 
     pub glyphs: HashMap<char, IRGlyph>,
     pub atlas: Asset,
@@ -33,11 +33,11 @@ pub struct Font<'g> {
     pub space_advance: f32,
 }
 
-impl AssetCastable for Font<'static> {}
+impl AssetCastable for Font {}
 
-impl<'g> Font<'g> {
+impl Font {
     pub(crate) fn from_ir<E: PassEventTrait>(
-        gl: &'g glow::Context,
+        gl: &'static glow::Context,
         ir: IRFont,
         deps: HashMap<AssetID, Asset>,
     ) -> Result<(Self, AssetMemoryUsage), FontError> {

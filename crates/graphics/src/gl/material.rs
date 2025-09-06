@@ -22,11 +22,11 @@ pub enum MaterialError {
 }
 
 pub struct Material {
-    pub albedo: TypedAsset<Texture<'static>>,
-    pub metallic: TypedAsset<Texture<'static>>,
-    pub roughness: TypedAsset<Texture<'static>>,
-    pub normal: TypedAsset<Texture<'static>>,
-    pub occlusion: TypedAsset<Texture<'static>>,
+    pub albedo: TypedAsset<Texture>,
+    pub metallic: TypedAsset<Texture>,
+    pub roughness: TypedAsset<Texture>,
+    pub normal: TypedAsset<Texture>,
+    pub occlusion: TypedAsset<Texture>,
 }
 
 impl AssetCastable for Material {}

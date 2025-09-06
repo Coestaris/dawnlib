@@ -113,7 +113,7 @@ pub struct RenderableAreaLight {
 pub struct Renderable {
     pub meta: RenderableMeta,
     pub model: Mat4,
-    pub mesh: TypedAsset<Mesh<'static>>,
+    pub mesh: TypedAsset<Mesh>,
 }
 
 impl Renderable {
@@ -122,7 +122,7 @@ impl Renderable {
         position: Vec3,
         rotation: Quat,
         scale: Vec3,
-        mesh: TypedAsset<Mesh<'static>>,
+        mesh: TypedAsset<Mesh>,
     ) -> Self {
         let model = Mat4::from_scale_rotation_translation(scale, rotation, position);
 

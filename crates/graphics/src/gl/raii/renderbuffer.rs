@@ -1,8 +1,8 @@
 use glow::HasContext;
 use log::debug;
 
-pub struct Renderbuffer<'g> {
-    gl: &'g glow::Context,
+pub struct Renderbuffer {
+    gl: &'static glow::Context,
     inner: glow::Renderbuffer,
 }
 
@@ -37,8 +37,8 @@ impl RenderBufferStorage {
     }
 }
 
-impl<'g> Renderbuffer<'g> {
-    pub fn new(gl: &'g glow::Context) -> Option<Self> {
+impl Renderbuffer {
+    pub fn new(gl: &'static glow::Context) -> Option<Self> {
         unsafe {
             let id = gl.create_renderbuffer().ok()?;
 
@@ -75,7 +75,7 @@ impl<'g> Renderbuffer<'g> {
     }
 }
 
-impl<'g> Drop for Renderbuffer<'g> {
+impl Drop for Renderbuffer {
     fn drop(&mut self) {
         debug!("Dropping RenderBuffer ID: {:?}", self.inner);
         unsafe {

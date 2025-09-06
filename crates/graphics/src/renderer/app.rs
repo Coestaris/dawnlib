@@ -6,11 +6,11 @@ use crate::passes::result::RenderResult;
 use crate::passes::ChainExecuteCtx;
 use crate::renderer::backend::RendererBackendTrait;
 use crate::renderer::monitor::RendererMonitorTrait;
-use crate::renderer::RendererBackend;
+use crate::renderer::RendererConfig;
+use crate::renderer::{CustomRenderer, RendererBackend};
 use crate::renderer::{
     DataStreamFrame, InputEvent, OutputEvent, PassEventTrait, RendezvousTrait, WindowConfig,
 };
-use crate::renderer::{RenderChainConstructor, RendererConfig};
 use crossbeam_channel::{Receiver, Sender};
 use log::{info, warn};
 use std::mem;
@@ -37,16 +37,14 @@ where
     P: RendererMonitorTrait,
     C: RenderChain<E>,
 {
-    window: Option<Window>,
-    chain: Option<RenderPipeline<C, E>>,
-    backend: Option<RendererBackend<E>>,
+    pipeline: Option<RenderPipeline<C, E>>,
 
     config: WindowConfig,
     frame_index: usize,
 
     backend_config: RendererConfig,
     external_stop: Arc<AtomicBool>,
-    constructor: Box<dyn RenderChainConstructor<C, E>>,
+    renderer: Box<dyn CustomRenderer<C, E>>,
     before_frame: Box<dyn RendezvousTrait>,
     after_frame: Box<dyn RendezvousTrait>,
     monitor: P,
@@ -56,6 +54,10 @@ where
     view_in: Receiver<OutputEvent>,
     data_stream: Output<DataStreamFrame>,
     input_out: Sender<InputEvent>,
+
+    // The backend and window must be dropped after the pipeline
+    backend: Option<RendererBackend<E>>,
+    window: Option<Window>,
 }
 
 impl<P, C, E> Application<P, C, E>
@@ -69,7 +71,7 @@ where
         config: WindowConfig,
         backend_config: RendererConfig,
         monitor: P,
-        constructor: impl RenderChainConstructor<C, E>,
+        renderer: impl CustomRenderer<C, E>,
         before_frame: impl RendezvousTrait,
         after_frame: impl RendezvousTrait,
         external_stop: Arc<AtomicBool>,
@@ -79,13 +81,13 @@ where
         input_out: Sender<InputEvent>,
     ) -> Result<Self, ApplicationError> {
         Ok(Application {
-            constructor: Box::new(constructor),
+            renderer: Box::new(renderer),
             before_frame: Box::new(before_frame),
             after_frame: Box::new(after_frame),
             config,
             window: None,
             external_stop,
-            chain: None,
+            pipeline: None,
             monitor,
             renderer_in,
             view_in: output_in,
@@ -95,6 +97,38 @@ where
             backend: None,
             input_out,
         })
+    }
+
+    fn before_frame_callback(&mut self) {
+        if let (Some(window), Some(backend)) = (self.window.as_ref(), self.backend.as_ref()) {
+            self.renderer.before_frame(window, backend);
+        }
+    }
+
+    fn after_frame_callback(&mut self) {
+        if let (Some(window), Some(backend)) = (self.window.as_ref(), self.backend.as_ref()) {
+            self.renderer.after_frame(window, backend);
+        }
+    }
+
+    fn before_render_callback(&mut self) {
+        if let (Some(window), Some(backend)) = (self.window.as_ref(), self.backend.as_ref()) {
+            self.renderer.before_render(window, backend);
+        }
+    }
+
+    fn after_render_callback(&mut self) {
+        if let (Some(window), Some(backend)) = (self.window.as_ref(), self.backend.as_ref()) {
+            self.renderer.after_render(window, backend);
+        }
+    }
+
+    fn event_callback(&mut self, event: &WindowEvent) {
+        self.renderer.on_window_event(
+            self.window.as_ref().unwrap(),
+            self.backend.as_ref().unwrap(),
+            event,
+        );
     }
 }
 
@@ -113,7 +147,7 @@ where
         // before the next frame.
         self.monitor.events_start();
         for event in self.renderer_in.try_iter() {
-            self.chain.as_mut().unwrap().dispatch(event);
+            self.pipeline.as_mut().unwrap().dispatch(event);
         }
         self.monitor.events_stop();
 
@@ -128,6 +162,8 @@ where
 
         // Meet with the Main thread
         self.before_frame.wait();
+
+        self.before_frame_callback();
 
         // Process View. Usually this will produce input events
         self.monitor.view_start();
@@ -165,7 +201,7 @@ where
                     self.window.as_ref().unwrap().set_window_icon(icon.clone());
                     #[cfg(target_os = "windows")]
                     {
-                        use winit::platform::windows::{WindowExtWindows};
+                        use winit::platform::windows::WindowExtWindows;
                         self.window.as_ref().unwrap().set_taskbar_icon(icon);
                     }
                 }
@@ -204,7 +240,7 @@ where
 
         #[cfg(target_os = "windows")]
         {
-            use winit::platform::windows::{WindowAttributesExtWindows};
+            use winit::platform::windows::WindowAttributesExtWindows;
             window_attributes = window_attributes.with_taskbar_icon(self.config.icon.clone());
         }
 
@@ -230,17 +266,21 @@ where
         self.backend =
             Some(RendererBackend::<E>::new(self.backend_config.clone(), context).unwrap());
 
-        let constructor = self.constructor.as_mut();
+        let constructor = self.renderer.as_mut();
         let backend = self.backend.as_mut().unwrap();
         let backend_static = unsafe {
             // SAFETY: We are the only thread that can access the backend.
             // and it's guaranteed to pipeline be dropped before the backend.
             mem::transmute::<&mut RendererBackend<E>, &'static mut RendererBackend<E>>(backend)
         };
-        self.chain = Some((constructor)(backend_static).unwrap());
+        self.pipeline = Some(RenderPipeline::new(
+            constructor
+                .spawn_chain(&self.window.as_ref().unwrap(), backend_static)
+                .unwrap(),
+        ));
 
         // Notify the monitor about the pass names
-        let pass_names = self.chain.as_ref().unwrap().get_names().clone();
+        let pass_names = self.pipeline.as_ref().unwrap().get_names().clone();
         self.monitor.set_pass_names(&pass_names);
     }
 
@@ -250,8 +290,13 @@ where
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        // Receiver may be dead. We don't care.
-        let _ = self.input_out.send(InputEvent(event.clone()));
+        // Do not spam the channel with redraw requests.
+        // RedrawRequested events are sent every frame in about_to_wait.
+        if !matches!(event, WindowEvent::RedrawRequested) {
+            // Receiver may be dead. We don't care.
+            let _ = self.input_out.send(InputEvent(event.clone()));
+            self.event_callback(&event);
+        }
 
         match event {
             WindowEvent::Resized(size) => {
@@ -282,6 +327,9 @@ where
 
                 // Render the frame
                 self.monitor.render_start();
+
+                self.before_render_callback();
+
                 if let Err(e) = self.backend.as_mut().unwrap().before_frame() {
                     todo!()
                 }
@@ -300,15 +348,19 @@ where
 
                 let mut ctx = ChainExecuteCtx::new(frame, self.backend.as_mut().unwrap());
 
-                let pass_result = self.chain.as_mut().unwrap().execute(&mut ctx);
+                let pass_result = self.pipeline.as_mut().unwrap().execute(&mut ctx);
                 if let RenderResult::Failed = pass_result {
                     todo!()
                 }
+                let durations = mem::take(&mut ctx.durations);
+                drop(ctx);
+
+                self.after_render_callback();
 
                 // Do not include after frame in the monitoring, because it usually synchronizes
                 // the rendered frame with the OS by swapping buffer, that usually is synchronized
                 // with the refresh rate of the display. So this will not be informative.
-                self.monitor.render_stop(pass_result, &ctx.durations);
+                self.monitor.render_stop(pass_result, &durations);
             }
             _ => {}
         }
@@ -322,6 +374,8 @@ where
         if let Err(e) = self.backend.as_mut().unwrap().after_frame() {
             todo!()
         }
+
+        self.after_frame_callback();
 
         // Meet with the Main thread again.
         self.after_frame.wait();

@@ -15,14 +15,14 @@ impl ArrayBufferUsage {
         }
     }
 }
-pub struct ArrayBufferBinding<'g, 'a> {
-    gl: &'g glow::Context,
-    inner: &'a mut ArrayBuffer<'g>,
+pub struct ArrayBufferBinding<'a> {
+    gl: &'static glow::Context,
+    inner: &'a mut ArrayBuffer,
 }
 
-impl<'g, 'a> ArrayBufferBinding<'g, 'a> {
+impl<'a> ArrayBufferBinding<'a> {
     #[inline(always)]
-    fn new(gl: &'g glow::Context, array_buffer: &'a mut ArrayBuffer<'g>) -> Self {
+    fn new(gl: &'static glow::Context, array_buffer: &'a mut ArrayBuffer) -> Self {
         unsafe {
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(array_buffer.as_inner()));
         }
@@ -47,7 +47,7 @@ impl<'g, 'a> ArrayBufferBinding<'g, 'a> {
     }
 }
 
-impl<'g> Drop for ArrayBufferBinding<'g, '_> {
+impl Drop for ArrayBufferBinding<'_> {
     #[inline(always)]
     fn drop(&mut self) {
         unsafe {
@@ -57,13 +57,13 @@ impl<'g> Drop for ArrayBufferBinding<'g, '_> {
 }
 
 #[derive(Debug)]
-pub struct ArrayBuffer<'g> {
-    gl: &'g glow::Context,
+pub struct ArrayBuffer {
+    gl: &'static glow::Context,
     inner: glow::Buffer,
 }
 
-impl<'g> ArrayBuffer<'g> {
-    pub fn new(gl: &'g glow::Context) -> Option<Self> {
+impl ArrayBuffer {
+    pub fn new(gl: &'static glow::Context) -> Option<Self> {
         unsafe {
             let id = gl.create_buffer().ok()?;
 
@@ -72,7 +72,7 @@ impl<'g> ArrayBuffer<'g> {
         }
     }
 
-    pub fn bind(&mut self) -> ArrayBufferBinding<'g, '_> {
+    pub fn bind(&mut self) -> ArrayBufferBinding<'_> {
         ArrayBufferBinding::new(self.gl, self)
     }
 
@@ -82,7 +82,7 @@ impl<'g> ArrayBuffer<'g> {
     }
 }
 
-impl<'g> Drop for ArrayBuffer<'g> {
+impl Drop for ArrayBuffer {
     fn drop(&mut self) {
         debug!("Dropping ArrayBuffer ID: {:?}", self.inner);
         unsafe {

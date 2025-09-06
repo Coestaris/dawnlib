@@ -69,13 +69,13 @@ impl BlitFramebufferMask {
     }
 }
 
-pub struct Framebuffer<'g> {
-    gl: &'g glow::Context,
+pub struct Framebuffer {
+    gl: &'static glow::Context,
     inner: glow::Framebuffer,
 }
 
-impl<'g> Framebuffer<'g> {
-    pub fn new(gl: &'g glow::Context) -> Option<Self> {
+impl Framebuffer {
+    pub fn new(gl: &'static glow::Context) -> Option<Self> {
         unsafe {
             let id = gl.create_framebuffer().ok()?;
 
@@ -195,7 +195,7 @@ impl<'g> Framebuffer<'g> {
     }
 }
 
-impl<'g> Drop for Framebuffer<'g> {
+impl Drop for Framebuffer {
     fn drop(&mut self) {
         debug!("Dropping Framebuffer ID: {:?}", self.inner);
         unsafe {

@@ -34,7 +34,7 @@ impl<E: PassEventTrait, H, T> ChainCons<E, H, T> {
 }
 
 /// A trait for optimization-friendly processing a chain (HList) of render passes.
-pub trait RenderChain<E: PassEventTrait> {
+pub trait RenderChain<E: PassEventTrait>: 'static {
     /// Sequentially execute the chain of render passes.
     #[inline(always)]
     fn execute(&mut self, _: usize, _: &mut ChainExecuteCtx<E>) -> RenderResult {
@@ -134,6 +134,39 @@ where
 /// ```
 #[macro_export]
 macro_rules! construct_chain {
-    () => { ChainNil::new() };
-    ($head:expr $(, $tail:expr)* $(,)?) => { ChainCons::new($head, construct_chain!($($tail),*)) };
+    () => { $crate::passes::chain::ChainNil::new() };
+    ($head:expr $(, $tail:expr)* $(,)?) => { $crate::passes::chain::ChainCons::new($head, $crate::construct_chain!($($tail),*)) };
+}
+
+/// Contracts a heterogeneous list type of render passes.
+/// This macro allows you to create a type alias for a chain of render passes
+/// using a simple syntax.
+///# Example:
+/// ```
+/// use dawn_graphics::passes::RenderPass;
+/// struct PassA;
+/// struct PassB;
+/// struct PassC;
+/// struct Event;
+///
+/// impl RenderPass<Event> for PassA {
+///    fn name(&self) -> &str { "PassA" }
+/// }
+/// impl RenderPass<Event> for PassB {
+///   fn name(&self) -> &str { "PassB" }
+/// }
+/// impl RenderPass<Event> for PassC {
+///   fn name(&self) -> &str { "PassC" }
+/// }
+/// use dawn_graphics::construct_chain_type;
+/// type ChainType = construct_chain_type!(Event; PassA, PassB, PassC);
+/// ```
+#[macro_export]
+macro_rules! construct_chain_type {
+    ($e:ty ; $(,)?) => {
+        $crate::passes::chain::ChainNil<$e>
+    };
+    ($e:ty ; $head:ty $(, $tail:ty )* $(,)?) => {
+        $crate::passes::chain::ChainCons<$e, $head, $crate::construct_chain_type!($e ; $($tail),*)>
+    };
 }

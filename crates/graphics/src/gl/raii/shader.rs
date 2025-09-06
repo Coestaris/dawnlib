@@ -3,8 +3,8 @@ use glow::HasContext;
 use log::{debug, error};
 use thiserror::Error;
 
-pub struct Shader<'g> {
-    gl: &'g glow::Context,
+pub struct Shader {
+    gl: &'static glow::Context,
     inner: glow::Shader,
 }
 
@@ -26,9 +26,9 @@ pub enum ShaderError {
     UnknownUniformLocation(String),
 }
 
-impl<'g> Shader<'g> {
+impl Shader {
     pub(crate) fn new(
-        gl: &glow::Context,
+        gl: &'static glow::Context,
         source_type: IRShaderSourceKind,
     ) -> Result<Shader, ShaderError> {
         unsafe {
@@ -72,7 +72,7 @@ impl<'g> Shader<'g> {
     }
 }
 
-impl<'g> Drop for Shader<'g> {
+impl Drop for Shader {
     fn drop(&mut self) {
         debug!("Dropping shader ID: {:?}", self.inner);
         unsafe {

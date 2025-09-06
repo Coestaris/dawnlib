@@ -24,7 +24,7 @@ pub struct ObjectScale(pub Vec3);
 /// Also used as a marker to indicate that the entity is renderable.
 /// If entity has no `RenderableMesh` component, it will not be rendered.
 #[derive(Component)]
-pub struct ObjectMesh(pub TypedAsset<Mesh<'static>>);
+pub struct ObjectMesh(pub TypedAsset<Mesh>);
 
 /// ECS component for point light
 /// Can be rendered only if `ObjectPosition` is also present
