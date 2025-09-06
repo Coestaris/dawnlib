@@ -31,11 +31,14 @@ pub enum ApplicationError {
     EventLoopError(#[from] EventLoopError),
 }
 
-pub(crate) struct Application<P, C, E>
+pub(crate) struct Application<P, C, E, R, BF, AF>
 where
     E: PassEventTrait,
     P: RendererMonitorTrait,
     C: RenderChain<E>,
+    R: CustomRenderer<C, E>,
+    BF: RendezvousTrait,
+    AF: RendezvousTrait,
 {
     pipeline: Option<RenderPipeline<C, E>>,
 
@@ -44,9 +47,9 @@ where
 
     backend_config: RendererConfig,
     external_stop: Arc<AtomicBool>,
-    renderer: Box<dyn CustomRenderer<C, E>>,
-    before_frame: Box<dyn RendezvousTrait>,
-    after_frame: Box<dyn RendezvousTrait>,
+    renderer: R,
+    before_frame: BF,
+    after_frame: AF,
     monitor: P,
 
     // In/Out queues
@@ -60,20 +63,23 @@ where
     window: Option<Window>,
 }
 
-impl<P, C, E> Application<P, C, E>
+impl<P, C, E, R, BF, AF> Application<P, C, E, R, BF, AF>
 where
     E: PassEventTrait,
     P: RendererMonitorTrait,
     C: RenderChain<E>,
+    R: CustomRenderer<C, E>,
+    BF: RendezvousTrait,
+    AF: RendezvousTrait,
 {
     // God forgive me for this abomination.
     pub(crate) fn new(
         config: WindowConfig,
         backend_config: RendererConfig,
         monitor: P,
-        renderer: impl CustomRenderer<C, E>,
-        before_frame: impl RendezvousTrait,
-        after_frame: impl RendezvousTrait,
+        renderer: R,
+        before_frame: BF,
+        after_frame: AF,
         external_stop: Arc<AtomicBool>,
         renderer_in: Receiver<RenderPassEvent<E>>,
         output_in: Receiver<OutputEvent>,
@@ -81,9 +87,9 @@ where
         input_out: Sender<InputEvent>,
     ) -> Result<Self, ApplicationError> {
         Ok(Application {
-            renderer: Box::new(renderer),
-            before_frame: Box::new(before_frame),
-            after_frame: Box::new(after_frame),
+            renderer,
+            before_frame,
+            after_frame,
             config,
             window: None,
             external_stop,
@@ -98,122 +104,98 @@ where
             input_out,
         })
     }
-
-    fn before_frame_callback(&mut self) {
-        if let (Some(window), Some(backend)) = (self.window.as_ref(), self.backend.as_ref()) {
-            self.renderer.before_frame(window, backend);
-        }
-    }
-
-    fn after_frame_callback(&mut self) {
-        if let (Some(window), Some(backend)) = (self.window.as_ref(), self.backend.as_ref()) {
-            self.renderer.after_frame(window, backend);
-        }
-    }
-
-    fn before_render_callback(&mut self) {
-        if let (Some(window), Some(backend)) = (self.window.as_ref(), self.backend.as_ref()) {
-            self.renderer.before_render(window, backend);
-        }
-    }
-
-    fn after_render_callback(&mut self) {
-        if let (Some(window), Some(backend)) = (self.window.as_ref(), self.backend.as_ref()) {
-            self.renderer.after_render(window, backend);
-        }
-    }
-
-    fn event_callback(&mut self, event: &WindowEvent) {
-        self.renderer.on_window_event(
-            self.window.as_ref().unwrap(),
-            self.backend.as_ref().unwrap(),
-            event,
-        );
-    }
 }
 
-impl<P, C, E> ApplicationHandler for Application<P, C, E>
+impl<P, C, E, R, BF, AF> ApplicationHandler for Application<P, C, E, R, BF, AF>
 where
     E: PassEventTrait,
     P: RendererMonitorTrait,
     C: RenderChain<E>,
+    R: CustomRenderer<C, E>,
+    BF: RendezvousTrait,
+    AF: RendezvousTrait,
 {
-    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
-        // This has no sense if no synchronization is disabled,
-        // but if it is, it is a good idea to process all the events between frames.
-        // Here, in the meanwhile, the Main thread will copy the renderables to us,
-        // so we have some time to handle events.
-        // It also guarantees that all the events the user produced will be processed
-        // before the next frame.
-        self.monitor.events_start();
-        for event in self.renderer_in.try_iter() {
-            self.pipeline.as_mut().unwrap().dispatch(event);
-        }
-        self.monitor.events_stop();
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, _cause: StartCause) {
+        if let (Some(window), Some(backend), Some(pipeline)) = (
+            self.window.as_ref(),
+            self.backend.as_mut(),
+            self.pipeline.as_mut(),
+        ) {
+            // This has no sense if no synchronization is disabled,
+            // but if it is, it is a good idea to process all the events between frames.
+            // Here, in the meanwhile, the Main thread will copy the renderables to us,
+            // so we have some time to handle events.
+            // It also guarantees that all the events the user produced will be processed
+            // before the next frame.
+            self.monitor.events_start();
+            for event in self.renderer_in.try_iter() {
+                pipeline.dispatch(event);
+            }
+            self.monitor.events_stop();
 
-        if self.external_stop.load(std::sync::atomic::Ordering::SeqCst) {
-            event_loop.exit();
-            info!("External stop requested, exiting renderer loop");
+            if self.external_stop.load(std::sync::atomic::Ordering::SeqCst) {
+                event_loop.exit();
+                info!("External stop requested, exiting renderer loop");
 
-            self.before_frame.unlock();
-            self.after_frame.unlock();
-            return;
-        }
+                self.before_frame.unlock();
+                self.after_frame.unlock();
+                return;
+            }
 
-        // Meet with the Main thread
-        self.before_frame.wait();
+            // Meet with the Main thread
+            self.before_frame.wait();
+            let _ = backend.before_frame();
+            self.renderer.before_frame(window, backend);
 
-        self.before_frame_callback();
-
-        // Process View. Usually this will produce input events
-        self.monitor.view_start();
-        for event in self.view_in.try_iter() {
-            match event {
-                OutputEvent::ChangeTitle(title) => {
-                    self.window.as_ref().unwrap().set_title(&title);
-                }
-                OutputEvent::ChangeWindowSize(size) => {
-                    self.window
-                        .as_ref()
-                        .unwrap()
-                        .set_min_inner_size(Some(Size::Logical(LogicalSize::new(
+            // Process View. Usually this will produce input events
+            self.monitor.view_start();
+            for event in self.view_in.try_iter() {
+                match event {
+                    OutputEvent::ChangeTitle(title) => {
+                        window.set_title(&title);
+                    }
+                    OutputEvent::ChangeWindowSize(size) => {
+                        window.set_min_inner_size(Some(Size::Logical(LogicalSize::new(
                             size.x as f64,
                             size.y as f64,
                         ))));
-                }
-                OutputEvent::ChangeResizable(resizable) => {
-                    self.window.as_ref().unwrap().set_resizable(resizable);
-                }
-                OutputEvent::ChangeDecorations(decorations) => {
-                    self.window.as_ref().unwrap().set_decorations(decorations);
-                }
-                OutputEvent::ChangeFullscreen(fullscreen) => {
-                    if fullscreen {
-                        self.window
-                            .as_ref()
-                            .unwrap()
-                            .set_fullscreen(Some(Fullscreen::Borderless(None)));
-                    } else {
-                        self.window.as_ref().unwrap().set_fullscreen(None);
                     }
-                }
-                OutputEvent::ChangeIcon(icon) => {
-                    self.window.as_ref().unwrap().set_window_icon(icon.clone());
-                    #[cfg(target_os = "windows")]
-                    {
-                        use winit::platform::windows::WindowExtWindows;
-                        self.window.as_ref().unwrap().set_taskbar_icon(icon);
+                    OutputEvent::ChangeResizable(resizable) => {
+                        window.set_resizable(resizable);
                     }
-                }
-                OutputEvent::ChangeCursor(cursor) => {
-                    if let Some(cursor) = cursor {
-                        self.window.as_ref().unwrap().set_cursor(cursor.clone());
-                        self.window.as_ref().unwrap().set_cursor_visible(true);
-                    } else {
-                        self.window.as_ref().unwrap().set_cursor_visible(false);
+                    OutputEvent::ChangeDecorations(decorations) => {
+                        window.set_decorations(decorations);
+                    }
+                    OutputEvent::ChangeFullscreen(fullscreen) => {
+                        if fullscreen {
+                            window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+                        } else {
+                            window.set_fullscreen(None);
+                        }
+                    }
+                    OutputEvent::ChangeIcon(icon) => {
+                        window.set_window_icon(icon.clone());
+                        #[cfg(target_os = "windows")]
+                        {
+                            use winit::platform::windows::WindowExtWindows;
+                            window.set_taskbar_icon(icon);
+                        }
+                    }
+                    OutputEvent::ChangeCursor(cursor) => {
+                        if let Some(cursor) = cursor {
+                            window.set_cursor(cursor.clone());
+                            window.set_cursor_visible(true);
+                        } else {
+                            window.set_cursor_visible(false);
+                        }
                     }
                 }
             }
+            self.monitor.view_stop();
+        } else {
+            // Unlikely, but if we are not ready yet,
+            // just wait for the Main thread to not freeze it.
+            self.before_frame.wait();
         }
     }
 
@@ -266,7 +248,6 @@ where
         self.backend =
             Some(RendererBackend::<E>::new(self.backend_config.clone(), context).unwrap());
 
-        let constructor = self.renderer.as_mut();
         let backend = self.backend.as_mut().unwrap();
         let backend_static = unsafe {
             // SAFETY: We are the only thread that can access the backend.
@@ -274,7 +255,7 @@ where
             mem::transmute::<&mut RendererBackend<E>, &'static mut RendererBackend<E>>(backend)
         };
         self.pipeline = Some(RenderPipeline::new(
-            constructor
+            self.renderer
                 .spawn_chain(&self.window.as_ref().unwrap(), backend_static)
                 .unwrap(),
         ));
@@ -290,94 +271,89 @@ where
         _window_id: WindowId,
         event: WindowEvent,
     ) {
-        // Do not spam the channel with redraw requests.
-        // RedrawRequested events are sent every frame in about_to_wait.
-        if !matches!(event, WindowEvent::RedrawRequested) {
-            // Receiver may be dead. We don't care.
-            let _ = self.input_out.send(InputEvent(event.clone()));
-            self.event_callback(&event);
-        }
-
-        match event {
-            WindowEvent::Resized(size) => {
-                let backend = self.backend.as_mut().unwrap();
-                backend
-                    .resize(glam::UVec2::new(
-                        size.width.max(1) as u32,
-                        size.height.max(1) as u32,
-                    ))
-                    .unwrap();
+        if let (Some(window), Some(backend), Some(pipeline)) = (
+            self.window.as_ref(),
+            self.backend.as_mut(),
+            self.pipeline.as_mut(),
+        ) {
+            // Do not spam the channel with redraw requests.
+            // RedrawRequested events are sent every frame in about_to_wait.
+            if !matches!(event, WindowEvent::RedrawRequested) {
+                // Receiver may be dead. We don't care.
+                let _ = self.input_out.send(InputEvent(event.clone()));
+                self.renderer.on_window_event(window, backend, &event);
             }
-            WindowEvent::CloseRequested => {
-                info!("Window close requested");
 
-                // Tell other threads to stop
-                self.external_stop
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
+            match event {
+                WindowEvent::Resized(size) => {
+                    backend
+                        .resize(glam::UVec2::new(
+                            size.width.max(1) as u32,
+                            size.height.max(1) as u32,
+                        ))
+                        .unwrap();
+                }
+                WindowEvent::CloseRequested => {
+                    info!("Window close requested");
 
-                event_loop.exit();
+                    // Tell other threads to stop
+                    self.external_stop
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
 
-                self.before_frame.unlock();
-                self.after_frame.unlock();
+                    event_loop.exit();
+
+                    self.before_frame.unlock();
+                    self.after_frame.unlock();
+                }
+                WindowEvent::RedrawRequested => {
+                    // Notify that you're about to draw.
+                    window.pre_present_notify();
+
+                    self.monitor.render_start();
+
+                    self.renderer.before_render(window, backend);
+
+                    let frame = self.data_stream.read();
+                    if frame.epoch != self.frame_index {
+                        warn!(
+                            "Renderer is out of sync! Expected epoch {}, got {}",
+                            self.frame_index, frame.epoch
+                        );
+                        self.frame_index = frame.epoch;
+                        self.frame_index += 1;
+                    } else {
+                        self.frame_index += 1;
+                    }
+
+                    // Render the frame
+                    let mut ctx = ChainExecuteCtx::new(frame, backend);
+                    let pass_result = pipeline.execute(&mut ctx);
+                    let durations = mem::take(&mut ctx.durations);
+                    drop(ctx);
+
+                    self.renderer.after_render(window, backend);
+
+                    // Do not include after frame in the monitoring, because it usually synchronizes
+                    // the rendered frame with the OS by swapping buffer, that usually is synchronized
+                    // with the refresh rate of the display. So this will not be informative.
+                    self.monitor.render_stop(pass_result, &durations);
+                }
+                _ => {}
             }
-            WindowEvent::RedrawRequested => {
-                // Notify that you're about to draw.
-                let window = self.window.as_ref().unwrap();
-                window.pre_present_notify();
-
-                // Render the frame
-                self.monitor.render_start();
-
-                self.before_render_callback();
-
-                if let Err(e) = self.backend.as_mut().unwrap().before_frame() {
-                    todo!()
-                }
-
-                let frame = self.data_stream.read();
-                if frame.epoch != self.frame_index {
-                    warn!(
-                        "Renderer is out of sync! Expected epoch {}, got {}",
-                        self.frame_index, frame.epoch
-                    );
-                    self.frame_index = frame.epoch;
-                    self.frame_index += 1;
-                } else {
-                    self.frame_index += 1;
-                }
-
-                let mut ctx = ChainExecuteCtx::new(frame, self.backend.as_mut().unwrap());
-
-                let pass_result = self.pipeline.as_mut().unwrap().execute(&mut ctx);
-                if let RenderResult::Failed = pass_result {
-                    todo!()
-                }
-                let durations = mem::take(&mut ctx.durations);
-                drop(ctx);
-
-                self.after_render_callback();
-
-                // Do not include after frame in the monitoring, because it usually synchronizes
-                // the rendered frame with the OS by swapping buffer, that usually is synchronized
-                // with the refresh rate of the display. So this will not be informative.
-                self.monitor.render_stop(pass_result, &durations);
-            }
-            _ => {}
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        self.window.as_ref().unwrap().request_redraw();
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if let (Some(window), Some(backend)) = (self.window.as_ref(), self.backend.as_mut()) {
+            // Some platforms wants to be notified before presenting the frame.
+            // So request a redraw just before waiting for new events.
+            window.request_redraw();
 
-        self.monitor.view_stop();
+            let _ = backend.after_frame();
+            self.renderer.after_frame(window, backend);
 
-        if let Err(e) = self.backend.as_mut().unwrap().after_frame() {
-            todo!()
+            // Meet with the Main thread again.
+            self.after_frame.wait();
         }
-
-        self.after_frame_callback();
-
-        // Meet with the Main thread again.
-        self.after_frame.wait();
     }
 }
