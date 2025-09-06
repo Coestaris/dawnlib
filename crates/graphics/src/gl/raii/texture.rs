@@ -164,7 +164,7 @@ impl Texture {
     fn set_param(&self, param: u32, value: u32) -> Result<(), TextureError> {
         unsafe {
             self.gl
-                .texture_parameter_i32(self.as_inner(), param, value as i32);
+                .tex_parameter_i32(self.texture_type as u32, param, value as i32);
         }
         Ok(())
     }

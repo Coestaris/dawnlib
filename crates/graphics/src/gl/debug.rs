@@ -1,4 +1,6 @@
 use glow::HasContext;
+use log::warn;
+use std::panic;
 
 #[derive(Debug, Clone)]
 pub(crate) enum MessageSource {
@@ -112,23 +114,37 @@ pub unsafe fn setup_debug_callback<F>(gl: &mut glow::Context, f: F)
 where
     F: Fn(MessageSource, MessageType, MessageSeverity, &str) + 'static + Send + Sync,
 {
-    gl.debug_message_callback(
-        move |source: u32, msg_type: u32, id: u32, severity: u32, msg| {
-            let source = MessageSource::new(source);
-            let message_type = MessageType::new(msg_type);
-            let severity = MessageSeverity::new(severity);
+    #[cfg(target_os = "macos")]
+    {
+        // Maximum supported OpenGL version on macOS is 4.1
+        // Debug output is not available in this version
+        // So we just log a warning and return
+        warn!("Debug output is not supported on macOS with OpenGL 4.1");
+        gl.enable(glow::DEBUG_OUTPUT);
+        gl.enable(glow::DEBUG_OUTPUT_SYNCHRONOUS);
+        return;
+    }
 
-            f(source, message_type, severity, msg);
-        },
-    );
-    // Filter out notifications
-    gl.debug_message_control(
-        glow::DONT_CARE,
-        glow::DONT_CARE,
-        glow::DEBUG_SEVERITY_NOTIFICATION,
-        &[],
-        false,
-    );
-    gl.enable(glow::DEBUG_OUTPUT);
-    gl.enable(glow::DEBUG_OUTPUT_SYNCHRONOUS);
+    #[cfg(not(target_os = "macos"))]
+    {
+        gl.debug_message_callback(
+            move |source: u32, msg_type: u32, id: u32, severity: u32, msg| {
+                let source = MessageSource::new(source);
+                let message_type = MessageType::new(msg_type);
+                let severity = MessageSeverity::new(severity);
+
+                f(source, message_type, severity, msg);
+            },
+        );
+        // Filter out notifications
+        gl.debug_message_control(
+            glow::DONT_CARE,
+            glow::DONT_CARE,
+            glow::DEBUG_SEVERITY_NOTIFICATION,
+            &[],
+            false,
+        );
+        gl.enable(glow::DEBUG_OUTPUT);
+        gl.enable(glow::DEBUG_OUTPUT_SYNCHRONOUS);
+    }
 }

@@ -5,6 +5,7 @@ use crate::ir::material::convert_material;
 use crate::ir::mesh::convert_mesh;
 use crate::ir::shader::convert_shader;
 use crate::ir::texture::convert_texture;
+use crate::ir::blob::convert_blob;
 use crate::user::{UserAssetHeader, UserAssetProperties};
 use crate::{ChecksumAlgorithm, UserAssetFile, UserIRAsset};
 use anyhow::Context;
@@ -20,6 +21,7 @@ mod material;
 mod mesh;
 mod shader;
 mod texture;
+mod blob;
 
 /// Normalize the file name by removing the extension, converting to lowercase,
 /// replacing whitespace with underscores, and removing special characters.
@@ -94,6 +96,7 @@ impl UserAssetFile {
             UserAssetProperties::Material(mat) => convert_material(self, cache_dir, cwd, mat),
             UserAssetProperties::Font(font) => convert_font(self, cache_dir, cwd, font),
             UserAssetProperties::Dictionary(dict) => convert_dictionary(self, cache_dir, cwd, dict),
+            UserAssetProperties::Blob(blob) => convert_blob(self, cache_dir, cwd, blob),
         }
         .with_context(|| format!("Failed to convert asset {}", self.path.display()))?;
 

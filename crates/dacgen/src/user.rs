@@ -77,8 +77,7 @@ pub(crate) struct UserMeshAsset {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub(crate) struct UserMaterialAsset {
-}
+pub(crate) struct UserMaterialAsset {}
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct CharSet {
@@ -184,6 +183,11 @@ pub(crate) struct UserDictionaryAsset {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub(crate) struct UserBlobAsset {
+    pub source: SourceRef,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum UserAssetProperties {
     Shader(UserShaderAsset),
     Texture(UserTextureAsset),
@@ -192,12 +196,20 @@ pub enum UserAssetProperties {
     Mesh(UserMeshAsset),
     Font(UserFontAsset),
     Dictionary(UserDictionaryAsset),
+    Blob(UserBlobAsset),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct UserAsset {
     pub header: UserAssetHeader,
     pub properties: UserAssetProperties,
+}
+
+impl DeepHash for UserBlobAsset {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
+        self.source.deep_hash(state, ctx)?;
+        Ok(())
+    }
 }
 
 impl DeepHash for ShaderOrigin {
@@ -388,6 +400,10 @@ impl DeepHash for UserAssetProperties {
             UserAssetProperties::Dictionary(d) => {
                 6u8.deep_hash(state, ctx)?;
                 d.deep_hash(state, ctx)?;
+            }
+            UserAssetProperties::Blob(b) => {
+                7u8.deep_hash(state, ctx)?;
+                b.deep_hash(state, ctx)?;
             }
         }
         Ok(())

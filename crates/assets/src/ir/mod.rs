@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod blob;
 pub mod dictionary;
 pub mod font;
 pub mod material;
@@ -8,6 +9,7 @@ pub mod shader;
 pub mod texture;
 
 use crate::ir::audio::IRAudio;
+use crate::ir::blob::IRBlob;
 use crate::ir::dictionary::IRDictionary;
 use crate::ir::font::IRFont;
 use crate::ir::material::IRMaterial;
@@ -29,6 +31,7 @@ pub enum IRAsset {
     Material(IRMaterial),
     Font(IRFont),
     Dictionary(IRDictionary),
+    Blob(IRBlob),
 }
 
 impl Default for IRAsset {
@@ -49,6 +52,7 @@ impl IRAsset {
             IRAsset::Material(material) => material.memory_usage(),
             IRAsset::Font(font) => font.memory_usage(),
             IRAsset::Dictionary(dictionary) => dictionary.memory_usage(),
+            IRAsset::Blob(blob) => blob.memory_usage(),
         }
     }
 }
