@@ -144,6 +144,16 @@ pub enum AssetInfoState {
     Loaded { usage: AssetMemoryUsage, rc: usize },
 }
 
+impl AssetInfoState {
+    pub fn as_str(&self) -> &str {
+        match self {
+            AssetInfoState::Empty => "Empty",
+            AssetInfoState::IR(_) => "IR",
+            AssetInfoState::Loaded { .. } => "Loaded",
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AssetInfo {
     pub id: AssetID,
