@@ -20,6 +20,7 @@ dawn-dac = { path = "../dac" }
 dawn-util = { path = "../util" }
 dawn-assets = { path = "../assets" }
 build-info = "0.0.41"
+once_cell = "1.21.3"
 thiserror = "2.0.16"
 anyhow = "1.0.99"
 walkdir = "2.5.0"

@@ -78,17 +78,6 @@ pub(crate) struct UserMeshAsset {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub(crate) struct UserMaterialAsset {
-    pub base_color_factor: [f32; 4],
-    pub base_color_texture: Option<SourceRef>,
-    pub metallic_texture: Option<SourceRef>,
-    #[serde(default)]
-    pub metallic_factor: f32,
-    pub roughness_texture: Option<SourceRef>,
-    #[serde(default)]
-    pub roughness_factor: f32,
-    // pub normal: Option<NormalMap>,
-    // pub occlusion: Option<Occlusion>,
-    // pub emissive: Emissive,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -272,12 +261,6 @@ impl DeepHash for UserAudioAsset {
 
 impl DeepHash for UserMaterialAsset {
     fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
-        self.base_color_factor.deep_hash(state, ctx)?;
-        self.base_color_texture.deep_hash(state, ctx)?;
-        self.metallic_texture.deep_hash(state, ctx)?;
-        self.metallic_factor.deep_hash(state, ctx)?;
-        self.roughness_texture.deep_hash(state, ctx)?;
-        self.roughness_factor.deep_hash(state, ctx)?;
         Ok(())
     }
 }

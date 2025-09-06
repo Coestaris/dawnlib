@@ -138,15 +138,13 @@ impl<'g> Texture<'g> {
             ))?,
         }
         Texture::unbind(gl, texture.texture_type, 0);
-        Ok((texture, AssetMemoryUsage::new(size_of::<Texture>(), 0)))
+        Ok((
+            texture,
+            AssetMemoryUsage::new(size_of::<Texture>(), ir.data.len()),
+        ))
     }
 
-    pub fn bind(
-        gl: &glow::Context,
-        texture_type: TextureBind,
-        texture: &Self,
-        texture_index: u32,
-    ) {
+    pub fn bind(gl: &glow::Context, texture_type: TextureBind, texture: &Self, texture_index: u32) {
         assert!(texture_index < 32);
         assert_eq!(texture_type, texture.texture_type);
         unsafe {

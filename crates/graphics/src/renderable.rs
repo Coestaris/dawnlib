@@ -109,24 +109,6 @@ pub struct RenderableAreaLight {
     pub meta: RenderableMeta,
 }
 
-pub fn default_material() -> TypedAsset<Material> {
-    const LOCK: OnceLock<TypedAsset<Material>> = OnceLock::new();
-
-    // Use OnceLock to ensure the material is created only once
-    let binding = LOCK;
-    let material = binding.get_or_init(|| {
-        let material = Material::default();
-        let ptr = Box::into_raw(Box::new(material));
-        let asset = Asset::new(
-            TypeId::of::<Material>(),
-            NonNull::new(ptr as *mut ()).unwrap(),
-        );
-        TypedAsset::new(asset)
-    });
-
-    material.clone()
-}
-
 #[derive(Clone)]
 pub struct Renderable {
     pub meta: RenderableMeta,

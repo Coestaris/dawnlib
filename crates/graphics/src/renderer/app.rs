@@ -164,7 +164,10 @@ where
                 OutputEvent::ChangeIcon(icon) => {
                     self.window.as_ref().unwrap().set_window_icon(icon.clone());
                     #[cfg(target_os = "windows")]
-                    self.window.as_ref().unwrap().set_taskbar_icon(icon);
+                    {
+                        use winit::platform::windows::{WindowExtWindows};
+                        self.window.as_ref().unwrap().set_taskbar_icon(icon);
+                    }
                 }
                 OutputEvent::ChangeCursor(cursor) => {
                     if let Some(cursor) = cursor {
@@ -201,6 +204,7 @@ where
 
         #[cfg(target_os = "windows")]
         {
+            use winit::platform::windows::{WindowAttributesExtWindows};
             window_attributes = window_attributes.with_taskbar_icon(self.config.icon.clone());
         }
 

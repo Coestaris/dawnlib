@@ -9,11 +9,14 @@ use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use dawn_util::profile::Measure;
-use glam::{Mat4, Vec3};
+use glam::{vec3, Mat4, Vec3, Vec4};
 use gltf::buffer::Data;
 use gltf::image::Format;
 use gltf::mesh::Mode;
 use gltf::scene::Transform;
+use gltf::Texture;
+use image::DynamicImage;
+use log::warn;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -34,7 +37,8 @@ struct ProcessCtx<'a> {
     index_type: IRIndexType,
     images: &'a Vec<gltf::image::Data>,
     processed_materials: Arc<Mutex<HashMap<usize, AssetID>>>,
-    processed_textures: Arc<Mutex<HashMap<usize, AssetID>>>,
+    processed_named_textures: Arc<Mutex<HashMap<usize, AssetID>>>,
+    used_common_textures: Arc<&'a Mutex<HashSet<AssetID>>>,
     mesh_id: AssetID,
 }
 
@@ -59,11 +63,9 @@ enum MeshError {
     NoScene,
     #[error("Mesh file contains multiple scenes")]
     MultipleScenes(usize),
-    #[error("Material {material_id} is missing texture source for {texture_type:?} texture index {texture_index}"
-    )]
+    #[error("Material {material_id} is missing texture source at texture index {texture_index}")]
     MissingTextureSource {
         material_id: AssetID,
-        texture_type: MaterialTextureType,
         texture_index: usize,
     },
     #[error("Primitive {mesh_index}:{primitive_index} is missing indices")]
@@ -104,43 +106,99 @@ enum MeshError {
     },
     #[error("Cannot fit index into selected index type")]
     IndexOverflow,
+    #[error("Unexpected texture format of material {texture_id} at index {index}. Expected {expected:?}, found {found:?}"
+    )]
+    UnexpectedTextureFormat {
+        texture_id: AssetID,
+        index: usize,
+        expected: Vec<Format>,
+        found: Format,
+    },
 }
 
 #[derive(Clone, Debug)]
-enum MaterialTextureType {
-    BaseColor,
-    Metallic,
-    Roughness,
-    Normal,
-    Occlusion,
-    Emissive,
+enum MaterialTexture<'a> {
+    Albedo {
+        texture: Option<Texture<'a>>,
+        fallback_color: Vec4,
+    },
+    Metallic {
+        texture: Option<Texture<'a>>,
+        fallback_value: f32,
+    },
+    Roughness {
+        texture: Option<Texture<'a>>,
+        fallback_value: f32,
+    },
+    Normal {
+        texture: Option<Texture<'a>>,
+        multiplier: f32,
+    },
+    Occlusion {
+        texture: Option<Texture<'a>>,
+        multiplier: f32,
+    },
 }
 
-impl MaterialTextureType {
+impl<'a> MaterialTexture<'a> {
+    fn as_multipler(&self) -> f32 {
+        match self {
+            MaterialTexture::Albedo { .. } => 1.0,
+            MaterialTexture::Metallic { .. } => 1.0,
+            MaterialTexture::Roughness { .. } => 1.0,
+            MaterialTexture::Normal { multiplier, .. } => *multiplier,
+            MaterialTexture::Occlusion { multiplier, .. } => *multiplier,
+        }
+    }
+
+    fn as_texture(&self) -> Option<&Texture> {
+        match self {
+            MaterialTexture::Albedo { texture, .. } => texture.as_ref(),
+            MaterialTexture::Metallic { texture, .. } => texture.as_ref(),
+            MaterialTexture::Roughness { texture, .. } => texture.as_ref(),
+            MaterialTexture::Normal { texture, .. } => texture.as_ref(),
+            MaterialTexture::Occlusion { texture, .. } => texture.as_ref(),
+        }
+    }
+
     fn as_str(&self) -> &'static str {
         match self {
-            MaterialTextureType::BaseColor => "base_color",
-            MaterialTextureType::Metallic => "metallic",
-            MaterialTextureType::Roughness => "roughness",
-            MaterialTextureType::Normal => "normal",
-            MaterialTextureType::Occlusion => "occlusion",
-            MaterialTextureType::Emissive => "emissive",
+            MaterialTexture::Albedo { .. } => "albedo",
+            MaterialTexture::Metallic { .. } => "metallic",
+            MaterialTexture::Roughness { .. } => "roughness",
+            MaterialTexture::Normal { .. } => "normal",
+            MaterialTexture::Occlusion { .. } => "occlusion",
+        }
+    }
+
+    fn default_format(&self) -> Format {
+        match self {
+            MaterialTexture::Albedo { .. } => Format::R8G8B8,
+            MaterialTexture::Metallic { .. } => Format::R8,
+            MaterialTexture::Roughness { .. } => Format::R8,
+            MaterialTexture::Normal { .. } => Format::R8G8B8,
+            MaterialTexture::Occlusion { .. } => Format::R8,
+        }
+    }
+
+    fn allowed_formats(&self) -> &[Format] {
+        match self {
+            MaterialTexture::Albedo { .. } => &[Format::R8G8B8, Format::R8G8B8A8],
+            MaterialTexture::Metallic { .. } => &[Format::R8],
+            MaterialTexture::Roughness { .. } => &[Format::R8],
+            MaterialTexture::Normal { .. } => &[Format::R8G8B8],
+            MaterialTexture::Occlusion { .. } => &[Format::R8],
         }
     }
 }
 
-fn texture_id(
+fn texture_named_id(
     material_id: &AssetID,
-    texture_type: MaterialTextureType,
-    texture: &gltf::Texture,
+    texture_type: &MaterialTexture,
+    name: Option<&str>,
 ) -> AssetID {
-    AssetID::new(match texture.name() {
-        None => format!(
-            "{}_{}_{}_texture",
-            material_id.as_str(),
-            texture_type.as_str(),
-            texture.index()
-        ),
+    AssetID::new(match name {
+        None => format!("{}_{}_texture", material_id.as_str(), texture_type.as_str(),),
         Some(name) => format!(
             "{}_{}_{}",
             material_id.as_str(),
@@ -148,6 +206,19 @@ fn texture_id(
             name.to_string()
         ),
     })
+}
+
+fn texture_unnamed_r_texture_id(value: f32) -> AssetID {
+    AssetID::new(format!("common_r_texture_{:03}", (value * 1000.0) as u32))
+}
+
+fn texture_unnamed_rgb_texture_id(color: Vec3) -> AssetID {
+    AssetID::new(format!(
+        "common_rgb_texture_{:03}_{:03}_{:03}",
+        (color.x * 100.0) as u32,
+        (color.y * 100.0) as u32,
+        (color.z * 100.0) as u32
+    ))
 }
 
 fn material_id(
@@ -167,38 +238,13 @@ fn material_id(
     })
 }
 
-fn process_texture(
-    material_id: AssetID,
-    texture_type: MaterialTextureType,
-    texture: gltf::Texture,
-    ctx: &ProcessCtx,
-) -> Result<(AssetID, Vec<PartialIR>), MeshError> {
-    let id = texture_id(&material_id, texture_type.clone(), &texture);
-    let _measure = Measure::new(format!("Processed texture {}", id.as_str()));
-
-    {
-        let mut processed_textures = ctx.processed_textures.lock().unwrap();
-        if let Some(id) = processed_textures.get(&texture.index()) {
-            // Texture already processed. Just reuse it.
-            return Ok((id.clone(), vec![]));
-        } else {
-            // Mark as processed to avoid duplicate processing in parallel threads.
-            // We must do it when the mutex is locked, to avoid data races.
-            processed_textures.insert(texture.index(), id.clone());
-        }
-
-        // Drop the lock before doing any heavy processing,
-        // to avoid blocking other threads.
-    }
-
-    let data = &ctx.images.get(texture.source().index()).ok_or_else(|| {
-        MeshError::MissingTextureSource {
-            material_id: material_id.clone(),
-            texture_type: texture_type.clone(),
-            texture_index: texture.index(),
-        }
-    })?;
-
+fn fake_texture_rgb(id: AssetID, color: Vec3) -> Result<(AssetID, Vec<PartialIR>), MeshError> {
+    let data = vec![
+        (color.x * 255.0) as u8,
+        (color.y * 255.0) as u8,
+        (color.z * 255.0) as u8,
+        255u8,
+    ];
     Ok((
         id.clone(),
         vec![PartialIR {
@@ -211,27 +257,200 @@ fn process_texture(
                 license: None,
             },
             ir: IRAsset::Texture(IRTexture {
-                data: data.pixels.clone(),
+                data,
                 texture_type: IRTextureType::Texture2D {
-                    width: data.width,
-                    height: data.height,
+                    width: 1,
+                    height: 1,
                 },
-                pixel_format: match data.format {
-                    Format::R8 => IRPixelFormat::R8,
-                    Format::R8G8 => IRPixelFormat::RG8,
-                    Format::R8G8B8 => IRPixelFormat::RGB8,
-                    Format::R8G8B8A8 => IRPixelFormat::RGBA8,
-                    Format::R16 => IRPixelFormat::R16,
-                    Format::R16G16 => IRPixelFormat::RG16,
-                    Format::R16G16B16 => IRPixelFormat::RGB16,
-                    Format::R16G16B16A16 => IRPixelFormat::RGBA16,
-                    Format::R32G32B32FLOAT => IRPixelFormat::RGB32F,
-                    Format::R32G32B32A32FLOAT => IRPixelFormat::RGBA32F,
-                },
+                pixel_format: IRPixelFormat::RGBA8,
                 ..Default::default()
             }),
         }],
     ))
+}
+
+fn fake_texture_r(id: AssetID, value: f32) -> Result<(AssetID, Vec<PartialIR>), MeshError> {
+    let data = vec![(value * 255.0) as u8];
+    Ok((
+        id.clone(),
+        vec![PartialIR {
+            id: id.clone(),
+            header: UserAssetHeader {
+                asset_type: AssetType::Texture,
+                dependencies: Default::default(),
+                tags: vec![],
+                author: Some("Auto-generated".to_string()),
+                license: None,
+            },
+            ir: IRAsset::Texture(IRTexture {
+                data,
+                texture_type: IRTextureType::Texture2D {
+                    width: 1,
+                    height: 1,
+                },
+                pixel_format: IRPixelFormat::R8,
+                ..Default::default()
+            }),
+        }],
+    ))
+}
+
+fn try_resample(from: Format, to: Format, data: &Vec<u8>) -> Option<Vec<u8>> {
+    let mut result = Vec::with_capacity(data.len());
+    match (from, to) {
+        (Format::R8G8B8A8, Format::R8) => {
+            // Convert RGBA8 to R8 by taking the red channel
+            for chunk in data.chunks(4) {
+                result.push(chunk[0]);
+            }
+        }
+        (Format::R8G8B8, Format::R8) => {
+            // Convert RGB8 to R8 by taking the red channel
+            for chunk in data.chunks(3) {
+                result.push(chunk[0]);
+            }
+        }
+        _ => {
+            return None;
+            // Unsupported conversion
+        }
+    };
+
+    Some(result)
+}
+
+fn process_texture(
+    material_id: AssetID,
+    texture_type: MaterialTexture,
+    ctx: &ProcessCtx,
+) -> Result<(AssetID, Vec<PartialIR>), MeshError> {
+    if let Some(texture) = texture_type.as_texture() {
+        let id = texture_named_id(&material_id, &texture_type, texture.name());
+        let _measure = Measure::new(format!("Processed texture {}", id.as_str()));
+
+        {
+            let mut processed_textures = ctx.processed_named_textures.lock().unwrap();
+
+            if let Some(id) = processed_textures.get(&texture.index()) {
+                // Texture already processed. Just reuse it.
+                return Ok((id.clone(), vec![]));
+            } else {
+                // Mark as processed to avoid duplicate processing in parallel threads.
+                // We must do it when the mutex is locked, to avoid data races.
+                processed_textures.insert(texture.index(), id.clone());
+            }
+
+            // Drop the lock before doing any heavy processing,
+            // to avoid blocking other threads.
+        }
+
+        let data = &ctx.images.get(texture.source().index()).ok_or_else(|| {
+            MeshError::MissingTextureSource {
+                material_id: material_id.clone(),
+                texture_index: texture.index(),
+            }
+        })?;
+        let mut format = data.format;
+        let width = data.width;
+        let height = data.height;
+        let mut data = &data.pixels;
+
+        let mut resampled: Option<Vec<u8>> = None;
+        let expected_formats = texture_type.allowed_formats();
+        if !expected_formats.contains(&format) {
+            if let Some(result) = try_resample(format, texture_type.default_format(), data) {
+                warn!(
+                    "Resampled texture {} from format {:?} to {:?}",
+                    id.as_str(),
+                    format,
+                    texture_type.default_format()
+                );
+                format = texture_type.default_format();
+                resampled = Some(result);
+                data = resampled.as_ref().unwrap();
+            } else {
+                return Err(MeshError::UnexpectedTextureFormat {
+                    texture_id: id.clone(),
+                    index: texture.index(),
+                    expected: texture_type.allowed_formats().to_vec(),
+                    found: format,
+                });
+            }
+        }
+
+        // TODO: Handle the multiplier for normal and occlusion maps.
+
+        Ok((
+            id.clone(),
+            vec![PartialIR {
+                id: id.clone(),
+                header: UserAssetHeader {
+                    asset_type: AssetType::Texture,
+                    dependencies: Default::default(),
+                    tags: vec![],
+                    author: Some("Auto-generated".to_string()),
+                    license: None,
+                },
+                ir: IRAsset::Texture(IRTexture {
+                    data: data.clone(),
+                    texture_type: IRTextureType::Texture2D { width, height },
+                    pixel_format: match format {
+                        Format::R8 => IRPixelFormat::R8,
+                        Format::R8G8 => IRPixelFormat::RG8,
+                        Format::R8G8B8 => IRPixelFormat::RGB8,
+                        Format::R8G8B8A8 => IRPixelFormat::RGBA8,
+                        Format::R16 => IRPixelFormat::R16,
+                        Format::R16G16 => IRPixelFormat::RG16,
+                        Format::R16G16B16 => IRPixelFormat::RGB16,
+                        Format::R16G16B16A16 => IRPixelFormat::RGBA16,
+                        Format::R32G32B32FLOAT => IRPixelFormat::RGB32F,
+                        Format::R32G32B32A32FLOAT => IRPixelFormat::RGBA32F,
+                    },
+                    ..Default::default()
+                }),
+            }],
+        ))
+    } else {
+        // No texture. Create a fake 1x1 texture with the fallback color/value.
+        const FALLBACK_OCCLUSION: f32 = 1.0;
+        const FALLBACK_NORMAL: Vec3 = vec3(0.0, 0.0, 0.0);
+        let id = match texture_type {
+            MaterialTexture::Albedo { fallback_color, .. } => {
+                texture_named_id(&material_id, &texture_type, None)
+            }
+            MaterialTexture::Metallic { fallback_value, .. } => {
+                texture_unnamed_r_texture_id(fallback_value)
+            }
+            MaterialTexture::Roughness { fallback_value, .. } => {
+                texture_unnamed_r_texture_id(fallback_value)
+            }
+            MaterialTexture::Normal { .. } => texture_unnamed_rgb_texture_id(FALLBACK_NORMAL),
+            MaterialTexture::Occlusion { .. } => texture_unnamed_r_texture_id(FALLBACK_OCCLUSION),
+        };
+
+        {
+            let mut used_common_textures = ctx.used_common_textures.lock().unwrap();
+
+            if used_common_textures.contains(&id) {
+                // Common texture already processed. Just reuse it.
+                return Ok((id.clone(), vec![]));
+            } else {
+                // Mark as used to avoid duplicate processing in parallel threads.
+                // We must do it when the mutex is locked, to avoid data
+                used_common_textures.insert(id.clone());
+            }
+        }
+
+        match texture_type {
+            MaterialTexture::Albedo { fallback_color, .. } => {
+                fake_texture_rgb(id, fallback_color.truncate())
+            }
+            MaterialTexture::Metallic { fallback_value, .. } => fake_texture_r(id, fallback_value),
+            MaterialTexture::Roughness { fallback_value, .. } => fake_texture_r(id, fallback_value),
+            MaterialTexture::Normal { .. } => fake_texture_rgb(id, FALLBACK_NORMAL),
+            MaterialTexture::Occlusion { .. } => fake_texture_r(id, FALLBACK_OCCLUSION),
+        }
+    }
 }
 
 fn process_material(
@@ -259,54 +478,105 @@ fn process_material(
         // to avoid blocking other threads.
     }
 
-    let mut irs = Vec::new();
-    let mut dependencies = HashSet::new();
-    let base_color_texture =
-        if let Some(texture) = material.pbr_metallic_roughness().base_color_texture() {
-            let (tex_id, generated) = process_texture(
-                id.clone(),
-                MaterialTextureType::BaseColor,
-                texture.texture(),
-                ctx,
-            )?;
-            dependencies.insert(tex_id.clone());
-            irs.extend(generated);
-            Some(tex_id)
+    let (albedo_id, albedo_irs) = process_texture(
+        id.clone(),
+        if let Some(pbr) = material.pbr_metallic_roughness().base_color_texture() {
+            MaterialTexture::Albedo {
+                texture: Some(pbr.texture()),
+                fallback_color: Vec4::new(1.0, 1.0, 1.0, 1.0),
+            }
         } else {
-            None
-        };
-    let metallic_texture = if let Some(texture) = material
-        .pbr_metallic_roughness()
-        .metallic_roughness_texture()
-    {
-        let (tex_id, generated) = process_texture(
-            id.clone(),
-            MaterialTextureType::Metallic,
-            texture.texture(),
-            ctx,
-        )?;
-        dependencies.insert(tex_id.clone());
-        irs.extend(generated);
-        Some(tex_id)
-    } else {
-        None
-    };
-    let roughness_texture = if let Some(texture) = material
-        .pbr_metallic_roughness()
-        .metallic_roughness_texture()
-    {
-        let (tex_id, generated) = process_texture(
-            id.clone(),
-            MaterialTextureType::Roughness,
-            texture.texture(),
-            ctx,
-        )?;
-        dependencies.insert(tex_id.clone());
-        irs.extend(generated);
-        Some(tex_id)
-    } else {
-        None
-    };
+            MaterialTexture::Albedo {
+                texture: None,
+                fallback_color: material.pbr_metallic_roughness().base_color_factor().into(),
+            }
+        },
+        ctx,
+    )?;
+
+    let (metallic_id, metallic_irs) = process_texture(
+        id.clone(),
+        if let Some(pbr) = material
+            .pbr_metallic_roughness()
+            .metallic_roughness_texture()
+        {
+            MaterialTexture::Metallic {
+                texture: Some(pbr.texture()),
+                fallback_value: 1.0,
+            }
+        } else {
+            MaterialTexture::Metallic {
+                texture: None,
+                fallback_value: material.pbr_metallic_roughness().metallic_factor(),
+            }
+        },
+        ctx,
+    )?;
+
+    let (roughness_id, roughness_irs) = process_texture(
+        id.clone(),
+        if let Some(pbr) = material
+            .pbr_metallic_roughness()
+            .metallic_roughness_texture()
+        {
+            MaterialTexture::Roughness {
+                texture: Some(pbr.texture()),
+                fallback_value: 1.0,
+            }
+        } else {
+            MaterialTexture::Roughness {
+                texture: None,
+                fallback_value: material.pbr_metallic_roughness().roughness_factor(),
+            }
+        },
+        ctx,
+    )?;
+
+    let (normal_id, normal_irs) = process_texture(
+        id.clone(),
+        if let Some(normal) = material.normal_texture() {
+            MaterialTexture::Normal {
+                texture: Some(normal.texture()),
+                multiplier: normal.scale(),
+            }
+        } else {
+            MaterialTexture::Normal {
+                texture: None,
+                multiplier: 0.0,
+            }
+        },
+        ctx,
+    )?;
+
+    let (occlusion_id, occlusion_irs) = process_texture(
+        id.clone(),
+        if let Some(occlusion) = material.occlusion_texture() {
+            MaterialTexture::Occlusion {
+                texture: Some(occlusion.texture()),
+                multiplier: occlusion.strength(),
+            }
+        } else {
+            MaterialTexture::Occlusion {
+                texture: None,
+                multiplier: 0.0,
+            }
+        },
+        ctx,
+    )?;
+
+    let mut dependencies = HashSet::new();
+    dependencies.insert(albedo_id.clone());
+    dependencies.insert(metallic_id.clone());
+    dependencies.insert(roughness_id.clone());
+    dependencies.insert(normal_id.clone());
+    dependencies.insert(occlusion_id.clone());
+
+    let mut irs = Vec::new();
+    irs.extend(albedo_irs);
+    irs.extend(metallic_irs);
+    irs.extend(roughness_irs);
+    irs.extend(normal_irs);
+    irs.extend(occlusion_irs);
 
     irs.push(PartialIR {
         id: AssetID::from(id.clone()),
@@ -318,13 +588,11 @@ fn process_material(
             license: None,
         },
         ir: IRAsset::Material(IRMaterial {
-            base_color_factor: material.pbr_metallic_roughness().base_color_factor(),
-            base_color_texture,
-            metallic_texture,
-            metallic_factor: material.pbr_metallic_roughness().metallic_factor(),
-            roughness_texture,
-            roughness_factor: material.pbr_metallic_roughness().roughness_factor(),
-            ..Default::default()
+            albedo: albedo_id,
+            metallic: metallic_id,
+            roughness: roughness_id,
+            normal: normal_id,
+            occlusion: occlusion_id,
         }),
     });
 
@@ -497,6 +765,9 @@ fn convert_mesh_inner(
         return Err(MeshError::MultipleScenes(document.scenes().count()));
     }
 
+    static USED_COMMON_TEXTURES: once_cell::sync::Lazy<Mutex<HashSet<AssetID>>> =
+        once_cell::sync::Lazy::new(|| Mutex::new(HashSet::new()));
+
     // The name of the mesh is based on the file name
     let mesh_id = normalize_name(file.path.clone());
     let ctx = ProcessCtx {
@@ -506,7 +777,8 @@ fn convert_mesh_inner(
         // Dependencies of the mesh.
         // This is shared between threads to avoid generating the same material multiple times.
         processed_materials: Arc::new(Mutex::new(HashMap::new())),
-        processed_textures: Arc::new(Mutex::new(Default::default())),
+        processed_named_textures: Arc::new(Mutex::new(HashMap::new())),
+        used_common_textures: Arc::new(&USED_COMMON_TEXTURES),
         mesh_id: mesh_id.clone(),
     };
 
@@ -582,6 +854,80 @@ fn convert_mesh_inner(
         header,
         mesh_id.clone(),
     ));
+
+    for ir in irs.iter() {
+        match &ir.ir {
+            IRAsset::Texture(tex) => match tex.pixel_format {
+                IRPixelFormat::R8 => {
+                    let img = DynamicImage::ImageLuma8(
+                        image::ImageBuffer::from_raw(
+                            match tex.texture_type {
+                                IRTextureType::Texture2D { width, height } => width,
+                                _ => 1,
+                            },
+                            match tex.texture_type {
+                                IRTextureType::Texture2D { width: _, height } => height,
+                                _ => 1,
+                            },
+                            tex.data.clone(),
+                        )
+                        .unwrap(),
+                    );
+                    let mut img = img.to_luma8();
+                    img.copy_from_slice(&tex.data);
+                    img.save(cache_dir.join(format!("{}.png", ir.id.as_str())))
+                        .unwrap();
+                }
+                IRPixelFormat::RGB8 => {
+                    let img = DynamicImage::ImageRgb8(
+                        image::ImageBuffer::from_raw(
+                            match tex.texture_type {
+                                IRTextureType::Texture2D { width, height } => width,
+                                _ => 1,
+                            },
+                            match tex.texture_type {
+                                IRTextureType::Texture2D { width: _, height } => height,
+                                _ => 1,
+                            },
+                            tex.data.clone(),
+                        )
+                        .unwrap(),
+                    );
+                    let mut img = img.to_rgb8();
+                    img.copy_from_slice(&tex.data);
+                    img.save(cache_dir.join(format!("{}.png", ir.id.as_str())))
+                        .unwrap();
+                }
+                IRPixelFormat::RGBA8 => {
+                    let img = DynamicImage::ImageRgba8(
+                        image::ImageBuffer::from_raw(
+                            match tex.texture_type {
+                                IRTextureType::Texture2D { width, height } => width,
+                                _ => 1,
+                            },
+                            match tex.texture_type {
+                                IRTextureType::Texture2D { width: _, height } => height,
+                                _ => 1,
+                            },
+                            tex.data.clone(),
+                        )
+                        .unwrap(),
+                    );
+                    let mut img = img.to_rgba8();
+                    img.copy_from_slice(&tex.data);
+                    img.save(cache_dir.join(format!("{}.png", ir.id.as_str())))
+                        .unwrap();
+                }
+                _ => {
+                    panic!(
+                        "Unsupported texture format for saving: {:?}",
+                        tex.pixel_format
+                    );
+                }
+            },
+            _ => {}
+        }
+    }
 
     Ok(irs)
 }

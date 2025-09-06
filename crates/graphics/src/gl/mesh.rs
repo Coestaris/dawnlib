@@ -139,6 +139,10 @@ impl<'g> Mesh<'g> {
         debug!("Creating Mesh from IR: {:?}", ir);
 
         // Group submeshes by topology
+        let sum = ir
+            .submesh
+            .iter()
+            .fold(0, |acc, sm| acc + sm.vertices.len() + sm.indices.len());
         let mut ir_buckets = HashMap::new();
         for submesh in ir.submesh {
             let bucket = ir_buckets
@@ -162,7 +166,7 @@ impl<'g> Mesh<'g> {
                 min: ir.bounds.min(),
                 max: ir.bounds.max(),
             },
-            AssetMemoryUsage::new(size_of::<Mesh>(), 0),
+            AssetMemoryUsage::new(size_of::<Mesh>(), sum),
         ))
     }
 

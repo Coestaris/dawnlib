@@ -6,6 +6,7 @@ use dawn_dac::ChecksumAlgorithm;
 use dawn_util::profile::Measure;
 use log::debug;
 use std::path::PathBuf;
+use blake3::IncrementCounter::No;
 
 pub struct Cache {
     cache_dir: PathBuf,
