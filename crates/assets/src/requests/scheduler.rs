@@ -293,28 +293,10 @@ impl Scheduler {
                     },
                 ])
             }
-            AssetState::Loaded(_, _) => Ok(vec![Task {
+            AssetState::Read(_) => Ok(vec![Task {
                 id: AssetTaskID::new(rid),
-                command: TaskCommand::Read(aid),
+                command: TaskCommand::Load(aid),
                 dependencies,
-                state: TaskState::Pending,
-            }]),
-            _ => Ok(vec![]),
-        }
-    }
-
-    fn load_constructor_no_dep(
-        rid: AssetRequestID,
-        registry: &AssetRegistry,
-        aid: AssetID,
-        _dependencies: HashSet<AssetTaskID>,
-    ) -> Result<Vec<Task>, PeekError> {
-        // If the asset is already loaded, no need to load it again.
-        match registry.get_state(&aid)? {
-            AssetState::Loaded(_, _) => Ok(vec![Task {
-                id: AssetTaskID::new(rid),
-                command: TaskCommand::Read(aid),
-                dependencies: HashSet::new(),
                 state: TaskState::Pending,
             }]),
             _ => Ok(vec![]),
@@ -359,13 +341,9 @@ impl Scheduler {
             AssetRequest::Load(query) => {
                 Self::collect_tasks_for_query(rid, query, registry, true, &Self::load_constructor)
             }
-            AssetRequest::LoadNoDeps(query) => Self::collect_tasks_for_query(
-                rid,
-                query,
-                registry,
-                false,
-                &Self::load_constructor_no_dep,
-            ),
+            AssetRequest::LoadNoDeps(query) => {
+                Self::collect_tasks_for_query(rid, query, registry, false, &Self::load_constructor)
+            }
             AssetRequest::Free(query) => {
                 Self::collect_tasks_for_query(rid, query, registry, true, &Self::free_constructor)
             }
