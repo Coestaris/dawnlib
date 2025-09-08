@@ -19,7 +19,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use triple_buffer::Output;
 use winit::application::ApplicationHandler;
-use winit::dpi::{LogicalSize, Size};
+use winit::dpi::{LogicalSize, PhysicalSize, Size};
 use winit::error::EventLoopError;
 use winit::event::{StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
@@ -259,6 +259,11 @@ where
                 .spawn_chain(&self.window.as_ref().unwrap(), backend_static)
                 .unwrap(),
         ));
+
+        self.input_out.send(InputEvent(WindowEvent::Resized(PhysicalSize::new(
+            self.config.dimensions.x as u32,
+            self.config.dimensions.y as u32,
+        )))).unwrap();
 
         // Notify the monitor about the pass names
         let pass_names = self.pipeline.as_ref().unwrap().get_names().clone();

@@ -11,6 +11,7 @@ pub struct Program {
 }
 
 pub type UniformLocation = glow::UniformLocation;
+pub type UniformBlockLocation = glow::UniformLocation;
 
 impl AssetCastable for Program {}
 
@@ -58,6 +59,7 @@ mod targets {
 }
 
 use crate::gl::raii::shader::{Shader, ShaderError};
+use crate::gl::raii::ubo::UBO;
 
 impl Program {
     pub(crate) fn from_ir<E: PassEventTrait>(
@@ -138,6 +140,26 @@ impl Program {
             self.gl
                 .get_uniform_location(self.inner, name)
                 .ok_or_else(|| ShaderError::UnknownUniformLocation(name.to_string()))
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_uniform_block_location(
+        &self,
+        name: &str,
+    ) -> Result<UniformBlockLocation, ShaderError> {
+        unsafe {
+            match self.gl.get_uniform_block_index(self.inner, name) {
+                Some(index) => Ok(UniformBlockLocation { 0: index }),
+                None => Err(ShaderError::UnknownUniformLocation(name.to_string())),
+            }
+        }
+    }
+
+    #[inline(always)]
+    pub fn set_uniform_block_binding(&self, location: UniformBlockLocation, ubo: u32) {
+        unsafe {
+            self.gl.uniform_block_binding(self.inner, location.0, ubo);
         }
     }
 }
