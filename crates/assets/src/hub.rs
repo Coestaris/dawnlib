@@ -137,7 +137,7 @@ pub struct AssetHub {
     scheduler: Scheduler,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AssetInfoState {
     Empty,
     IR(usize), // Ram usage
@@ -150,6 +150,28 @@ impl AssetInfoState {
             AssetInfoState::Empty => "Empty",
             AssetInfoState::IR(_) => "IR",
             AssetInfoState::Loaded { .. } => "Loaded",
+        }
+    }
+
+    pub fn as_ref_count(&self) -> Option<usize> {
+        match self {
+            AssetInfoState::Loaded { rc, .. } => Some(*rc),
+            _ => None,
+        }
+    }
+
+    pub fn as_ram_usage(&self) -> Option<usize> {
+        match self {
+            AssetInfoState::IR(ram) => Some(*ram),
+            AssetInfoState::Loaded { usage, .. } => Some(usage.ram),
+            _ => None,
+        }
+    }
+
+    pub fn as_vram_usage(&self) -> Option<usize> {
+        match self {
+            AssetInfoState::Loaded { usage, .. } => Some(usage.vram),
+            _ => None,
         }
     }
 }

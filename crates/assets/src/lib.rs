@@ -101,20 +101,26 @@ pub enum AssetType {
     Blob,
 }
 
+impl AssetType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            AssetType::Unknown => "Unknown",
+            AssetType::Shader => "Shader",
+            AssetType::Texture => "Texture",
+            AssetType::Audio => "Audio",
+            AssetType::Notes => "Notes",
+            AssetType::Material => "Material",
+            AssetType::Mesh => "Mesh",
+            AssetType::Font => "Font",
+            AssetType::Dictionary => "Dictionary",
+            AssetType::Blob => "Blob",
+        }
+    }
+}
+
 impl std::fmt::Display for AssetType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AssetType::Unknown => write!(f, "Unknown"),
-            AssetType::Shader => write!(f, "Shader"),
-            AssetType::Texture => write!(f, "Texture"),
-            AssetType::Audio => write!(f, "Audio"),
-            AssetType::Notes => write!(f, "Notes"),
-            AssetType::Material => write!(f, "Material"),
-            AssetType::Mesh => write!(f, "Mesh"),
-            AssetType::Font => write!(f, "Font"),
-            AssetType::Dictionary => write!(f, "Dictionary"),
-            AssetType::Blob => write!(f, "Blob"),
-        }
+        write!(f, "{}", self.as_str())
     }
 }
 
@@ -256,7 +262,7 @@ impl<T: AssetCastable> TypedAsset<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssetMemoryUsage {
     pub ram: usize,
     pub vram: usize,
