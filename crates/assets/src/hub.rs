@@ -11,7 +11,7 @@ use evenio::event::{GlobalEvent, Receiver, Sender};
 use evenio::fetch::Single;
 use evenio::handler::IntoHandler;
 use evenio::prelude::World;
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -447,7 +447,18 @@ impl AssetHub {
             // Collect dependencies
             let mut dependencies = HashMap::new();
             for dep in &header.dependencies {
-                dependencies.insert(dep.clone(), self.get(dep.clone())?);
+                match self.get(dep.clone()) {
+                    Ok(asset) => {
+                        dependencies.insert(dep.clone(), asset);
+                    }
+                    Err(err) => {
+                        // Not critical, just log the error
+                        warn!(
+                            "Failed to find dependency {:?} for asset {:?}: {}",
+                            dep, id, err
+                        );
+                    }
+                }
             }
 
             factory.send(ToFactoryMessage::Load(
