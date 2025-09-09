@@ -29,23 +29,25 @@ pub struct IRMeshVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub tex_coord: [f32; 2],
-    // pub tangent: [f32; 3],
-    // pub bitangent: [f32; 3],
+    pub tangent: [f32; 3],
+    pub bitangent: [f32; 3],
     // pub bone_indices: [u32; IR_MAX_BONE_INFLUENCES],
     // pub bone_weights: [f32; IR_MAX_BONE_INFLUENCES],
 }
 
 #[allow(dead_code)]
 impl IRMeshVertex {
-    pub fn new(pos: Vec3, norm: Vec3, tex: Vec2) -> Self {
+    pub fn new(pos: Vec3, norm: Vec3, tex: Vec2, tangent: Vec3, bitangent: Vec3) -> Self {
         Self {
             position: pos.to_array(),
             normal: norm.to_array(),
             tex_coord: tex.to_array(),
+            tangent: tangent.to_array(),
+            bitangent: bitangent.to_array(),
         }
     }
 
-    pub fn layout() -> [IRLayout; 3] {
+    pub fn layout() -> [IRLayout; 5] {
         [
             IRLayout {
                 field: IRLayoutField::Position,
@@ -67,6 +69,20 @@ impl IRMeshVertex {
                 samples: 2, // floats
                 stride_bytes: size_of::<IRMeshVertex>(),
                 offset_bytes: offset_of!(IRMeshVertex, tex_coord),
+            },
+            IRLayout {
+                field: IRLayoutField::Tangent,
+                sample_type: IRLayoutSampleType::Float,
+                samples: 3, // floats
+                stride_bytes: size_of::<IRMeshVertex>(),
+                offset_bytes: offset_of!(IRMeshVertex, tangent),
+            },
+            IRLayout {
+                field: IRLayoutField::Bitangent,
+                sample_type: IRLayoutSampleType::Float,
+                samples: 3, // floats
+                stride_bytes: size_of::<IRMeshVertex>(),
+                offset_bytes: offset_of!(IRMeshVertex, bitangent),
             },
         ]
     }

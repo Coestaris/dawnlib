@@ -693,15 +693,42 @@ fn process_primitive(
         });
     }
 
+    // Try to get tangent and bitangent, if not present, compute them
+    // For simplicity, we will set them to zero for now.
+    let mut tangents = vec![Vec3::ZERO; positions.len()];
+    let mut bitangents = vec![Vec3::ZERO; positions.len()];
+    if let Some(tangents_iter) = reader.read_tangents() {
+        for (i, t) in tangents_iter.enumerate() {
+            let t = Vec3::from([t[0], t[1], t[2]]).normalize();
+            tangents[i] = t;
+        }
+    } else {
+        // TODO: Compute tangents from normals and texture coordinates
+    }
+    // Calculate bitangents from normals and tangents
+    for i in 0..positions.len() {
+        let n = normals[i];
+        let t = tangents[i];
+        let b = n.cross(t).normalize();
+        bitangents[i] = b;
+    }
+
+
     let mut min = Vec3::splat(f32::MAX);
     let mut max = Vec3::splat(f32::MIN);
     let mut vertices = Vec::with_capacity(positions.len() * size_of::<IRMeshVertex>());
-    for (position, (normal, tex_coord)) in
-        positions.iter().zip(normals.iter().zip(tex_coords.iter()))
+    for (((((position, normal), tex_coord), tangent), bitangent)) in positions
+        .iter()
+        .zip(normals.iter())
+        .zip(tex_coords.iter())
+        .zip(tangents.iter())
+        .zip(bitangents.iter())
     {
         min = min.min(*position);
         max = max.max(*position);
-        vertices.extend_from_slice(IRMeshVertex::new(*position, *normal, *tex_coord).into_bytes());
+        vertices.extend_from_slice(
+            IRMeshVertex::new(*position, *normal, *tex_coord, *tangent, *bitangent).into_bytes(),
+        );
     }
 
     Ok(PrimitiveProcessResult {
