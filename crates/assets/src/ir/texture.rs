@@ -49,20 +49,6 @@ impl Default for IRTextureType {
         IRTextureType::Unknown
     }
 }
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IRPixelDataType {
-    U8,
-    U16,
-    U32,
-    U64,
-    I8,
-    I16,
-    I32,
-    I64,
-    F32,
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IRPixelFormat {
     Unknown,
@@ -96,8 +82,17 @@ pub enum IRPixelFormat {
     RGB32F,
     /// Red, green, blue, alpha (32 bits float)
     RGBA32F,
+    
+    RGBA32UI,
 
-    // ????
+    /// 24-bit depth buffer. 
+    /// Used for internal depth storage, and 
+    /// usually cannot be used for Asset textures.
+    DEPTH24,
+    
+    /// 32-bit depth buffer.
+    /// Used for internal depth storage, and
+    /// usually cannot be used for Asset textures.
     DEPTH32F,
 }
 

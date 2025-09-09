@@ -1,6 +1,6 @@
 use crate::ecs::{
-    InvalidateRendererCache, ObjectAreaLight, ObjectMesh, ObjectPointLight, ObjectPosition,
-    ObjectRotation, ObjectScale, ObjectSpotLight, ObjectSunLight,
+    InvalidateRendererCache, ObjectAreaLight, ObjectColor, ObjectIntensity, ObjectMesh,
+    ObjectPointLight, ObjectPosition, ObjectRotation, ObjectScale, ObjectSpotLight, ObjectSunLight,
 };
 use crate::passes::events::{PassEventTrait, RenderPassEvent};
 use crate::renderable::{
@@ -35,12 +35,16 @@ struct PointLightQuery<'a> {
     entity_id: EntityId,
     light: &'a ObjectPointLight,
     position: &'a ObjectPosition,
+    intensity: Option<&'a ObjectIntensity>,
+    color: Option<&'a ObjectColor>,
 }
 
 #[derive(Query)]
 struct SpotLightQuery<'a> {
     entity_id: EntityId,
     light: &'a ObjectSpotLight,
+    intensity: Option<&'a ObjectIntensity>,
+    color: Option<&'a ObjectColor>,
 }
 
 #[derive(Query)]
@@ -53,7 +57,10 @@ struct AreaLightQuery<'a> {
 struct SunLightQuery<'a> {
     entity_id: EntityId,
     light: &'a ObjectSunLight,
+    intensity: Option<&'a ObjectIntensity>,
+    color: Option<&'a ObjectColor>,
 }
+
 #[derive(Component)]
 struct Boxed {
     raw: NonNull<()>,
@@ -292,8 +299,11 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: RendererProxy<E>, world: &mut 
         for light in point_lights.iter() {
             let position = light.position.0;
             let inner_light = light.light;
+            let intensity = light.intensity.map_or(1.0, |i| i.intensity);
+            let color = light.color.map_or(Vec3::ONE, |c| c.color);
 
-            let mut object = RenderablePointLight::new(light.entity_id, inner_light, position);
+            let mut object =
+                RenderablePointLight::new(light.entity_id, inner_light, color, intensity, position);
             object.set_updated(tracker.track_point_light(light.entity_id, &object));
             frame.point_lights.push(object);
         }

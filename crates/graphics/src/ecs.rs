@@ -26,13 +26,23 @@ pub struct ObjectScale(pub Vec3);
 #[derive(Component)]
 pub struct ObjectMesh(pub TypedAsset<Mesh>);
 
+#[derive(Component)]
+pub struct ObjectColor {
+    pub color: Vec3,
+}
+
+#[derive(Component)]
+pub struct ObjectIntensity {
+    pub intensity: f32,
+}
+
 /// ECS component for point light
 /// Can be rendered only if `ObjectPosition` is also present
+/// Also can be modified by `ObjectColor` and `ObjectIntensity` components.
 #[derive(Component)]
 pub struct ObjectPointLight {
-    pub color: Vec3,
-    pub intensity: f32,
     pub range: f32,
+    pub linear_falloff: bool,
 }
 
 #[derive(Component)]

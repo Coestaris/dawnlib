@@ -99,9 +99,17 @@ fn pf_to_gl(format: &IRPixelFormat) -> Result<GLPF, TextureError> {
         IRPixelFormat::RGBA16F => GLPF::new(glow::RGBA16F, glow::RGBA, glow::FLOAT),
         IRPixelFormat::RGB32F => GLPF::new(glow::RGB, glow::RGB, glow::FLOAT),
         IRPixelFormat::RGBA32F => GLPF::new(glow::RGBA, glow::RGBA, glow::FLOAT),
+        IRPixelFormat::RGBA32UI => {
+            GLPF::new(glow::RGBA32UI, glow::RGBA_INTEGER, glow::UNSIGNED_INT)
+        }
         IRPixelFormat::DEPTH32F => {
             GLPF::new(glow::DEPTH_COMPONENT32F, glow::DEPTH_COMPONENT, glow::FLOAT)
         }
+        IRPixelFormat::DEPTH24 => GLPF::new(
+            glow::DEPTH_COMPONENT24,
+            glow::DEPTH_COMPONENT,
+            glow::UNSIGNED_INT,
+        ),
         _ => return Err(TextureError::UnsupportedPixelFormat(format.clone())),
     })
 }
@@ -124,7 +132,7 @@ impl Texture {
         }
         match ir.texture_type {
             IRTextureType::Texture2D { width, height } => {
-                texture.texture_image_2d(
+                texture.feed_2d(
                     0,
                     width as usize,
                     height as usize,
@@ -195,7 +203,7 @@ impl Texture {
         }
     }
 
-    pub fn texture_image_2d(
+    pub fn feed_2d(
         &self,
         level: usize,
         width: usize,
@@ -245,7 +253,10 @@ impl Texture {
         )
     }
 
-    pub fn new(gl: &'static glow::Context, texture_type: IRTextureType) -> Result<Self, TextureError> {
+    pub fn new(
+        gl: &'static glow::Context,
+        texture_type: IRTextureType,
+    ) -> Result<Self, TextureError> {
         unsafe {
             let id = gl
                 .create_texture()

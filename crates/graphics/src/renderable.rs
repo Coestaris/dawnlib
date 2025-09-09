@@ -1,12 +1,8 @@
-use crate::ecs::{ObjectPointLight, ObjectSunLight};
-use crate::gl::material::Material;
+use crate::ecs::{ObjectColor, ObjectIntensity, ObjectPointLight, ObjectSunLight};
 use crate::gl::mesh::Mesh;
-use dawn_assets::{Asset, TypedAsset};
+use dawn_assets::TypedAsset;
 use evenio::prelude::EntityId;
 use glam::{Mat4, Quat, Vec3};
-use std::any::TypeId;
-use std::ptr::NonNull;
-use std::sync::OnceLock;
 
 #[derive(Clone, Debug)]
 pub struct RenderableUID(EntityId);
@@ -39,16 +35,24 @@ pub struct RenderablePointLight {
     pub color: Vec3,
     pub intensity: f32,
     pub range: f32,
+    pub linear_falloff: bool,
 }
 
 impl RenderablePointLight {
-    pub fn new(uid: EntityId, object: &ObjectPointLight, position: Vec3) -> Self {
+    pub fn new(
+        uid: EntityId,
+        object: &ObjectPointLight,
+        color: Vec3,
+        intensity: f32,
+        position: Vec3,
+    ) -> Self {
         RenderablePointLight {
             meta: RenderableMeta::new(uid),
             position,
-            color: object.color,
-            intensity: object.intensity,
+            color,
+            intensity,
             range: object.range,
+            linear_falloff: object.linear_falloff,
         }
     }
 
@@ -62,6 +66,7 @@ impl PartialEq for RenderablePointLight {
         self.position.abs_diff_eq(other.position, 0.0001)
             && self.color.abs_diff_eq(other.color, 0.0001)
             && (self.intensity - other.intensity).abs() < 0.0001
+            && self.linear_falloff == other.linear_falloff
             && self.meta == other.meta
             && self.range == other.range
     }
