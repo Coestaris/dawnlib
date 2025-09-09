@@ -23,8 +23,7 @@ pub enum MaterialError {
 
 pub struct Material {
     pub albedo: TypedAsset<Texture>,
-    pub metallic: TypedAsset<Texture>,
-    pub roughness: TypedAsset<Texture>,
+    pub metallic_roughness: TypedAsset<Texture>,
     pub normal: TypedAsset<Texture>,
     pub occlusion: TypedAsset<Texture>,
 }
@@ -43,16 +42,11 @@ impl Material {
             .and_then(|asset| Some(TypedAsset::new(asset.clone())))
             .map(|tex| tex.clone())
             .ok_or(MaterialError::AlbedoTextureNotFound(ir.albedo))?;
-        let metallic = deps
-            .get(&ir.metallic)
+        let metallic_roughness = deps
+            .get(&ir.metallic_roughness)
             .and_then(|asset| Some(TypedAsset::new(asset.clone())))
             .map(|tex| tex.clone())
-            .ok_or(MaterialError::MetallicTextureNotFound(ir.metallic))?;
-        let roughness = deps
-            .get(&ir.roughness)
-            .and_then(|asset| Some(TypedAsset::new(asset.clone())))
-            .map(|tex| tex.clone())
-            .ok_or(MaterialError::RoughnessTextureNotFound(ir.roughness))?;
+            .ok_or(MaterialError::MetallicTextureNotFound(ir.metallic_roughness))?;
         let normal = deps
             .get(&ir.normal)
             .and_then(|asset| Some(TypedAsset::new(asset.clone())))
@@ -67,8 +61,7 @@ impl Material {
         Ok((
             Material {
                 albedo,
-                metallic,
-                roughness,
+                metallic_roughness,
                 normal,
                 occlusion,
             },

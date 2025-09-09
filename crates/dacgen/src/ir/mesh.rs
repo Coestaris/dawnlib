@@ -9,7 +9,7 @@ use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use dawn_util::profile::Measure;
-use glam::{vec3, Mat4, Vec3, Vec4};
+use glam::{vec3, Mat4, Vec2, Vec3, Vec4};
 use gltf::buffer::Data;
 use gltf::image::Format;
 use gltf::mesh::Mode;
@@ -122,13 +122,9 @@ enum MaterialTexture<'a> {
         texture: Option<Texture<'a>>,
         fallback_color: Vec4,
     },
-    Metallic {
+    MetallicRoughness {
         texture: Option<Texture<'a>>,
-        fallback_value: f32,
-    },
-    Roughness {
-        texture: Option<Texture<'a>>,
-        fallback_value: f32,
+        fallback_value: (f32, f32),
     },
     Normal {
         texture: Option<Texture<'a>>,
@@ -144,8 +140,7 @@ impl<'a> MaterialTexture<'a> {
     fn as_multipler(&self) -> f32 {
         match self {
             MaterialTexture::Albedo { .. } => 1.0,
-            MaterialTexture::Metallic { .. } => 1.0,
-            MaterialTexture::Roughness { .. } => 1.0,
+            MaterialTexture::MetallicRoughness { .. } => 1.0,
             MaterialTexture::Normal { multiplier, .. } => *multiplier,
             MaterialTexture::Occlusion { multiplier, .. } => *multiplier,
         }
@@ -154,8 +149,7 @@ impl<'a> MaterialTexture<'a> {
     fn as_texture(&self) -> Option<&Texture> {
         match self {
             MaterialTexture::Albedo { texture, .. } => texture.as_ref(),
-            MaterialTexture::Metallic { texture, .. } => texture.as_ref(),
-            MaterialTexture::Roughness { texture, .. } => texture.as_ref(),
+            MaterialTexture::MetallicRoughness { texture, .. } => texture.as_ref(),
             MaterialTexture::Normal { texture, .. } => texture.as_ref(),
             MaterialTexture::Occlusion { texture, .. } => texture.as_ref(),
         }
@@ -164,8 +158,7 @@ impl<'a> MaterialTexture<'a> {
     fn as_str(&self) -> &'static str {
         match self {
             MaterialTexture::Albedo { .. } => "albedo",
-            MaterialTexture::Metallic { .. } => "metallic",
-            MaterialTexture::Roughness { .. } => "roughness",
+            MaterialTexture::MetallicRoughness { .. } => "metallic_roughness",
             MaterialTexture::Normal { .. } => "normal",
             MaterialTexture::Occlusion { .. } => "occlusion",
         }
@@ -174,8 +167,7 @@ impl<'a> MaterialTexture<'a> {
     fn default_format(&self) -> Format {
         match self {
             MaterialTexture::Albedo { .. } => Format::R8G8B8,
-            MaterialTexture::Metallic { .. } => Format::R8,
-            MaterialTexture::Roughness { .. } => Format::R8,
+            MaterialTexture::MetallicRoughness { .. } => Format::R8G8,
             MaterialTexture::Normal { .. } => Format::R8G8B8,
             MaterialTexture::Occlusion { .. } => Format::R8,
         }
@@ -184,8 +176,7 @@ impl<'a> MaterialTexture<'a> {
     fn allowed_formats(&self) -> &[Format] {
         match self {
             MaterialTexture::Albedo { .. } => &[Format::R8G8B8, Format::R8G8B8A8],
-            MaterialTexture::Metallic { .. } => &[Format::R8],
-            MaterialTexture::Roughness { .. } => &[Format::R8],
+            MaterialTexture::MetallicRoughness { .. } => &[Format::R8G8B8],
             MaterialTexture::Normal { .. } => &[Format::R8G8B8],
             MaterialTexture::Occlusion { .. } => &[Format::R8],
         }
@@ -210,6 +201,14 @@ fn texture_named_id(
 
 fn texture_unnamed_r_texture_id(value: f32) -> AssetID {
     AssetID::new(format!("common_r_texture_{:03}", (value * 1000.0) as u32))
+}
+
+fn texture_unnamed_rg_texture_id(color: Vec2) -> AssetID {
+    AssetID::new(format!(
+        "common_rg_texture_{:03}_{:03}",
+        (color.x * 100.0) as u32,
+        (color.y * 100.0) as u32
+    ))
 }
 
 fn texture_unnamed_rgb_texture_id(color: Vec3) -> AssetID {
@@ -268,6 +267,7 @@ fn fake_texture_rgb(id: AssetID, color: Vec3) -> Result<(AssetID, Vec<PartialIR>
         }],
     ))
 }
+
 
 fn fake_texture_r(id: AssetID, value: f32) -> Result<(AssetID, Vec<PartialIR>), MeshError> {
     let data = vec![(value * 255.0) as u8];
@@ -415,14 +415,9 @@ fn process_texture(
         const FALLBACK_OCCLUSION: f32 = 1.0;
         const FALLBACK_NORMAL: Vec3 = vec3(0.0, 0.0, 0.0);
         let id = match texture_type {
-            MaterialTexture::Albedo { fallback_color, .. } => {
+            MaterialTexture::Albedo { .. } => texture_named_id(&material_id, &texture_type, None),
+            MaterialTexture::MetallicRoughness { .. } => {
                 texture_named_id(&material_id, &texture_type, None)
-            }
-            MaterialTexture::Metallic { fallback_value, .. } => {
-                texture_unnamed_r_texture_id(fallback_value)
-            }
-            MaterialTexture::Roughness { fallback_value, .. } => {
-                texture_unnamed_r_texture_id(fallback_value)
             }
             MaterialTexture::Normal { .. } => texture_unnamed_rgb_texture_id(FALLBACK_NORMAL),
             MaterialTexture::Occlusion { .. } => texture_unnamed_r_texture_id(FALLBACK_OCCLUSION),
@@ -445,8 +440,11 @@ fn process_texture(
             MaterialTexture::Albedo { fallback_color, .. } => {
                 fake_texture_rgb(id, fallback_color.truncate())
             }
-            MaterialTexture::Metallic { fallback_value, .. } => fake_texture_r(id, fallback_value),
-            MaterialTexture::Roughness { fallback_value, .. } => fake_texture_r(id, fallback_value),
+            MaterialTexture::MetallicRoughness { fallback_value, .. } => {
+                // Pack metallic (R) and roughness (G) into a 2-channel texture
+                let color = vec3(fallback_value.0, fallback_value.1, 0.0);
+                fake_texture_rgb(id, color)
+            }
             MaterialTexture::Normal { .. } => fake_texture_rgb(id, FALLBACK_NORMAL),
             MaterialTexture::Occlusion { .. } => fake_texture_r(id, FALLBACK_OCCLUSION),
         }
@@ -494,39 +492,26 @@ fn process_material(
         ctx,
     )?;
 
-    let (metallic_id, metallic_irs) = process_texture(
+    let (metallic_roughness_id, metallic_roughness_irs) = process_texture(
         id.clone(),
         if let Some(pbr) = material
             .pbr_metallic_roughness()
             .metallic_roughness_texture()
         {
-            MaterialTexture::Metallic {
+            MaterialTexture::MetallicRoughness {
                 texture: Some(pbr.texture()),
-                fallback_value: 1.0,
+                fallback_value: (
+                    material.pbr_metallic_roughness().metallic_factor(),
+                    material.pbr_metallic_roughness().roughness_factor(),
+                ),
             }
         } else {
-            MaterialTexture::Metallic {
+            MaterialTexture::MetallicRoughness {
                 texture: None,
-                fallback_value: material.pbr_metallic_roughness().metallic_factor(),
-            }
-        },
-        ctx,
-    )?;
-
-    let (roughness_id, roughness_irs) = process_texture(
-        id.clone(),
-        if let Some(pbr) = material
-            .pbr_metallic_roughness()
-            .metallic_roughness_texture()
-        {
-            MaterialTexture::Roughness {
-                texture: Some(pbr.texture()),
-                fallback_value: 1.0,
-            }
-        } else {
-            MaterialTexture::Roughness {
-                texture: None,
-                fallback_value: material.pbr_metallic_roughness().roughness_factor(),
+                fallback_value: (
+                    material.pbr_metallic_roughness().metallic_factor(),
+                    material.pbr_metallic_roughness().roughness_factor(),
+                ),
             }
         },
         ctx,
@@ -566,15 +551,13 @@ fn process_material(
 
     let mut dependencies = HashSet::new();
     dependencies.insert(albedo_id.clone());
-    dependencies.insert(metallic_id.clone());
-    dependencies.insert(roughness_id.clone());
+    dependencies.insert(metallic_roughness_id.clone());
     dependencies.insert(normal_id.clone());
     dependencies.insert(occlusion_id.clone());
 
     let mut irs = Vec::new();
     irs.extend(albedo_irs);
-    irs.extend(metallic_irs);
-    irs.extend(roughness_irs);
+    irs.extend(metallic_roughness_irs);
     irs.extend(normal_irs);
     irs.extend(occlusion_irs);
 
@@ -589,9 +572,8 @@ fn process_material(
         },
         ir: IRAsset::Material(IRMaterial {
             albedo: albedo_id,
-            metallic: metallic_id,
-            roughness: roughness_id,
             normal: normal_id,
+            metallic_roughness: metallic_roughness_id,
             occlusion: occlusion_id,
         }),
     });
@@ -712,7 +694,6 @@ fn process_primitive(
         let b = n.cross(t).normalize();
         bitangents[i] = b;
     }
-
 
     let mut min = Vec3::splat(f32::MAX);
     let mut max = Vec3::splat(f32::MIN);
