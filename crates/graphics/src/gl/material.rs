@@ -46,7 +46,9 @@ impl Material {
             .get(&ir.metallic_roughness)
             .and_then(|asset| Some(TypedAsset::new(asset.clone())))
             .map(|tex| tex.clone())
-            .ok_or(MaterialError::MetallicTextureNotFound(ir.metallic_roughness))?;
+            .ok_or(MaterialError::MetallicTextureNotFound(
+                ir.metallic_roughness,
+            ))?;
         let normal = deps
             .get(&ir.normal)
             .and_then(|asset| Some(TypedAsset::new(asset.clone())))

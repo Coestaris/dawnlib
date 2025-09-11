@@ -260,10 +260,12 @@ where
                 .unwrap(),
         ));
 
-        self.input_out.send(InputEvent(WindowEvent::Resized(PhysicalSize::new(
-            self.config.dimensions.x as u32,
-            self.config.dimensions.y as u32,
-        )))).unwrap();
+        self.input_out
+            .send(InputEvent(WindowEvent::Resized(PhysicalSize::new(
+                self.config.dimensions.x as u32,
+                self.config.dimensions.y as u32,
+            ))))
+            .unwrap();
 
         // Notify the monitor about the pass names
         let pass_names = self.pipeline.as_ref().unwrap().get_names().clone();

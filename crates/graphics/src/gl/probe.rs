@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use glow::HasContext;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub struct GlVersion {

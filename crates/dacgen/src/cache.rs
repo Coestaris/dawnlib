@@ -1,12 +1,12 @@
 use crate::deep_hash::DeepHasher;
 use crate::{UserAssetFile, WriteConfig, WriterError};
+use blake3::IncrementCounter::No;
 use dawn_dac::serialize_backend::deserialize;
 use dawn_dac::writer::BinaryAsset;
 use dawn_dac::ChecksumAlgorithm;
 use dawn_util::profile::Measure;
 use log::debug;
 use std::path::PathBuf;
-use blake3::IncrementCounter::No;
 
 pub struct Cache {
     cache_dir: PathBuf,

@@ -268,7 +268,6 @@ fn fake_texture_rgb(id: AssetID, color: Vec3) -> Result<(AssetID, Vec<PartialIR>
     ))
 }
 
-
 fn fake_texture_r(id: AssetID, value: f32) -> Result<(AssetID, Vec<PartialIR>), MeshError> {
     let data = vec![(value * 255.0) as u8];
     Ok((

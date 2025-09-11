@@ -51,7 +51,8 @@ impl UBO {
 
     pub fn bind_base(&self, index: u32) {
         unsafe {
-            self.gl.bind_buffer_base(glow::UNIFORM_BUFFER, index, Some(self.inner));
+            self.gl
+                .bind_buffer_base(glow::UNIFORM_BUFFER, index, Some(self.inner));
         }
     }
 

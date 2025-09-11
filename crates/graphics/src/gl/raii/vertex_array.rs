@@ -90,7 +90,11 @@ impl<'a> Drop for VertexArrayBinding<'a> {
 }
 
 impl VertexArray {
-    pub fn new(gl: &'static glow::Context, primitive: IRTopology, index: IRIndexType) -> Option<Self> {
+    pub fn new(
+        gl: &'static glow::Context,
+        primitive: IRTopology,
+        index: IRIndexType,
+    ) -> Option<Self> {
         unsafe {
             let id = gl.create_vertex_array().ok()?;
 

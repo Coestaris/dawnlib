@@ -1,11 +1,11 @@
 use crate::ir::audio::convert_audio;
+use crate::ir::blob::convert_blob;
 use crate::ir::dictionary::convert_dictionary;
 use crate::ir::font::convert_font;
 use crate::ir::material::convert_material;
 use crate::ir::mesh::convert_mesh;
 use crate::ir::shader::convert_shader;
 use crate::ir::texture::convert_texture;
-use crate::ir::blob::convert_blob;
 use crate::user::{UserAssetHeader, UserAssetProperties};
 use crate::{ChecksumAlgorithm, UserAssetFile, UserIRAsset};
 use anyhow::Context;
@@ -15,13 +15,13 @@ use dawn_util::profile::Measure;
 use std::path::{Path, PathBuf};
 
 mod audio;
+mod blob;
 mod dictionary;
 mod font;
 mod material;
 mod mesh;
 mod shader;
 mod texture;
-mod blob;
 
 /// Normalize the file name by removing the extension, converting to lowercase,
 /// replacing whitespace with underscores, and removing special characters.

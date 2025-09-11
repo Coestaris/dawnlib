@@ -13,13 +13,13 @@ use crate::gl::assets::{
 };
 use crate::gl::context::Context;
 use crate::gl::debug::{setup_debug_callback, MessageType};
+use crate::gl::probe::OpenGLInfo;
 use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendError, RendererBackendTrait, RendererConfig};
 use dawn_assets::factory::FactoryBinding;
 use glam::UVec2;
 use log::{error, info, warn};
 use thiserror::Error;
-use crate::gl::probe::OpenGLInfo;
 
 pub struct GLRenderer<E: PassEventTrait> {
     _marker: std::marker::PhantomData<E>,
@@ -65,7 +65,7 @@ impl<E: PassEventTrait> GLRenderer<E> {
     pub fn new_context(&self) -> Result<glow::Context, GLRendererError> {
         Self::new_context_inner(&self.context)
     }
-    
+
     fn new_context_inner(context: &Context) -> Result<glow::Context, GLRendererError> {
         unsafe {
             let gl = glow::Context::from_loader_function_cstr(|s| {

@@ -82,14 +82,14 @@ pub enum IRPixelFormat {
     RGB32F,
     /// Red, green, blue, alpha (32 bits float)
     RGBA32F,
-    
+
     RGBA32UI,
 
-    /// 24-bit depth buffer. 
-    /// Used for internal depth storage, and 
+    /// 24-bit depth buffer.
+    /// Used for internal depth storage, and
     /// usually cannot be used for Asset textures.
     DEPTH24,
-    
+
     /// 32-bit depth buffer.
     /// Used for internal depth storage, and
     /// usually cannot be used for Asset textures.
