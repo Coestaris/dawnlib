@@ -2,7 +2,6 @@ use crate::gl::raii::texture::Texture;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::material::IRMaterial;
 use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage, TypedAsset};
-use glam::Vec4;
 use log::debug;
 use std::collections::HashMap;
 use thiserror::Error;

@@ -1,6 +1,5 @@
 use glow::HasContext;
 use log::warn;
-use std::panic;
 
 #[derive(Debug, Clone)]
 pub(crate) enum MessageSource {

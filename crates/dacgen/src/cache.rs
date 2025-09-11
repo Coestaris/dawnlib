@@ -1,6 +1,5 @@
 use crate::deep_hash::DeepHasher;
 use crate::{UserAssetFile, WriteConfig, WriterError};
-use blake3::IncrementCounter::No;
 use dawn_dac::serialize_backend::deserialize;
 use dawn_dac::writer::BinaryAsset;
 use dawn_dac::ChecksumAlgorithm;

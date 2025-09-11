@@ -103,8 +103,8 @@ impl OpenGLInfo {
     }
 
     unsafe fn get_version(gl: &glow::Context) -> GlVersion {
-        let mut major = gl.get_parameter_i32(glow::MAJOR_VERSION);
-        let mut minor = gl.get_parameter_i32(glow::MINOR_VERSION);
+        let major = gl.get_parameter_i32(glow::MAJOR_VERSION);
+        let minor = gl.get_parameter_i32(glow::MINOR_VERSION);
         if major > 0 && minor > 0 {
             GlVersion {
                 major: major as u32,
@@ -153,7 +153,7 @@ impl OpenGLInfo {
     }
 
     unsafe fn get_binary_formats(gl: &glow::Context) -> HashSet<i32> {
-        let mut num_formats = gl.get_parameter_i32(glow::NUM_SHADER_BINARY_FORMATS);
+        let num_formats = gl.get_parameter_i32(glow::NUM_SHADER_BINARY_FORMATS);
 
         let mut result = HashSet::new();
         for _ in 0..num_formats {

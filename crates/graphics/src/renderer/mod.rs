@@ -5,7 +5,6 @@ mod monitor;
 
 use crate::passes::chain::RenderChain;
 use crate::passes::events::{PassEventTrait, RenderPassEvent};
-use crate::passes::pipeline::RenderPipeline;
 use crate::renderable::{
     Renderable, RenderableAreaLight, RenderablePointLight, RenderableSpotLight, RenderableSunLight,
 };

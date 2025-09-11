@@ -1,4 +1,4 @@
-use crate::ecs::{ObjectColor, ObjectIntensity, ObjectPointLight, ObjectSunLight};
+use crate::ecs::{ObjectPointLight, ObjectSunLight};
 use crate::gl::mesh::Mesh;
 use dawn_assets::TypedAsset;
 use evenio::prelude::EntityId;

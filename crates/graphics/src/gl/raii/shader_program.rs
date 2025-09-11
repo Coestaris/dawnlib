@@ -59,7 +59,6 @@ mod targets {
 }
 
 use crate::gl::raii::shader::{Shader, ShaderError};
-use crate::gl::raii::ubo::UBO;
 
 impl Program {
     pub(crate) fn from_ir<E: PassEventTrait>(

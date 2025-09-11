@@ -10,7 +10,7 @@ use evenio::event::{GlobalEvent, Receiver};
 use evenio::fetch::Single;
 use evenio::handler::IntoHandler;
 use evenio::prelude::World;
-use log::{error, info, warn};
+use log::{error, info};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread::{Builder, JoinHandle};

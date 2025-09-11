@@ -697,7 +697,7 @@ fn process_primitive(
     let mut min = Vec3::splat(f32::MAX);
     let mut max = Vec3::splat(f32::MIN);
     let mut vertices = Vec::with_capacity(positions.len() * size_of::<IRMeshVertex>());
-    for (((((position, normal), tex_coord), tangent), bitangent)) in positions
+    for ((((position, normal), tex_coord), tangent), bitangent) in positions
         .iter()
         .zip(normals.iter())
         .zip(tex_coords.iter())

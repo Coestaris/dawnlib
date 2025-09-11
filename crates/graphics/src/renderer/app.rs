@@ -2,7 +2,6 @@ use crate::gl::context::Context;
 use crate::passes::chain::RenderChain;
 use crate::passes::events::RenderPassEvent;
 use crate::passes::pipeline::RenderPipeline;
-use crate::passes::result::RenderResult;
 use crate::passes::ChainExecuteCtx;
 use crate::renderer::backend::RendererBackendTrait;
 use crate::renderer::monitor::RendererMonitorTrait;

@@ -1,5 +1,5 @@
 use crate::ir::PartialIR;
-use crate::user::{ShaderOrigin, ShaderSource, UserShaderAsset};
+use crate::user::{ShaderOrigin, UserShaderAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::shader::IRShader;
 use dawn_assets::ir::IRAsset;
