@@ -4,7 +4,7 @@ mod debug;
 pub mod font;
 pub mod material;
 pub mod mesh;
-mod probe;
+pub mod probe;
 pub mod raii;
 
 use crate::gl::assets::{
@@ -19,11 +19,14 @@ use dawn_assets::factory::FactoryBinding;
 use glam::UVec2;
 use log::{error, info, warn};
 use thiserror::Error;
+use crate::gl::probe::OpenGLInfo;
 
 pub struct GLRenderer<E: PassEventTrait> {
     _marker: std::marker::PhantomData<E>,
 
     context: Context,
+
+    pub info: OpenGLInfo,
     pub gl: glow::Context,
 
     // Factories for texture and shader assets
@@ -49,30 +52,6 @@ pub struct GLRendererConfig {
 pub enum GLRendererError {
     #[error("Failed to create OpenGL context: {0}")]
     ContextCreateError(#[from] anyhow::Error),
-}
-
-unsafe fn stat_opengl_context(gl: &glow::Context) {
-    info!("OpenGL information:");
-    probe::get_version(gl).map_or_else(
-        || warn!("Failed to get OpenGL version"),
-        |v| info!("  OpenGL version: {}.{}", v.major, v.minor),
-    );
-    probe::get_renderer(gl).map_or_else(
-        || warn!("Failed to get OpenGL renderer"),
-        |r| info!("  Renderer: {}", r),
-    );
-    probe::get_vendor(gl).map_or_else(
-        || warn!("Failed to get OpenGL vendor"),
-        |v| info!("  Vendor: {}", v),
-    );
-    probe::get_shading_language_version(gl).map_or_else(
-        || warn!("Failed to get OpenGL shading language version"),
-        |v| info!("  GLSL version: {}", v),
-    );
-    probe::get_depth_bits(gl).map_or_else(
-        || warn!("Failed to get OpenGL depth bits"),
-        |b| info!("  Depth bits: {}", b),
-    );
 }
 
 impl<E: PassEventTrait> GLRenderer<E> {
@@ -123,7 +102,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             let mut gl = Self::new_context_inner(&context).unwrap();
 
             // Stat the OpenGL context
-            stat_opengl_context(&gl);
+            let info = OpenGLInfo::new(&gl);
 
             // Setup factories for texture and shader assets
             // These factories are used to load and manage texture and shader assets.
@@ -185,6 +164,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
                 material_factory,
                 font_factory,
                 gl,
+                info,
             })
         }
     }
