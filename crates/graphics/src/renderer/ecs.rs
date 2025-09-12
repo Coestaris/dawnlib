@@ -44,6 +44,7 @@ struct SpotLightQuery<'a> {
     entity_id: EntityId,
     light: &'a ObjectSpotLight,
     intensity: Option<&'a ObjectIntensity>,
+    position: &'a ObjectPosition,
     color: Option<&'a ObjectColor>,
 }
 
@@ -51,6 +52,7 @@ struct SpotLightQuery<'a> {
 struct AreaLightQuery<'a> {
     entity_id: EntityId,
     light: &'a ObjectAreaLight,
+    // TODO: Add position, rotation, scale
 }
 
 #[derive(Query)]
@@ -163,6 +165,10 @@ impl UpdateTracker {
     fn track_sun_light(&mut self, entity_id: EntityId, sun_light: &RenderableSunLight) -> bool {
         UpdateTracker::is_updated(entity_id, &mut self.sun_lights_cache, sun_light)
     }
+
+    fn track_spot_light(&mut self, entity_id: EntityId, spot_light: &RenderableSpotLight) -> bool {
+        UpdateTracker::is_updated(entity_id, &mut self.spot_lights_cache, spot_light)
+    }
 }
 
 pub fn attach_to_ecs<E: PassEventTrait>(renderer: RendererProxy<E>, world: &mut World) {
@@ -269,7 +275,7 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: RendererProxy<E>, world: &mut 
         mut tracker: Single<&mut UpdateTracker>,
         renderables: Fetcher<RenderableQuery>,
         point_lights: Fetcher<PointLightQuery>,
-        _spot_lights: Fetcher<SpotLightQuery>,
+        spot_lights: Fetcher<SpotLightQuery>,
         _area_lights: Fetcher<AreaLightQuery>,
         sun_lights: Fetcher<SunLightQuery>,
     ) {
@@ -308,11 +314,26 @@ pub fn attach_to_ecs<E: PassEventTrait>(renderer: RendererProxy<E>, world: &mut 
             frame.point_lights.push(object);
         }
 
+        for light in spot_lights.iter() {
+            let position = light.position.0;
+            let inner_light = light.light;
+            let intensity = light.intensity.map_or(1.0, |i| i.intensity);
+            let color = light.color.map_or(Vec3::ONE, |c| c.color);
+
+            let mut object =
+                RenderableSpotLight::new(light.entity_id, inner_light, intensity, position, color);
+            object.set_updated(tracker.track_spot_light(light.entity_id, &object));
+            frame.spot_lights.push(object);
+        }
+
         // Process the sun lights
         for light in sun_lights.iter() {
             let inner_light = light.light;
+            let intensity = light.intensity.map_or(1.0, |i| i.intensity);
+            let color = light.color.map_or(Vec3::ONE, |c| c.color);
 
-            let mut object = RenderableSunLight::new(light.entity_id, inner_light);
+            let mut object =
+                RenderableSunLight::new(light.entity_id, inner_light, color, intensity);
             object.set_updated(tracker.track_sun_light(light.entity_id, &object));
             frame.sun_lights.push(object);
         }

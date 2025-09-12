@@ -43,17 +43,30 @@ pub struct ObjectIntensity {
 pub struct ObjectPointLight {
     pub range: f32,
     pub linear_falloff: bool,
+    pub shadow: bool,
 }
 
+/// ECS component for spot light
+/// Can be rendered only if `ObjectPosition` is also present
+/// Can be modified by `ObjectColor` and `ObjectIntensity` components.
 #[derive(Component)]
-pub struct ObjectSpotLight {}
+pub struct ObjectSpotLight {
+    pub direction: Vec3,
+    pub range: f32,
+    pub inner_cone_angle: f32,
+    pub outer_cone_angle: f32,
+    pub linear_falloff: bool,
+    pub shadow: bool,
+}
 
 /// ECS component for the Sun light
+/// Can be modified by `ObjectColor` and `ObjectIntensity` components.
+/// Direction is specified in world coordinates and should be normalized.
 #[derive(Component)]
 pub struct ObjectSunLight {
-    pub color: Vec3,
-    pub intensity: f32,
     pub direction: Vec3,
+    pub ambient: f32,
+    pub shadow: bool,
 }
 
 #[derive(Component)]

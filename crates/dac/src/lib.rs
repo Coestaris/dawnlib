@@ -246,7 +246,7 @@ pub mod compression_backend {
             }
         }
 
-        const THRESHOLD: usize = 64 * 1024;
+        const THRESHOLD: usize = 1024 * 1024 * 1024;
         let params = to_params(level);
 
         // Do not use multi-threading if the data is too small.

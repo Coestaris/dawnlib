@@ -1,4 +1,4 @@
-use crate::ecs::{ObjectPointLight, ObjectSunLight};
+use crate::ecs::{ObjectPointLight, ObjectSpotLight, ObjectSunLight};
 use crate::gl::mesh::Mesh;
 use dawn_assets::TypedAsset;
 use evenio::prelude::EntityId;
@@ -34,8 +34,9 @@ pub struct RenderablePointLight {
     pub position: Vec3,
     pub color: Vec3,
     pub intensity: f32,
-    pub range: f32,
     pub linear_falloff: bool,
+    pub range: f32,
+    pub shadow: bool,
 }
 
 impl RenderablePointLight {
@@ -53,6 +54,7 @@ impl RenderablePointLight {
             intensity,
             range: object.range,
             linear_falloff: object.linear_falloff,
+            shadow: object.shadow,
         }
     }
 
@@ -69,29 +71,82 @@ impl PartialEq for RenderablePointLight {
             && self.linear_falloff == other.linear_falloff
             && self.meta == other.meta
             && self.range == other.range
+            && self.shadow == other.shadow
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct RenderableSpotLight {
     pub meta: RenderableMeta,
+    pub position: Vec3,
+    pub direction: Vec3,
+    pub color: Vec3,
+    pub intensity: f32,
+    pub range: f32,
+    pub inner_cone_angle: f32,
+    pub outer_cone_angle: f32,
+    pub shadow: bool,
+}
+
+impl RenderableSpotLight {
+    pub fn new(
+        uid: EntityId,
+        object: &ObjectSpotLight,
+        intensity: f32,
+        position: Vec3,
+        color: Vec3,
+    ) -> Self {
+        RenderableSpotLight {
+            meta: RenderableMeta::new(uid),
+            position,
+            direction: object.direction,
+            color,
+            intensity,
+            range: object.range,
+            inner_cone_angle: object.inner_cone_angle,
+            outer_cone_angle: object.outer_cone_angle,
+            shadow: object.shadow,
+        }
+    }
+
+    pub fn set_updated(&mut self, updated: bool) {
+        self.meta.updated = updated;
+    }
+}
+
+impl PartialEq for RenderableSpotLight {
+    fn eq(&self, other: &Self) -> bool {
+        self.position.abs_diff_eq(other.position, 0.0001)
+            && self.direction.abs_diff_eq(other.direction, 0.0001)
+            && self.color.abs_diff_eq(other.color, 0.0001)
+            && (self.intensity - other.intensity).abs() < 0.0001
+            && self.range == other.range
+            && (self.inner_cone_angle - other.inner_cone_angle).abs() < 0.0001
+            && (self.outer_cone_angle - other.outer_cone_angle).abs() < 0.0001
+            && self.shadow == other.shadow
+            && self.meta == other.meta
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct RenderableSunLight {
     pub meta: RenderableMeta,
-    pub intensity: f32,
     pub direction: Vec3,
     pub color: Vec3,
+    pub intensity: f32,
+    pub ambient: f32,
+    pub shadow: bool,
 }
 
 impl RenderableSunLight {
-    pub fn new(uid: EntityId, object: &ObjectSunLight) -> Self {
+    pub fn new(uid: EntityId, object: &ObjectSunLight, color: Vec3, intensity: f32) -> Self {
         RenderableSunLight {
             meta: RenderableMeta::new(uid),
-            intensity: object.intensity,
             direction: object.direction,
-            color: object.color,
+            color,
+            intensity,
+            ambient: object.ambient,
+            shadow: object.shadow,
         }
     }
 
@@ -105,6 +160,7 @@ impl PartialEq for RenderableSunLight {
         self.direction.abs_diff_eq(other.direction, 0.0001)
             && self.color.abs_diff_eq(other.color, 0.0001)
             && (self.intensity - other.intensity).abs() < 0.0001
+            && self.shadow == other.shadow
             && self.meta == other.meta
     }
 }
