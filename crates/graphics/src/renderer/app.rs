@@ -259,12 +259,12 @@ where
                 .unwrap(),
         ));
 
-        self.input_out
+        let _ = self
+            .input_out
             .send(InputEvent(WindowEvent::Resized(PhysicalSize::new(
                 self.config.dimensions.x as u32,
                 self.config.dimensions.y as u32,
-            ))))
-            .unwrap();
+            ))));
 
         // Notify the monitor about the pass names
         let pass_names = self.pipeline.as_ref().unwrap().get_names().clone();
@@ -292,12 +292,10 @@ where
 
             match event {
                 WindowEvent::Resized(size) => {
-                    backend
-                        .resize(glam::UVec2::new(
-                            size.width.max(1) as u32,
-                            size.height.max(1) as u32,
-                        ))
-                        .unwrap();
+                    let _ = backend.resize(glam::UVec2::new(
+                        size.width.max(1) as u32,
+                        size.height.max(1) as u32,
+                    ));
                 }
                 WindowEvent::CloseRequested => {
                     info!("Window close requested");

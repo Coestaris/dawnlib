@@ -1,5 +1,6 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Condvar, Mutex};
+use log::info;
 
 /// Sync point that allows threads to synchronize at specific points.
 /// Allows threads to wait for each other before proceeding.
@@ -62,6 +63,8 @@ impl Rendezvous {
 
     /// Allows a third party to break the rendezvous and wake all waiting threads.
     pub fn unlock(&self) {
+        info!("Rendezvous unlocked");
+
         // Mark as unlocked
         self.0
             .unlocked
