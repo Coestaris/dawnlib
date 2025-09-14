@@ -2,7 +2,7 @@ use dawn_assets::{AssetHeader, AssetID};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::time::SystemTime;
+use web_time::SystemTime;
 use thiserror::Error;
 
 pub mod reader;

@@ -5,7 +5,7 @@ use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 use evenio::event::GlobalEvent;
 use log::debug;
 use std::panic::UnwindSafe;
-use std::time::Duration;
+use web_time::Duration;
 
 #[derive(GlobalEvent, Clone, Debug)]
 pub struct RendererMonitorEvent {
@@ -62,7 +62,7 @@ pub(crate) struct RendererMonitor {
     drawn_primitives: Counter,
     pass_names: Vec<String>,
     pass_samples: Vec<MonitorSample<Duration>>,
-    last_send: std::time::Instant,
+    last_send: web_time::Instant,
     sender: Option<Sender<RendererMonitorEvent>>,
     counter: usize,
 }
@@ -133,7 +133,7 @@ impl RendererMonitorTrait for RendererMonitor {
         }
 
         // Call these each second
-        let now = std::time::Instant::now();
+        let now = web_time::Instant::now();
         if now.duration_since(self.last_send) >= Duration::from_millis(200) {
             self.last_send = now;
             self.fps.update();
@@ -200,7 +200,7 @@ impl RendererMonitor {
             drawn_primitives: Counter::new(0.5),
             pass_names: Vec::with_capacity(MAX_RENDER_PASSES),
             pass_samples: Vec::with_capacity(MAX_RENDER_PASSES),
-            last_send: std::time::Instant::now(),
+            last_send: web_time::Instant::now(),
             sender: None,
             counter: 0,
         }

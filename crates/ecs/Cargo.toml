@@ -9,6 +9,7 @@ glam = "0.30.5"
 log = "0.4.27"
 anyhow = "1.0.99"
 thiserror = "2.0.16"
+web-time = "1.1.0"
 
 [profile.release]
 lto = true

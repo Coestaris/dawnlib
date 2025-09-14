@@ -765,6 +765,7 @@ dependencies = [
  "serde_bytes",
  "smallvec",
  "thiserror 2.0.16",
+ "web-time",
 ]
 
 [[package]]
@@ -782,6 +783,7 @@ dependencies = [
  "log",
  "ringbuf",
  "tinyrand",
+ "web-time",
 ]
 
 [[package]]
@@ -797,6 +799,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "thiserror 2.0.16",
+ "web-time",
 ]
 
 [[package]]
@@ -826,6 +829,7 @@ dependencies = [
  "toml 0.9.5",
  "url",
  "walkdir",
+ "web-time",
 ]
 
 [[package]]
@@ -838,6 +842,7 @@ dependencies = [
  "glam",
  "log",
  "thiserror 2.0.16",
+ "web-time",
 ]
 
 [[package]]
@@ -858,6 +863,7 @@ dependencies = [
  "log",
  "thiserror 2.0.16",
  "triple_buffer",
+ "web-time",
  "winit",
 ]
 
@@ -866,6 +872,7 @@ name = "dawn-util"
 version = "0.0.0"
 dependencies = [
  "log",
+ "web-time",
 ]
 
 [[package]]
@@ -4068,6 +4075,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
+ "serde",
  "wasm-bindgen",
 ]
 

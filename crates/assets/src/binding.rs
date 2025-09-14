@@ -2,7 +2,7 @@ use crossbeam_channel::Sender;
 use crossbeam_channel::{unbounded, Receiver};
 use log::debug;
 use std::fmt::Debug;
-use std::time::Duration;
+use web_time::Duration;
 
 pub struct Binding<T, F>
 where

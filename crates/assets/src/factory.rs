@@ -7,7 +7,7 @@ use log::{error, warn};
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::ptr::NonNull;
-use std::time::Duration;
+use web_time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct LoadFactoryMessage {

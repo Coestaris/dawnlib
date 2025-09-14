@@ -1,7 +1,7 @@
 use crate::world::WorldLoopMonitorEvent;
 use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 use evenio::world::World;
-use std::time::Instant;
+use web_time::Instant;
 
 pub(crate) trait WorldLoopMonitorTrait: Send + Sync + 'static {
     fn cycle_start(&mut self) {}

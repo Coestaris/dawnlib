@@ -9,7 +9,7 @@ use evenio::component::Component;
 use evenio::event::Receiver;
 use evenio::fetch::Single;
 use evenio::world::World;
-use std::time::Duration;
+use web_time::Duration;
 
 #[derive(Debug)]
 pub struct AudioAsset(pub IRAudio);

@@ -12,3 +12,4 @@ opt-level = 1
 
 [dependencies]
 log = "0.4.27"
+web-time = "1.1.0"

@@ -7,7 +7,7 @@ use crate::passes::events::PassEventTrait;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::AssetType;
-use std::time::Duration;
+use web_time::Duration;
 
 pub(crate) struct ShaderAssetFactory {
     // Using 'static lifetime here because shader programs are

@@ -10,6 +10,7 @@ anyhow = "1.0.99"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_bytes = "0.11.17"
 log = "0.4.27"
+web-time = { version = "1.1.0", features = ["serde"] }
 
 # For serializing/deserializing the object in binary form
 #bitcode = { version = "0.6.7", features = ["serde"] }

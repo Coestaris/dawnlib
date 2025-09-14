@@ -1,7 +1,7 @@
 use dawn_util::rendezvous::Rendezvous;
 use log::warn;
 use std::panic::UnwindSafe;
-use std::time::Duration;
+use web_time::Duration;
 
 pub trait Synchronization: Send + Sync + 'static + UnwindSafe {
     fn wait(&self, _elapsed: Duration) {}

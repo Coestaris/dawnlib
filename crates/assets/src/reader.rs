@@ -4,7 +4,7 @@ use crate::requests::task::AssetTaskID;
 use crate::{AssetHeader, AssetID};
 use crossbeam_channel::Receiver;
 use crossbeam_channel::Sender;
-use std::time::Duration;
+use web_time::Duration;
 
 #[derive(Debug)]
 pub enum ToReaderMessage {

@@ -19,7 +19,7 @@ use evenio::world::World;
 use log::{info, warn};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 const EVENTS_QUEUE_CAPACITY: usize = 1024;
 const MONITOR_QUEUE_CAPACITY: usize = 32;

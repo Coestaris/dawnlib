@@ -13,7 +13,7 @@ use dawn_assets::ir::notes::IRNoteEvent;
 use dawn_assets::TypedAsset;
 use log::warn;
 use std::thread::sleep;
-use std::time::Duration;
+use web_time::Duration;
 use tinyrand::Rand;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

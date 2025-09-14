@@ -3,7 +3,7 @@ use crate::passes::result::RenderResult;
 use crate::renderable::Renderable;
 use crate::renderer::backend::RendererBackend;
 use crate::renderer::DataStreamFrame;
-use std::time::Duration;
+use web_time::Duration;
 
 pub mod chain;
 pub mod events;
@@ -81,7 +81,7 @@ impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
         E: PassEventTrait,
         P: RenderPass<E>,
     {
-        let start = std::time::Instant::now();
+        let start = web_time::Instant::now();
 
         let mut result = RenderResult::default();
         result += pass.begin(self.backend, self.frame);

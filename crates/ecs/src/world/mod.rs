@@ -14,7 +14,7 @@ use log::{error, info};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread::{Builder, JoinHandle};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 use thiserror::Error;
 
 mod monitor;

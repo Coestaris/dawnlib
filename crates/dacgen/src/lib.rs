@@ -24,7 +24,7 @@ use std::fs::File;
 use std::hash::Hasher;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::time::SystemTime;
+use web_time::SystemTime;
 use thiserror::Error;
 
 build_info::build_info!(fn build_info);
@@ -261,7 +261,7 @@ pub fn write_from_directory<W: Write>(
             } else {
                 let user_clone = user_asset.clone();
 
-                let instant = std::time::Instant::now();
+                let instant = web_time::Instant::now();
                 let irs = user_asset
                     .convert(
                         config.cache_dir.as_path(),

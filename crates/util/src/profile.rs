@@ -1,5 +1,5 @@
 use log::debug;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// Utility struct to measure the time taken by a scope
 /// and log it when the struct is dropped.
