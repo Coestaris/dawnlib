@@ -132,6 +132,18 @@ mod features {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+mod features {
+    pub fn detect_features() {
+        // No runtime detection for WebAssembly
+    }
+
+    #[cfg(test)]
+    pub fn disable_all_features() {
+        // No features to disable for WebAssembly
+    }
+}
+
 pub use features::detect_features;
 #[cfg(test)]
 pub use features::disable_all_features;

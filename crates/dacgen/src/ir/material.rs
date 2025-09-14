@@ -4,10 +4,10 @@ use crate::UserAssetFile;
 use std::path::Path;
 
 pub fn convert_material(
-    file: &UserAssetFile,
-    cache_dir: &Path,
-    cwd: &Path,
-    user: &UserMaterialAsset,
+    _file: &UserAssetFile,
+    _cache_dir: &Path,
+    _cwd: &Path,
+    _user: &UserMaterialAsset,
 ) -> anyhow::Result<Vec<PartialIR>> {
     todo!();
 

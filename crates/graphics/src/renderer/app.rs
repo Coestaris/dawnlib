@@ -1,4 +1,7 @@
-use crate::gl::context::Context;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::gl::context_glutin::Context;
+#[cfg(target_arch = "wasm32")]
+use crate::gl::context_webgl::Context;
 use crate::passes::chain::RenderChain;
 use crate::passes::events::RenderPassEvent;
 use crate::passes::pipeline::RenderPipeline;

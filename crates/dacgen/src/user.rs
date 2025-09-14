@@ -272,7 +272,7 @@ impl DeepHash for UserAudioAsset {
 }
 
 impl DeepHash for UserMaterialAsset {
-    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
+    fn deep_hash<T: Hasher>(&self, _state: &mut T, _ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         Ok(())
     }
 }

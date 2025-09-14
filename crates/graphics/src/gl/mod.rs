@@ -1,5 +1,8 @@
 pub mod assets;
-pub mod context;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod context_glutin;
+#[cfg(target_arch = "wasm32")]
+pub mod context_webgl;
 mod debug;
 pub mod font;
 pub mod material;
@@ -11,7 +14,10 @@ use crate::gl::assets::{
     FontAssetFactory, MaterialAssetFactory, MeshAssetFactory, ShaderAssetFactory,
     TextureAssetFactory,
 };
-use crate::gl::context::Context;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::gl::context_glutin::{Context, ContextError};
+#[cfg(target_arch = "wasm32")]
+use crate::gl::context_webgl::{Context, ContextError};
 use crate::gl::debug::{setup_debug_callback, MessageType};
 use crate::gl::probe::OpenGLInfo;
 use crate::passes::events::PassEventTrait;
@@ -51,7 +57,7 @@ pub struct GLRendererConfig {
 #[derive(Debug, Error)]
 pub enum GLRendererError {
     #[error("Failed to create OpenGL context: {0}")]
-    ContextCreateError(#[from] anyhow::Error),
+    ContextCreateError(#[from] ContextError),
 }
 
 impl<E: PassEventTrait> GLRenderer<E> {
@@ -63,28 +69,9 @@ impl<E: PassEventTrait> GLRenderer<E> {
     }
 
     pub fn new_context(&self) -> Result<glow::Context, GLRendererError> {
-        Self::new_context_inner(&self.context)
-    }
-
-    fn new_context_inner(context: &Context) -> Result<glow::Context, GLRendererError> {
-        unsafe {
-            let gl = glow::Context::from_loader_function_cstr(|s| {
-                // Warn if the symbol is not found
-                match context.load_fn(s.to_str().unwrap_or("")) {
-                    Ok(addr) => addr,
-                    Err(e) => {
-                        // That's not a catastrophic, but we should know about it
-                        warn!(
-                            "Failed to load OpenGL symbol: {}: {}",
-                            s.to_str().unwrap_or(""),
-                            e
-                        );
-                        std::ptr::null()
-                    }
-                }
-            });
-            Ok(gl)
-        }
+        self.context
+            .glow()
+            .map_err(GLRendererError::ContextCreateError)
     }
 }
 
@@ -99,7 +86,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     {
         unsafe {
             // Create main OpenGL context
-            let mut gl = Self::new_context_inner(&context).unwrap();
+            let mut gl = context.glow()?;
 
             // Stat the OpenGL context
             let info = OpenGLInfo::new(&gl);

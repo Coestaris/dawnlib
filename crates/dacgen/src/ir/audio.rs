@@ -4,10 +4,10 @@ use crate::UserAssetFile;
 use std::path::Path;
 
 pub fn convert_audio(
-    file: &UserAssetFile,
-    cache_dir: &Path,
-    cwd: &Path,
-    user: &UserAudioAsset,
+    _file: &UserAssetFile,
+    _cache_dir: &Path,
+    _cwd: &Path,
+    _user: &UserAudioAsset,
 ) -> anyhow::Result<Vec<PartialIR>> {
     todo!()
 }

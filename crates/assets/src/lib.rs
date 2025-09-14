@@ -222,6 +222,9 @@ pub struct TypedAsset<T: AssetCastable> {
     _marker: PhantomData<T>,
 }
 
+unsafe impl<T: AssetCastable> Send for TypedAsset<T> {}
+unsafe impl<T: AssetCastable> Sync for TypedAsset<T> {}
+
 impl<T: AssetCastable> PartialEq for TypedAsset<T> {
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner

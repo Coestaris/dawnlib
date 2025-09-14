@@ -869,7 +869,7 @@ fn convert_mesh_inner(
                     let img = DynamicImage::ImageLuma8(
                         image::ImageBuffer::from_raw(
                             match tex.texture_type {
-                                IRTextureType::Texture2D { width, height } => width,
+                                IRTextureType::Texture2D { width, height: _ } => width,
                                 _ => 1,
                             },
                             match tex.texture_type {
