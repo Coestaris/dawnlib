@@ -1,4 +1,5 @@
 use glam::UVec2;
+use log::error;
 use std::sync::Arc;
 use thiserror::Error;
 use web_sys::wasm_bindgen::JsCast;
@@ -64,14 +65,18 @@ impl Context {
                 .map_err(|_| ContextError::WebGl2NotSupported)?
         };
 
-        let gl = unsafe { glow::Context::from_webgl2_context(webgl.clone()) };
+        unsafe {
+            let glow = glow::Context::from_webgl2_context(webgl.clone());
 
-        let ctx = Context {
-            gl: Arc::new(gl),
-            webgl,
-            canvas,
-        };
-        Ok((window, ctx))
+            Ok((
+                window,
+                Context {
+                    gl: Arc::new(glow),
+                    webgl,
+                    canvas,
+                },
+            ))
+        }
     }
 
     pub fn resize(&self, size: UVec2) {

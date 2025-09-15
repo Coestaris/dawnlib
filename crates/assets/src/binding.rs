@@ -50,7 +50,7 @@ where
     }
 
     pub fn recv(&self, timeout: Duration) -> Option<T> {
-        match self.receiver.recv_timeout(timeout) {
+        match self.receiver.try_recv() {
             Ok(value) => {
                 debug!("Received message: {:?}", value);
                 Some(value)

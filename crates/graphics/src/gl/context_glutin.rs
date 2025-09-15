@@ -1,3 +1,4 @@
+use crate::gl::debug::{setup_debug_callback, MessageType};
 use glam::UVec2;
 use glutin::config::{ColorBufferType, Config, ConfigTemplateBuilder};
 use glutin::context::{
@@ -8,16 +9,19 @@ use glutin::display::{GetGlDisplay, GlDisplay};
 use glutin::prelude::GlConfig;
 use glutin::surface::{GlSurface, Surface, SwapInterval, WindowSurface};
 use glutin_winit::{DisplayBuilder, GlWindow};
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::error::Error;
 use std::ffi::c_void;
 use std::num::NonZeroU32;
+use std::ptr;
+use std::sync::Arc;
 use thiserror::Error;
 use winit::event_loop::ActiveEventLoop;
 use winit::raw_window_handle::{HandleError, HasWindowHandle};
 use winit::window::{Window, WindowAttributes};
 
 pub struct Context {
+    glow: Arc<glow::Context>,
     context: PossiblyCurrentContext,
     surface: Surface<WindowSurface>,
 }
@@ -159,7 +163,45 @@ impl Context {
             warn!("Failed to set vsync: {res}");
         }
 
-        Ok((window, Self { context, surface }))
+        unsafe {
+            let mut glow = glow::Context::from_loader_function_cstr(|s| {
+                // Warn if the symbol is not found
+                let cstr = std::ffi::CString::new(s.to_str().unwrap_or("")).unwrap();
+                match context.display().get_proc_address(&cstr) {
+                    ptr if ptr.is_null() => {
+                        // That's not a catastrophic, but we should know about it
+                        warn!(
+                            "glutin context could not load symbol: {}",
+                            s.to_str().unwrap_or("")
+                        );
+                        std::ptr::null()
+                    }
+                    ptr => ptr,
+                }
+            });
+
+            // Setup the debug output for OpenGL.
+            setup_debug_callback(&mut glow, |source, rtype, severity, message| match rtype {
+                MessageType::Error => {
+                    error!("OpenGL: {}: {}: {}", source, severity, message);
+                }
+                MessageType::DeprecatedBehavior | MessageType::UndefinedBehavior => {
+                    warn!("OpenGL: {}: {}: {}", source, severity, message);
+                }
+                _ => {
+                    info!("OpenGL: {}: {}: {}", source, severity, message);
+                }
+            });
+
+            Ok((
+                window,
+                Self {
+                    glow: Arc::new(glow),
+                    context,
+                    surface,
+                },
+            ))
+        }
     }
 
     pub fn resize(&self, size: UVec2) {
@@ -175,28 +217,7 @@ impl Context {
         self.surface.swap_buffers(&self.context).unwrap();
     }
 
-    fn load_fn(&self, symbol: &str) -> Result<*const c_void, ContextError> {
-        let cstr = std::ffi::CString::new(symbol).unwrap();
-        Ok(self.context.display().get_proc_address(&cstr))
-    }
-
-    pub fn glow(&self) -> Result<glow::Context, ContextError> {
-        unsafe {
-            Ok(glow::Context::from_loader_function_cstr(|s| {
-                // Warn if the symbol is not found
-                match self.load_fn(s.to_str().unwrap_or("")) {
-                    Ok(addr) => addr,
-                    Err(e) => {
-                        // That's not a catastrophic, but we should know about it
-                        warn!(
-                            "Failed to load OpenGL symbol: {}: {}",
-                            s.to_str().unwrap_or(""),
-                            e
-                        );
-                        std::ptr::null()
-                    }
-                }
-            }))
-        }
+    pub fn glow(&self) -> Result<Arc<glow::Context>, ContextError> {
+        Ok(self.glow.clone())
     }
 }

@@ -115,19 +115,6 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
                 None
             };
 
-            // Setup the debug output for OpenGL.
-            setup_debug_callback(&mut gl, |source, rtype, severity, message| match rtype {
-                MessageType::Error => {
-                    error!("OpenGL: {}: {}: {}", source, severity, message);
-                }
-                MessageType::DeprecatedBehavior | MessageType::UndefinedBehavior => {
-                    warn!("OpenGL: {}: {}: {}", source, severity, message);
-                }
-                _ => {
-                    info!("OpenGL: {}: {}: {}", source, severity, message);
-                }
-            });
-
             Ok(GLRenderer::<E> {
                 _marker: Default::default(),
                 context,
@@ -136,7 +123,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
                 mesh_factory,
                 material_factory,
                 font_factory,
-                gl: gl.into(),
+                gl,
                 info,
             })
         }

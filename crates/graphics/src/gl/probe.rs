@@ -33,8 +33,7 @@ impl std::fmt::Display for ShadingLanguageVersion {
 
 #[derive(Debug, Clone)]
 pub struct OpenGLInfo {
-    pub version: GlVersion,
-    pub vendor: String,
+    pub version: glow::Version,
     pub renderer: String,
     pub shading_language_version: Option<ShadingLanguageVersion>,
     pub binary_formats: HashSet<i32>,
@@ -90,8 +89,7 @@ pub struct OpenGLLimits {
 impl OpenGLInfo {
     pub unsafe fn new(gl: &glow::Context) -> Self {
         Self {
-            version: Self::get_version(gl),
-            vendor: Self::get_vendor(gl),
+            version: gl.version().clone(),
             renderer: Self::get_renderer(gl),
             shading_language_version: Self::get_shading_language_version(gl),
             binary_formats: Self::get_binary_formats(gl),
@@ -99,19 +97,6 @@ impl OpenGLInfo {
             depth_bits: Self::get_depth_bits(gl),
             stencil_bits: Self::get_stencil_bits(gl),
             limits: OpenGLLimits::new(gl),
-        }
-    }
-
-    unsafe fn get_version(gl: &glow::Context) -> GlVersion {
-        let major = gl.get_parameter_i32(glow::MAJOR_VERSION);
-        let minor = gl.get_parameter_i32(glow::MINOR_VERSION);
-        if major > 0 && minor > 0 {
-            GlVersion {
-                major: major as u32,
-                minor: minor as u32,
-            }
-        } else {
-            panic!("Failed to get OpenGL version");
         }
     }
 
