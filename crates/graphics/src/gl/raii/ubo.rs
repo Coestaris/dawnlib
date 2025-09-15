@@ -1,12 +1,13 @@
+use std::sync::Arc;
 use glow::HasContext;
 
 pub struct UBO {
-    gl: &'static glow::Context,
+    gl: Arc<glow::Context>,
     inner: glow::Buffer,
 }
 
 impl UBO {
-    pub fn new(gl: &'static glow::Context, pre_alloc: Option<usize>) -> Option<Self> {
+    pub fn new(gl: Arc<glow::Context>, pre_alloc: Option<usize>) -> Option<Self> {
         unsafe {
             let id = gl.create_buffer().ok()?;
 

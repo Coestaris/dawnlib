@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::shader::IRShader;
 use dawn_assets::{AssetCastable, AssetMemoryUsage};
@@ -6,7 +7,7 @@ use log::debug;
 
 #[derive(Debug)]
 pub struct Program {
-    gl: &'static glow::Context,
+    gl: Arc<glow::Context>,
     inner: glow::Program,
 }
 
@@ -62,13 +63,13 @@ use crate::gl::raii::shader::{Shader, ShaderError};
 
 impl Program {
     pub(crate) fn from_ir<E: PassEventTrait>(
-        gl: &'static glow::Context,
+        gl: Arc<glow::Context>,
         ir: IRShader,
     ) -> Result<(Self, AssetMemoryUsage), ShaderError> {
-        let program = Program::new(gl)?;
+        let program = Program::new(gl.clone())?;
 
         for (source_type, source) in &ir.sources {
-            let shader = Shader::new(gl, *source_type)?;
+            let shader = Shader::new(gl.clone(), *source_type)?;
             let source = String::from_utf8(source.clone())?;
             shader.set_source(source)?;
             shader.compile()?;
@@ -82,7 +83,7 @@ impl Program {
         Ok((program, AssetMemoryUsage::new(size_of::<Program>(), 0)))
     }
 
-    fn new(gl: &'static glow::Context) -> Result<Program, ShaderError> {
+    fn new(gl: Arc<glow::Context>) -> Result<Program, ShaderError> {
         unsafe {
             let id = gl
                 .create_program()
@@ -130,7 +131,7 @@ impl Program {
 
     #[inline(always)]
     pub fn set_uniform<T: UniformTarget>(&self, location: &UniformLocation, value: T) {
-        T::set_uniform(self.gl, location, value);
+        T::set_uniform(&self.gl, location, value);
     }
 
     #[inline(always)]

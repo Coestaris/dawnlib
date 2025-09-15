@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::texture::{
     IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap,
@@ -9,7 +10,7 @@ use thiserror::Error;
 
 #[derive(Debug)]
 pub struct Texture {
-    gl: &'static glow::Context,
+    gl: Arc<glow::Context>,
     inner: glow::Texture,
     texture_type: TextureBind,
 }
@@ -116,12 +117,12 @@ fn pf_to_gl(format: &IRPixelFormat) -> Result<GLPF, TextureError> {
 
 impl Texture {
     pub fn from_ir<E: PassEventTrait>(
-        gl: &'static glow::Context,
+        gl: Arc<glow::Context>,
         ir: IRTexture,
     ) -> Result<(Self, AssetMemoryUsage), TextureError> {
-        let texture = Self::new(gl, ir.texture_type.clone())?;
+        let texture = Self::new(gl.clone(), ir.texture_type.clone())?;
 
-        Texture::bind(gl, texture.texture_type, &texture, 0);
+        Texture::bind(&gl, texture.texture_type, &texture, 0);
         texture.set_wrap_s(ir.wrap_s.clone())?;
         texture.set_wrap_t(ir.wrap_t.clone())?;
         texture.set_wrap_r(ir.wrap_r.clone())?;
@@ -145,7 +146,7 @@ impl Texture {
                 ir.texture_type.clone(),
             ))?,
         }
-        Texture::unbind(gl, texture.texture_type, 0);
+        Texture::unbind(&gl, texture.texture_type, 0);
         Ok((
             texture,
             AssetMemoryUsage::new(size_of::<Texture>(), ir.data.len()),
@@ -243,7 +244,7 @@ impl Texture {
         self.inner
     }
 
-    pub fn new2d(gl: &'static glow::Context) -> Result<Self, TextureError> {
+    pub fn new2d(gl: Arc<glow::Context>) -> Result<Self, TextureError> {
         Self::new(
             gl,
             IRTextureType::Texture2D {
@@ -254,7 +255,7 @@ impl Texture {
     }
 
     pub fn new(
-        gl: &'static glow::Context,
+        gl: Arc<glow::Context>,
         texture_type: IRTextureType,
     ) -> Result<Self, TextureError> {
         unsafe {

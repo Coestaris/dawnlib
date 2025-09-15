@@ -2,10 +2,11 @@ use crate::passes::result::RenderResult;
 use dawn_assets::ir::mesh::{IRIndexType, IRLayout, IRLayoutSampleType, IRTopology};
 use glow::HasContext;
 use log::debug;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct VertexArray {
-    gl: &'static glow::Context,
+    gl: Arc<glow::Context>,
     id: glow::VertexArray,
     draw_mode: u32,
     topology_size: usize,
@@ -14,13 +15,13 @@ pub struct VertexArray {
 }
 
 pub struct VertexArrayBinding<'a> {
-    gl: &'static glow::Context,
+    gl: &'a glow::Context,
     vertex_array: &'a VertexArray,
 }
 
 impl<'a> VertexArrayBinding<'a> {
     #[inline(always)]
-    fn new(gl: &'static glow::Context, vertex_array: &'a VertexArray) -> Self {
+    fn new(gl: &'a glow::Context, vertex_array: &'a VertexArray) -> Self {
         unsafe {
             gl.bind_vertex_array(Some(vertex_array.as_inner()));
         }
@@ -90,11 +91,7 @@ impl<'a> Drop for VertexArrayBinding<'a> {
 }
 
 impl VertexArray {
-    pub fn new(
-        gl: &'static glow::Context,
-        primitive: IRTopology,
-        index: IRIndexType,
-    ) -> Option<Self> {
+    pub fn new(gl: Arc<glow::Context>, primitive: IRTopology, index: IRIndexType) -> Option<Self> {
         unsafe {
             let id = gl.create_vertex_array().ok()?;
 
@@ -127,7 +124,7 @@ impl VertexArray {
     #[inline(always)]
     #[must_use]
     pub fn bind(&self) -> VertexArrayBinding<'_> {
-        VertexArrayBinding::new(self.gl, self)
+        VertexArrayBinding::new(&self.gl, self)
     }
 
     #[inline(always)]

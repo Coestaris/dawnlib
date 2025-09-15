@@ -25,6 +25,7 @@ use crate::renderer::backend::{RendererBackendError, RendererBackendTrait, Rende
 use dawn_assets::factory::FactoryBinding;
 use glam::UVec2;
 use log::{error, info, warn};
+use std::sync::Arc;
 use thiserror::Error;
 
 pub struct GLRenderer<E: PassEventTrait> {
@@ -33,7 +34,7 @@ pub struct GLRenderer<E: PassEventTrait> {
     context: Context,
 
     pub info: OpenGLInfo,
-    pub gl: glow::Context,
+    pub gl: Arc<glow::Context>,
 
     // Factories for texture and shader assets
     texture_factory: Option<TextureAssetFactory>,
@@ -58,21 +59,6 @@ pub struct GLRendererConfig {
 pub enum GLRendererError {
     #[error("Failed to create OpenGL context: {0}")]
     ContextCreateError(#[from] ContextError),
-}
-
-impl<E: PassEventTrait> GLRenderer<E> {
-    fn static_gl(&self) -> &'static glow::Context {
-        // SAFETY: This is safe because the GL context is created once and lives
-        // as long as the renderer. The reference is only used for read-only
-        // operations (like querying capabilities) and not for modifying state.
-        unsafe { std::mem::transmute::<&glow::Context, &'static glow::Context>(&self.gl) }
-    }
-
-    pub fn new_context(&self) -> Result<glow::Context, GLRendererError> {
-        self.context
-            .glow()
-            .map_err(GLRendererError::ContextCreateError)
-    }
 }
 
 // Texture and shader assets cannot be handled from the ECS (like other assets),
@@ -150,7 +136,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
                 mesh_factory,
                 material_factory,
                 font_factory,
-                gl,
+                gl: gl.into(),
                 info,
             })
         }
@@ -159,21 +145,20 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     #[inline(always)]
     fn before_frame(&mut self) -> Result<(), RendererBackendError> {
         // Process events asset factories
-        let gl = self.static_gl();
         if let Some(factory) = &mut self.texture_factory {
-            factory.process_events::<E>(gl);
+            factory.process_events::<E>(&self.gl);
         }
         if let Some(factory) = &mut self.shader_factory {
-            factory.process_events::<E>(gl);
+            factory.process_events::<E>(&self.gl);
         }
         if let Some(factory) = &mut self.mesh_factory {
-            factory.process_events::<E>(gl);
+            factory.process_events::<E>(&self.gl);
         }
         if let Some(factory) = &mut self.material_factory {
-            factory.process_events::<E>(gl);
+            factory.process_events::<E>(&self.gl);
         }
         if let Some(factory) = &mut self.font_factory {
-            factory.process_events::<E>(gl);
+            factory.process_events::<E>(&self.gl);
         }
 
         // User will handle clearing the screen in the render passes.

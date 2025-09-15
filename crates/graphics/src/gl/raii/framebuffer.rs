@@ -3,6 +3,7 @@ use crate::gl::raii::texture::Texture;
 use glam::UVec2;
 use glow::HasContext;
 use log::debug;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
 pub enum FramebufferAttachment {
@@ -70,12 +71,12 @@ impl BlitFramebufferMask {
 }
 
 pub struct Framebuffer {
-    gl: &'static glow::Context,
+    gl: Arc<glow::Context>,
     inner: glow::Framebuffer,
 }
 
 impl Framebuffer {
-    pub fn new(gl: &'static glow::Context) -> Option<Self> {
+    pub fn new(gl: Arc<glow::Context>) -> Option<Self> {
         unsafe {
             let id = gl.create_framebuffer().ok()?;
 

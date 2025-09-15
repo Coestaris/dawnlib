@@ -7,6 +7,7 @@ use crate::passes::events::PassEventTrait;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::AssetType;
+use std::sync::Arc;
 use web_time::Duration;
 
 pub(crate) struct ShaderAssetFactory {
@@ -27,11 +28,11 @@ impl ShaderAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self, gl: &'static glow::Context) {
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &Arc<glow::Context>) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Shader(shader) = message.ir {
-                    let res = Program::from_ir::<E>(gl, shader)?;
+                    let res = Program::from_ir::<E>(gl.clone(), shader)?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected shader metadata"))
@@ -61,11 +62,11 @@ impl TextureAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self, gl: &'static glow::Context) {
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &Arc<glow::Context>) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Texture(texture) = message.ir {
-                    let res = Texture::from_ir::<E>(gl, texture)?;
+                    let res = Texture::from_ir::<E>(gl.clone(), texture)?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected texture metadata"))
@@ -96,11 +97,11 @@ impl MeshAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self, gl: &'static glow::Context) {
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &Arc<glow::Context>) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Mesh(mesh) = message.ir {
-                    let res = Mesh::from_ir(gl, mesh, message.dependencies)?;
+                    let res = Mesh::from_ir(gl.clone(), mesh, message.dependencies)?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected mesh metadata"))
@@ -130,7 +131,7 @@ impl MaterialAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self, gl: &'static glow::Context) {
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &Arc<glow::Context>) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Material(material) = message.ir {
@@ -165,11 +166,11 @@ impl FontAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self, gl: &'static glow::Context) {
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &Arc<glow::Context>) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Font(font) = message.ir {
-                    let res = Font::from_ir::<E>(gl, font, message.dependencies)?;
+                    let res = Font::from_ir::<E>(gl.clone(), font, message.dependencies)?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected font metadata"))

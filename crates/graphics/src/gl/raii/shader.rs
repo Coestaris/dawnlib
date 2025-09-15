@@ -1,10 +1,11 @@
+use std::sync::Arc;
 use dawn_assets::ir::shader::IRShaderSourceKind;
 use glow::HasContext;
 use log::{debug, error};
 use thiserror::Error;
 
 pub struct Shader {
-    gl: &'static glow::Context,
+    gl: Arc<glow::Context>,
     inner: glow::Shader,
 }
 
@@ -28,7 +29,7 @@ pub enum ShaderError {
 
 impl Shader {
     pub(crate) fn new(
-        gl: &'static glow::Context,
+        gl: Arc<glow::Context>,
         source_type: IRShaderSourceKind,
     ) -> Result<Shader, ShaderError> {
         unsafe {

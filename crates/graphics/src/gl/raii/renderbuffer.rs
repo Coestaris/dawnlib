@@ -1,8 +1,9 @@
+use std::sync::Arc;
 use glow::HasContext;
 use log::debug;
 
 pub struct Renderbuffer {
-    gl: &'static glow::Context,
+    gl: Arc<glow::Context>,
     inner: glow::Renderbuffer,
 }
 
@@ -38,7 +39,7 @@ impl RenderBufferStorage {
 }
 
 impl Renderbuffer {
-    pub fn new(gl: &'static glow::Context) -> Option<Self> {
+    pub fn new(gl: Arc<glow::Context>) -> Option<Self> {
         unsafe {
             let id = gl.create_renderbuffer().ok()?;
 

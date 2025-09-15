@@ -1,5 +1,6 @@
 use glow::HasContext;
 use log::debug;
+use std::sync::Arc;
 
 pub enum ElementArrayBufferUsage {
     StaticDraw,
@@ -16,13 +17,13 @@ impl ElementArrayBufferUsage {
     }
 }
 pub struct ElementArrayBufferBinding<'a> {
-    gl: &'static glow::Context,
-    inner: &'a mut ElementArrayBuffer,
+    gl: &'a glow::Context,
+    inner: &'a ElementArrayBuffer,
 }
 
 impl<'a> ElementArrayBufferBinding<'a> {
     #[inline(always)]
-    fn new(gl: &'static glow::Context, array_buffer: &'a mut ElementArrayBuffer) -> Self {
+    fn new(gl: &'a glow::Context, array_buffer: &'a ElementArrayBuffer) -> Self {
         debug!(
             "Binding ElementArrayBuffer ID: {:?}",
             array_buffer.as_inner()
@@ -51,12 +52,12 @@ impl<'a> ElementArrayBufferBinding<'a> {
 }
 
 pub struct ElementArrayBuffer {
-    gl: &'static glow::Context,
+    gl: Arc<glow::Context>,
     inner: glow::Buffer,
 }
 
 impl ElementArrayBuffer {
-    pub fn new(gl: &'static glow::Context) -> Option<Self> {
+    pub fn new(gl: Arc<glow::Context>) -> Option<Self> {
         unsafe {
             let id = gl.create_buffer().ok()?;
 
@@ -66,7 +67,7 @@ impl ElementArrayBuffer {
     }
 
     pub fn bind(&mut self) -> ElementArrayBufferBinding<'_> {
-        ElementArrayBufferBinding::new(self.gl, self)
+        ElementArrayBufferBinding::new(&self.gl, self)
     }
 
     #[inline(always)]

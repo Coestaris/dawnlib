@@ -1,5 +1,6 @@
 use glow::HasContext;
 use log::debug;
+use std::sync::Arc;
 
 pub enum ArrayBufferUsage {
     StaticDraw,
@@ -16,13 +17,13 @@ impl ArrayBufferUsage {
     }
 }
 pub struct ArrayBufferBinding<'a> {
-    gl: &'static glow::Context,
-    inner: &'a mut ArrayBuffer,
+    gl: &'a glow::Context,
+    inner: &'a ArrayBuffer,
 }
 
 impl<'a> ArrayBufferBinding<'a> {
     #[inline(always)]
-    fn new(gl: &'static glow::Context, array_buffer: &'a mut ArrayBuffer) -> Self {
+    fn new(gl: &'a glow::Context, array_buffer: &'a ArrayBuffer) -> Self {
         unsafe {
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(array_buffer.as_inner()));
         }
@@ -58,12 +59,12 @@ impl Drop for ArrayBufferBinding<'_> {
 
 #[derive(Debug)]
 pub struct ArrayBuffer {
-    gl: &'static glow::Context,
+    gl: Arc<glow::Context>,
     inner: glow::Buffer,
 }
 
 impl ArrayBuffer {
-    pub fn new(gl: &'static glow::Context) -> Option<Self> {
+    pub fn new(gl: Arc<glow::Context>) -> Option<Self> {
         unsafe {
             let id = gl.create_buffer().ok()?;
 
@@ -73,7 +74,7 @@ impl ArrayBuffer {
     }
 
     pub fn bind(&mut self) -> ArrayBufferBinding<'_> {
-        ArrayBufferBinding::new(self.gl, self)
+        ArrayBufferBinding::new(&self.gl, self)
     }
 
     #[inline(always)]

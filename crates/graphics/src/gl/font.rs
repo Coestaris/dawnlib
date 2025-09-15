@@ -8,6 +8,7 @@ use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage};
 use glam::Vec2;
 use log::debug;
 use std::collections::HashMap;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -37,15 +38,15 @@ impl AssetCastable for Font {}
 
 impl Font {
     pub(crate) fn from_ir<E: PassEventTrait>(
-        gl: &'static glow::Context,
+        gl: Arc<glow::Context>,
         ir: IRFont,
         deps: HashMap<AssetID, Asset>,
     ) -> Result<(Self, AssetMemoryUsage), FontError> {
         debug!("Creating Font from IR: {ir:?}");
 
-        let vao = VertexArray::new(gl, ir.topology, ir.index_type)
+        let vao = VertexArray::new(gl.clone(), ir.topology, ir.index_type)
             .ok_or(FontError::VertexArrayAllocationFailed)?;
-        let mut vbo = ArrayBuffer::new(gl).ok_or(FontError::ArrayBufferAllocationFailed)?;
+        let mut vbo = ArrayBuffer::new(gl.clone()).ok_or(FontError::ArrayBufferAllocationFailed)?;
         let mut ebo =
             ElementArrayBuffer::new(gl).ok_or(FontError::ElementArrayBufferAllocationFailed)?;
 

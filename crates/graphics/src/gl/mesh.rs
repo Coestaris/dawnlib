@@ -7,6 +7,7 @@ use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage};
 use glam::Vec3;
 use log::debug;
 use std::collections::HashMap;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -53,14 +54,14 @@ struct IRBucket {
 impl IRBucket {
     pub fn into_bucket(
         self,
-        gl: &'static glow::Context,
+        gl: Arc<glow::Context>,
         deps: &HashMap<AssetID, Asset>,
     ) -> Result<TopologyBucket, MeshError> {
-        let vao = VertexArray::new(gl, self.topology, self.index_type.clone())
+        let vao = VertexArray::new(gl.clone(), self.topology, self.index_type.clone())
             .ok_or(MeshError::VertexArrayAllocationFailed)?;
-        let mut vbo = ArrayBuffer::new(gl).ok_or(MeshError::ArrayBufferAllocationFailed)?;
-        let mut ebo =
-            ElementArrayBuffer::new(gl).ok_or(MeshError::ElementArrayBufferAllocationFailed)?;
+        let mut vbo = ArrayBuffer::new(gl.clone()).ok_or(MeshError::ArrayBufferAllocationFailed)?;
+        let mut ebo = ElementArrayBuffer::new(gl.clone())
+            .ok_or(MeshError::ElementArrayBufferAllocationFailed)?;
 
         let vao_binding = vao.bind();
         let vbo_binding = vbo.bind();
@@ -132,7 +133,7 @@ impl AssetCastable for Mesh {}
 
 impl Mesh {
     pub fn from_ir(
-        gl: &'static glow::Context,
+        gl: Arc<glow::Context>,
         ir: IRMesh,
         deps: HashMap<AssetID, Asset>,
     ) -> Result<(Self, AssetMemoryUsage), MeshError> {
@@ -157,7 +158,7 @@ impl Mesh {
 
         let mut buckets = Vec::with_capacity(ir_buckets.len());
         for bucket in ir_buckets.into_values() {
-            buckets.push(bucket.into_bucket(gl, &deps)?);
+            buckets.push(bucket.into_bucket(gl.clone(), &deps)?);
         }
 
         Ok((
