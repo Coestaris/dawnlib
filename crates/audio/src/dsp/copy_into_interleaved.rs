@@ -1,4 +1,4 @@
-use crate::sample::{InterleavedBlock, PlanarBlock};
+use crate::sample::{InterleavedBlock, PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
 use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 
 #[inline(never)]
