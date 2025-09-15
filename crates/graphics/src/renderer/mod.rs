@@ -109,7 +109,7 @@ impl DataStreamFrame {
 }
 
 pub struct Renderer {
-    run: Box<dyn FnOnce() + 'static>,
+    run: Box<dyn FnOnce(Box<dyn FnMut() -> bool + 'static>) + 'static>,
 }
 
 /// Thread-shared proxy to communicate with the renderer thread.
@@ -311,7 +311,7 @@ impl Renderer {
 
         Ok((
             Renderer {
-                run: Box::new(move || {
+                run: Box::new(move |callback| {
                     let mut app = Application::new(
                         window_config,
                         backend_config,
@@ -324,6 +324,7 @@ impl Renderer {
                         output_receiver,
                         stream_output,
                         input_sender,
+                        callback,
                     )
                     .unwrap();
 
@@ -347,8 +348,8 @@ impl Renderer {
     /// Consumes the renderer and runs it in the current thread.
     /// This function will block the current thread until the renderer
     /// exits (for example, when the window is closed).
-    pub fn run(self) {
-        (self.run)()
+    pub fn run(self, callback: Box<dyn FnMut() -> bool + 'static>) {
+        (self.run)(callback)
     }
 }
 

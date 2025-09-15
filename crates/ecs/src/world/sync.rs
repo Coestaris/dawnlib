@@ -3,11 +3,12 @@ use log::warn;
 use std::panic::UnwindSafe;
 use web_time::Duration;
 
-pub trait Synchronization: Send + Sync + 'static + UnwindSafe {
+pub trait Synchronization: Send + Sync + 'static + Clone + UnwindSafe {
     fn wait(&self, _elapsed: Duration) {}
     fn unlock(&self) {}
 }
 
+#[derive(Clone)]
 pub struct RendezvousSynchronization(pub Rendezvous);
 
 impl Synchronization for RendezvousSynchronization {
@@ -20,6 +21,7 @@ impl Synchronization for RendezvousSynchronization {
     }
 }
 
+#[derive(Clone)]
 pub struct FixedRateSynchronization {
     target_duration: Duration,
 }
@@ -47,6 +49,7 @@ impl Synchronization for FixedRateSynchronization {
     fn unlock(&self) {}
 }
 
+#[derive(Clone)]
 pub struct DummySynchronization;
 
 impl Synchronization for DummySynchronization {

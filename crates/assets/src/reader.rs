@@ -65,10 +65,10 @@ impl BasicReader {
         self.binding = Some(binding);
     }
 
-    pub fn process_events<E, R>(&self, enumerate: E, read: R, timeout: Duration)
+    pub fn process_events<E, R>(&self, mut enumerate: E, mut read: R, timeout: Duration)
     where
-        E: Fn() -> anyhow::Result<Vec<AssetHeader>>,
-        R: Fn(AssetID) -> anyhow::Result<IRAsset>,
+        E: FnMut() -> anyhow::Result<Vec<AssetHeader>>,
+        R: FnMut(AssetID) -> anyhow::Result<IRAsset>,
     {
         while let Some(msg) = self.recv(timeout) {
             match msg {

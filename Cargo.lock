@@ -1032,7 +1032,6 @@ dependencies = [
  "evenio_macros",
  "hashbrown 0.14.5",
  "indexmap",
- "rayon",
  "slab",
 ]
 

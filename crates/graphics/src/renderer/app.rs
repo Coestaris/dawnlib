@@ -43,6 +43,7 @@ where
     AF: RendezvousTrait,
 {
     pipeline: Option<RenderPipeline<C, E>>,
+    callback: Box<dyn FnMut() -> bool + 'static>,
 
     config: WindowConfig,
     frame_index: usize,
@@ -87,6 +88,7 @@ where
         output_in: Receiver<OutputEvent>,
         data_stream: Output<DataStreamFrame>,
         input_out: Sender<InputEvent>,
+        callback: Box<dyn FnMut() -> bool + 'static>,
     ) -> Result<Self, ApplicationError> {
         Ok(Application {
             renderer,
@@ -104,6 +106,7 @@ where
             frame_index: 0,
             backend: None,
             input_out,
+            callback,
         })
     }
 }
@@ -138,6 +141,15 @@ where
             if self.external_stop.load(std::sync::atomic::Ordering::SeqCst) {
                 event_loop.exit();
                 info!("External stop requested, exiting renderer loop");
+
+                self.before_frame.unlock();
+                self.after_frame.unlock();
+                return;
+            }
+
+            if !(self.callback)() {
+                event_loop.exit();
+                info!("Callback requested stop, exiting renderer loop");
 
                 self.before_frame.unlock();
                 self.after_frame.unlock();

@@ -12,7 +12,7 @@ log = "0.4.27"
 anyhow = "1.0.99"
 thiserror = "2.0.16"
 crossbeam-channel = "0.5.11"
-evenio = { version = "0.6.0", features = ["rayon"] }
+evenio = "0.6.0"
 glam = "0.30.5"
 triple_buffer = "8.1.1"
 foldhash = "0.2.0"

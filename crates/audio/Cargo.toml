@@ -13,7 +13,7 @@ ringbuf = "0.4.8" # Used for double-buffering audio data
 crossbeam-queue = "0.3.12" # Used for sending messages to the render thread
 tinyrand = "0.5.0" # Used in a waveform noise generator source
 glam = "0.30.5" # Used in actors source
-evenio = { version = "0.6.0", features = ["rayon"] }
+evenio = "0.6.0"
 web-time = "1.1.0"
 
 [profile.release]

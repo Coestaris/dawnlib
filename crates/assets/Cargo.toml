@@ -15,7 +15,7 @@ serde_bytes = "0.11.17"
 glam = "0.30.5"
 
 dawn-ecs = { path = "../ecs", optional = true }
-evenio = { version = "0.6.0", features = ["rayon"], optional = true }
+evenio = { version = "0.6.0", optional = true }
 smallvec = { version = "1.15.1", optional = true }
 crossbeam-channel = { version = "0.5.11", optional = true }
 web-time = "1.1.0"
