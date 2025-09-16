@@ -80,14 +80,14 @@ impl Context {
     }
 
     pub fn resize(&self, size: UVec2) {
-        let dpr = web_sys::window()
-            .map(|w| w.device_pixel_ratio())
-            .unwrap_or(1.0);
-        let width = (size.x as f64 * dpr).round() as u32;
-        let height = (size.y as f64 * dpr).round() as u32;
-
-        self.canvas.set_width(width);
-        self.canvas.set_height(height);
+        // let dpr = web_sys::window()
+        //     .map(|w| w.device_pixel_ratio())
+        //     .unwrap_or(1.0);
+        // let width = (size.x as f64 * dpr).round() as u32;
+        // let height = (size.y as f64 * dpr).round() as u32;
+        //
+        // self.canvas.set_width(width);
+        // self.canvas.set_height(height);
     }
 
     pub fn swap_buffers(&self) {
