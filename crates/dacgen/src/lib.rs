@@ -125,7 +125,7 @@ pub enum WriterError {
     SerializationError(anyhow::Error),
     #[error("Failed to compress data: {0}")]
     CompressionError(anyhow::Error),
-    #[error("Failed to validate metadata: {0}")]
+    #[error("Convert to IR failed: {0}: {1}")]
     ConvertingToIRFailed(PathBuf, anyhow::Error),
     #[error("Unsupported read mode: {0}")]
     DependenciesMissing(AssetID, AssetID),
