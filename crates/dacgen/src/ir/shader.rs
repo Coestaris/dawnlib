@@ -1,5 +1,4 @@
 use crate::ir::PartialIR;
-use crate::source::SourceRef;
 use crate::user::{ShaderOrigin, UserShaderAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::shader::IRShader;
@@ -46,12 +45,7 @@ pub fn preprocess_shader<'a>(
         // Get the included file path
         let include_path = capture.get(1).unwrap().as_str();
         let include_full_path = file_path.parent().unwrap().join(include_path);
-        let include_text = read_origin(
-            &ShaderOrigin::External(SourceRef::File(include_full_path.clone().into())),
-            cache_dir,
-            cwd,
-        )
-        .map_err(|e| {
+        let include_text = std::fs::read_to_string(&include_full_path).map_err(|e| {
             anyhow::anyhow!(
                 "Failed to read included shader file '{}': {}",
                 include_full_path.display(),
