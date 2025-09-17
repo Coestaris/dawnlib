@@ -862,6 +862,7 @@ fn convert_mesh_inner(
         mesh_id.clone(),
     ));
 
+    #[cfg(any())]
     for ir in irs.iter() {
         match &ir.ir {
             IRAsset::Texture(tex) => match tex.pixel_format {

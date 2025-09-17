@@ -30,7 +30,7 @@ use graphics API directly. Maybe in the future, I'll add support for Vulkan and 
 #### Project Structure
 
 - `crates/assets` - Contains implementation of Asset Hub, which is used to load and
-  manage game assets. It also describes the internal representation of assets.
+  manage game assets. It also describes the internal representation of assets.[release.yml](../.github/workflows/release.yml)
 - `crates/audio` - Contains audio processing pipelines and effects.
 - `crates/ecs` - Define Main Loop and some common ECS components and events.
 - `crates/graphics` - Contains OS-dependent Window management, input handling, and
