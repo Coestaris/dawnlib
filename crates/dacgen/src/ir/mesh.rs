@@ -15,7 +15,6 @@ use gltf::image::Format;
 use gltf::mesh::Mode;
 use gltf::scene::Transform;
 use gltf::Texture;
-use image::DynamicImage;
 use log::warn;
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};

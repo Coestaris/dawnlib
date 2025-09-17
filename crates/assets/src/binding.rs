@@ -49,8 +49,18 @@ where
         self.sender.send(value).unwrap();
     }
 
-    pub fn recv(&self, timeout: Duration) -> Option<T> {
-        match self.receiver.try_recv() {
+    pub fn recv(&self, _timeout: Duration) -> Option<T> {
+        #[cfg(target_arch = "wasm32")]
+        let res = {
+            // Crossbeam channels do not support blocking operations on wasm32
+            // so we use try_recv instead.
+            self.receiver.try_recv()
+        };
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let res = { self.receiver.recv_timeout(_timeout) };
+
+        match res {
             Ok(value) => {
                 debug!("Received message: {:?}", value);
                 Some(value)

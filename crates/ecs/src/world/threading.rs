@@ -96,7 +96,7 @@ impl WorldLoopProxy {
     fn new_inner<M>(
         before_frame: impl Synchronization,
         after_frame: impl Synchronization,
-        mut monitor: M,
+        monitor: M,
         init: impl crate::world::InitWorld,
     ) -> Result<WorldLoopProxy, WorldLoopError>
     where

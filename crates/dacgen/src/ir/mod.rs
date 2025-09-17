@@ -8,7 +8,6 @@ use crate::ir::shader::convert_shader;
 use crate::ir::texture::convert_texture;
 use crate::user::{UserAssetHeader, UserAssetProperties};
 use crate::{ChecksumAlgorithm, UserAssetFile, UserIRAsset};
-use anyhow::Context;
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
 use dawn_util::profile::Measure;
@@ -60,7 +59,7 @@ impl PartialIR {
         Self { id, header, ir }
     }
 
-    pub fn convert(self, algorithm: ChecksumAlgorithm) -> anyhow::Result<UserIRAsset> {
+    pub fn convert(self, _algorithm: ChecksumAlgorithm) -> anyhow::Result<UserIRAsset> {
         Ok(UserIRAsset {
             header: AssetHeader {
                 id: self.id,
@@ -97,8 +96,7 @@ impl UserAssetFile {
             UserAssetProperties::Font(font) => convert_font(self, cache_dir, cwd, font),
             UserAssetProperties::Dictionary(dict) => convert_dictionary(self, cache_dir, cwd, dict),
             UserAssetProperties::Blob(blob) => convert_blob(self, cache_dir, cwd, blob),
-        }
-        .with_context(|| format!("Failed to convert asset {}", self.path.display()))?;
+        }?;
 
         let mut result = Vec::new();
         for ir in irs {
