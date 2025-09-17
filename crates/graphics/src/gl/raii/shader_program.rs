@@ -1,9 +1,10 @@
-use std::sync::Arc;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::shader::IRShader;
 use dawn_assets::{AssetCastable, AssetMemoryUsage};
 use glow::HasContext;
-use log::debug;
+use log::{debug, info};
+use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Program {
@@ -65,13 +66,14 @@ impl Program {
     pub(crate) fn from_ir<E: PassEventTrait>(
         gl: Arc<glow::Context>,
         ir: IRShader,
+        custom_defines: &HashMap<String, String>,
     ) -> Result<(Self, AssetMemoryUsage), ShaderError> {
         let program = Program::new(gl.clone())?;
 
         for (source_type, source) in &ir.sources {
             let shader = Shader::new(gl.clone(), *source_type)?;
-            let source = String::from_utf8(source.clone())?;
-            shader.set_source(source)?;
+            let source = String::from_utf8_lossy(source.as_slice());
+            shader.set_source(&source, custom_defines)?;
             shader.compile()?;
             program.attach_shader(shader);
         }
@@ -102,9 +104,14 @@ impl Program {
     fn link(&self) -> Result<(), ShaderError> {
         unsafe {
             self.gl.link_program(self.inner);
+
+            let log = self.gl.get_program_info_log(self.inner);
             if !self.gl.get_program_link_status(self.inner) {
-                let log = self.gl.get_program_info_log(self.inner);
                 return Err(ShaderError::LinkError { message: log });
+            }
+
+            if !log.is_empty() {
+                info!("Shader program link log: {}", log);
             }
         }
         Ok(())

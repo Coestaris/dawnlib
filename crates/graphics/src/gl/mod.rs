@@ -18,13 +18,13 @@ use crate::gl::assets::{
 use crate::gl::context_glutin::{Context, ContextError};
 #[cfg(target_arch = "wasm32")]
 use crate::gl::context_webgl::{Context, ContextError};
-use crate::gl::debug::{setup_debug_callback, MessageType};
 use crate::gl::probe::OpenGLInfo;
 use crate::passes::events::PassEventTrait;
 use crate::renderer::backend::{RendererBackendError, RendererBackendTrait, RendererConfig};
 use dawn_assets::factory::FactoryBinding;
 use glam::UVec2;
-use log::{error, info, warn};
+use log::error;
+use std::collections::HashMap;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -46,8 +46,7 @@ pub struct GLRenderer<E: PassEventTrait> {
 
 #[derive(Clone)]
 pub struct GLRendererConfig {
-    // pub fps: usize,
-    // pub vsync: bool,
+    pub shader_defines: HashMap<String, String>,
     pub texture_factory_binding: Option<FactoryBinding>,
     pub shader_factory_binding: Option<FactoryBinding>,
     pub mesh_factory_binding: Option<FactoryBinding>,
@@ -87,7 +86,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
                 None
             };
             let shader_factory = if let Some(binding) = cfg.shader_factory_binding {
-                let mut factory = ShaderAssetFactory::new();
+                let mut factory = ShaderAssetFactory::new(cfg.shader_defines);
                 factory.bind(binding);
                 Some(factory)
             } else {

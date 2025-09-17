@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use crate::gl::font::Font;
 use crate::gl::material::Material;
 use crate::gl::mesh::Mesh;
@@ -11,15 +12,15 @@ use std::sync::Arc;
 use web_time::Duration;
 
 pub(crate) struct ShaderAssetFactory {
-    // Using 'static lifetime here because shader programs are
-    // expected to live as long as the application.
     basic_factory: BasicFactory<Program>,
+    shader_defines: HashMap<String, String>,
 }
 
 impl ShaderAssetFactory {
-    pub fn new() -> Self {
+    pub fn new(shader_defines: HashMap<String, String>) -> Self {
         ShaderAssetFactory {
             basic_factory: BasicFactory::new(),
+            shader_defines,
         }
     }
 
@@ -32,7 +33,7 @@ impl ShaderAssetFactory {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Shader(shader) = message.ir {
-                    let res = Program::from_ir::<E>(gl.clone(), shader)?;
+                    let res = Program::from_ir::<E>(gl.clone(), shader, &self.shader_defines)?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected shader metadata"))

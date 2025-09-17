@@ -17,6 +17,7 @@ glam = "0.30.5"
 triple_buffer = "8.1.1"
 foldhash = "0.2.0"
 web-time = "1.1.0"
+regex = "1.11.2"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 web-sys = "0.3.78"

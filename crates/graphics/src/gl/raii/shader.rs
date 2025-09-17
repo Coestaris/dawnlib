@@ -1,7 +1,9 @@
-use std::sync::Arc;
 use dawn_assets::ir::shader::IRShaderSourceKind;
 use glow::HasContext;
-use log::{debug, error};
+use log::{debug, error, info};
+use std::borrow::Cow;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock};
 use thiserror::Error;
 
 pub struct Shader {
@@ -48,13 +50,36 @@ impl Shader {
         }
     }
 
+    fn preprocess<'a>(source: &'a str, custom_defines: &HashMap<String, String>) -> Cow<'a, str> {
+        static USER_DEFINES_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+            regex::Regex::new(r#"(?m)^\s*#pragma\s+user_defines\s*$"#)
+                .expect("Failed to compile regex")
+        });
+
+        if custom_defines.is_empty() {
+            return Cow::Borrowed(source);
+        }
+
+        let replacement: String = custom_defines
+            .iter()
+            .map(|(key, value)| format!("#define {} {}\n", key, value))
+            .collect();
+        let result = USER_DEFINES_REGEX.replace_all(source, replacement.as_str());
+        result
+    }
+
     pub fn as_inner(&self) -> glow::Shader {
         self.inner
     }
 
-    pub fn set_source(&self, source: String) -> Result<(), ShaderError> {
+    pub fn set_source(
+        &self,
+        source: &str,
+        custom_defines: &HashMap<String, String>,
+    ) -> Result<(), ShaderError> {
         unsafe {
-            self.gl.shader_source(self.inner, &source);
+            let preprocessed = Self::preprocess(source, custom_defines);
+            self.gl.shader_source(self.inner, &preprocessed);
         }
         Ok(())
     }
@@ -63,10 +88,14 @@ impl Shader {
         unsafe {
             self.gl.compile_shader(self.inner);
 
+            let log = self.gl.get_shader_info_log(self.inner);
             if !self.gl.get_shader_compile_status(self.inner) {
-                return Err(ShaderError::CompilationError {
-                    message: self.gl.get_shader_info_log(self.inner),
-                });
+                return Err(ShaderError::CompilationError { message: log });
+            }
+
+            // Get the log and print it if it's not empty (warnings, etc.)
+            if !log.is_empty() {
+                info!("Shader compilation log: {}", log);
             }
         }
         Ok(())

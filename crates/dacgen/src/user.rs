@@ -23,10 +23,6 @@ pub struct UserAssetHeader {
 pub struct ShaderSource {
     pub kind: IRShaderSourceKind,
     pub origin: ShaderOrigin,
-    #[serde(default)]
-    pub pre_include: Vec<ShaderOrigin>,
-    #[serde(default)]
-    pub post_include: Vec<ShaderOrigin>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -233,8 +229,6 @@ impl DeepHash for ShaderSource {
     fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         with_std(&self.kind, state);
         self.origin.deep_hash(state, ctx)?;
-        self.pre_include.deep_hash(state, ctx)?;
-        self.post_include.deep_hash(state, ctx)?;
         Ok(())
     }
 }
