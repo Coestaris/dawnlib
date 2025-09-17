@@ -1,5 +1,4 @@
 use glow::HasContext;
-use log::warn;
 
 #[derive(Debug, Clone)]
 pub(crate) enum MessageSource {

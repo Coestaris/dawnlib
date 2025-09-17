@@ -71,7 +71,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     {
         unsafe {
             // Create main OpenGL context
-            let mut gl = context.glow()?;
+            let gl = context.glow()?;
 
             // Stat the OpenGL context
             let info = OpenGLInfo::new(&gl);

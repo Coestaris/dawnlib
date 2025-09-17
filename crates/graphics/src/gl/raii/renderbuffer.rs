@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use glow::HasContext;
 use log::debug;
+use std::sync::Arc;
 
 pub struct Renderbuffer {
     gl: Arc<glow::Context>,

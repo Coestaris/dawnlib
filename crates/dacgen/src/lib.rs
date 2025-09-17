@@ -24,8 +24,8 @@ use std::fs::File;
 use std::hash::Hasher;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use web_time::SystemTime;
 use thiserror::Error;
+use web_time::SystemTime;
 
 build_info::build_info!(fn build_info);
 

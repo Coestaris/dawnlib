@@ -1,12 +1,12 @@
-use crate::sample::{InterleavedBlock, PlanarBlock, LEFT_CHANNEL, RIGHT_CHANNEL};
+use crate::sample::{InterleavedBlock, PlanarBlock};
 use crate::{BLOCK_SIZE, CHANNELS_COUNT};
 
 #[inline(never)]
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 pub unsafe fn avx512_block_m32(input: &PlanarBlock<f32>, output: &mut InterleavedBlock<f32>) {
-    use core::arch::x86_64::*;
     use crate::sample::{LEFT_CHANNEL, RIGHT_CHANNEL};
+    use core::arch::x86_64::*;
 
     let mut ch0 = input.samples[LEFT_CHANNEL].as_ptr();
     let mut ch1 = input.samples[RIGHT_CHANNEL].as_ptr();
@@ -72,8 +72,8 @@ pub unsafe fn avx512_block_m32(input: &PlanarBlock<f32>, output: &mut Interleave
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 pub unsafe fn avx2_block_m32(input: &PlanarBlock<f32>, output: &mut InterleavedBlock<f32>) {
-    use core::arch::x86_64::*;
     use crate::sample::{LEFT_CHANNEL, RIGHT_CHANNEL};
+    use core::arch::x86_64::*;
 
     let mut ch0 = input.samples[LEFT_CHANNEL].as_ptr();
     let mut ch1 = input.samples[RIGHT_CHANNEL].as_ptr();

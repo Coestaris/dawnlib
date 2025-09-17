@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::texture::{
     IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap,
@@ -6,6 +5,7 @@ use dawn_assets::ir::texture::{
 use dawn_assets::{AssetCastable, AssetMemoryUsage};
 use glow::HasContext;
 use log::debug;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -254,10 +254,7 @@ impl Texture {
         )
     }
 
-    pub fn new(
-        gl: Arc<glow::Context>,
-        texture_type: IRTextureType,
-    ) -> Result<Self, TextureError> {
+    pub fn new(gl: Arc<glow::Context>, texture_type: IRTextureType) -> Result<Self, TextureError> {
         unsafe {
             let id = gl
                 .create_texture()

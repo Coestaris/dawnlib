@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use glow::HasContext;
+use std::sync::Arc;
 
 pub struct UBO {
     gl: Arc<glow::Context>,

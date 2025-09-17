@@ -1,6 +1,6 @@
+use log::info;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Condvar, Mutex};
-use log::info;
 
 /// Sync point that allows threads to synchronize at specific points.
 /// Allows threads to wait for each other before proceeding.

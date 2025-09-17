@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use crate::gl::font::Font;
 use crate::gl::material::Material;
 use crate::gl::mesh::Mesh;
@@ -8,6 +7,7 @@ use crate::passes::events::PassEventTrait;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::AssetType;
+use std::collections::HashMap;
 use std::sync::Arc;
 use web_time::Duration;
 
