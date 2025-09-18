@@ -1,8 +1,7 @@
 use crate::AssetID;
-use glam::{Vec2, Vec3};
+use glam::Vec3;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use std::mem::offset_of;
 
 // pub const IR_MAX_BONE_INFLUENCES: usize = 4;
 
@@ -22,90 +21,164 @@ impl IRMeshBounds {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-#[repr(C)]
-#[repr(packed)]
-pub struct IRMeshVertex {
-    pub position: [f32; 3],
-    pub normal: [f32; 3],
-    pub tex_coord: [f32; 2],
-    pub tangent: [f32; 3],
-    pub bitangent: [f32; 3],
-    // pub bone_indices: [u32; IR_MAX_BONE_INFLUENCES],
-    // pub bone_weights: [f32; IR_MAX_BONE_INFLUENCES],
-}
+pub const fn layout_of_submesh(tangent_valid: bool, skinning: bool) -> &'static [IRMeshLayoutItem] {
+    const BASE: [IRMeshLayoutItem; 3] = [
+        IRMeshLayoutItem {
+            field: IRLayoutField::Position,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 28,
+            offset_bytes: 0,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::Normal,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 28,
+            offset_bytes: 12,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::TexCoord,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 2, // floats
+            stride_bytes: 28,
+            offset_bytes: 24,
+        },
+    ];
 
-#[allow(dead_code)]
-impl IRMeshVertex {
-    pub fn new(pos: Vec3, norm: Vec3, tex: Vec2, tangent: Vec3, bitangent: Vec3) -> Self {
-        Self {
-            position: pos.to_array(),
-            normal: norm.to_array(),
-            tex_coord: tex.to_array(),
-            tangent: tangent.to_array(),
-            bitangent: bitangent.to_array(),
-        }
-    }
+    const TANGENT: [IRMeshLayoutItem; 5] = [
+        IRMeshLayoutItem {
+            field: IRLayoutField::Position,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 56,
+            offset_bytes: 0,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::Normal,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 56,
+            offset_bytes: 12,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::TexCoord,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 2, // floats
+            stride_bytes: 56,
+            offset_bytes: 24,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::Tangent,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 56,
+            offset_bytes: 32,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::Bitangent,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 56,
+            offset_bytes: 44,
+        },
+    ];
 
-    pub fn layout() -> [IRLayout; 5] {
-        [
-            IRLayout {
-                field: IRLayoutField::Position,
-                sample_type: IRLayoutSampleType::Float,
-                samples: 3, // floats
-                stride_bytes: size_of::<IRMeshVertex>(),
-                offset_bytes: offset_of!(IRMeshVertex, position),
-            },
-            IRLayout {
-                field: IRLayoutField::Normal,
-                sample_type: IRLayoutSampleType::Float,
-                samples: 3, // floats
-                stride_bytes: size_of::<IRMeshVertex>(),
-                offset_bytes: offset_of!(IRMeshVertex, normal),
-            },
-            IRLayout {
-                field: IRLayoutField::TexCoord,
-                sample_type: IRLayoutSampleType::Float,
-                samples: 2, // floats
-                stride_bytes: size_of::<IRMeshVertex>(),
-                offset_bytes: offset_of!(IRMeshVertex, tex_coord),
-            },
-            IRLayout {
-                field: IRLayoutField::Tangent,
-                sample_type: IRLayoutSampleType::Float,
-                samples: 3, // floats
-                stride_bytes: size_of::<IRMeshVertex>(),
-                offset_bytes: offset_of!(IRMeshVertex, tangent),
-            },
-            IRLayout {
-                field: IRLayoutField::Bitangent,
-                sample_type: IRLayoutSampleType::Float,
-                samples: 3, // floats
-                stride_bytes: size_of::<IRMeshVertex>(),
-                offset_bytes: offset_of!(IRMeshVertex, bitangent),
-            },
-        ]
-    }
+    const SKINNING: [IRMeshLayoutItem; 5] = [
+        IRMeshLayoutItem {
+            field: IRLayoutField::Position,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 48,
+            offset_bytes: 0,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::Normal,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 48,
+            offset_bytes: 12,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::TexCoord,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 2, // floats
+            stride_bytes: 48,
+            offset_bytes: 24,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::BoneIndices,
+            sample_type: IRLayoutSampleType::U32,
+            samples: 4, // u32
+            stride_bytes: 48,
+            offset_bytes: 32,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::BoneWeights,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 4, // floats
+            stride_bytes: 48,
+            offset_bytes: 48,
+        },
+    ];
 
-    pub fn position(&self) -> Vec3 {
-        Vec3::from(self.position)
-    }
+    const SKINNING_TANGENT: [IRMeshLayoutItem; 7] = [
+        IRMeshLayoutItem {
+            field: IRLayoutField::Position,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 72,
+            offset_bytes: 0,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::Normal,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 72,
+            offset_bytes: 12,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::TexCoord,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 2, // floats
+            stride_bytes: 72,
+            offset_bytes: 24,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::Tangent,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 72,
+            offset_bytes: 32,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::Bitangent,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 3, // floats
+            stride_bytes: 72,
+            offset_bytes: 44,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::BoneIndices,
+            sample_type: IRLayoutSampleType::U32,
+            samples: 4, // u32
+            stride_bytes: 72,
+            offset_bytes: 56,
+        },
+        IRMeshLayoutItem {
+            field: IRLayoutField::BoneWeights,
+            sample_type: IRLayoutSampleType::Float,
+            samples: 4, // floats
+            stride_bytes: 72,
+            offset_bytes: 72,
+        },
+    ];
 
-    pub fn normal(&self) -> Vec3 {
-        Vec3::from(self.normal)
-    }
-
-    pub fn tex_coord(&self) -> Vec2 {
-        Vec2::from(self.tex_coord)
-    }
-
-    pub fn into_bytes<'a>(self) -> &'a [u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                (&self as *const IRMeshVertex) as *const u8,
-                size_of::<IRMeshVertex>(),
-            )
-        }
+    match (tangent_valid, skinning) {
+        (false, false) => &BASE,
+        (true, false) => &TANGENT,
+        (false, true) => &SKINNING,
+        (true, true) => &SKINNING_TANGENT,
     }
 }
 
@@ -122,10 +195,11 @@ pub enum IRIndexType {
     U32,
 }
 
+pub const MAX_BONES_INFLUENCE: usize = 4;
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct IRSubMesh {
     // Raw bytes of vertices
-    // (should be multiple of size_of::<IRVertex>())
     #[serde(with = "serde_bytes")]
     pub vertices: Vec<u8>,
     #[serde(with = "serde_bytes")]
@@ -133,6 +207,21 @@ pub struct IRSubMesh {
     pub material: Option<AssetID>,
     pub bounds: IRMeshBounds,
     pub topology: IRTopology,
+
+    // The base layout is:
+    //      pos: Vec3<f32>
+    //      norm: Vec3<f32>
+    //      tex_coord: Vec2<f32>
+    //
+    // If tangent space is valid, the following layout is added to the base one:
+    //      tangent: Vec3<f32>
+    //      bitangent: Vec3<f32>
+    pub tangent_valid: bool,
+
+    // If skinning is enabled, the following layout is added to the base one:
+    //      bone_indices: Vec4<u32>
+    //      bone_weights: Vec4<f32>
+    pub skinning: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -175,10 +264,13 @@ impl Default for IRSubMesh {
                 max: [0.0, 0.0, 0.0],
             },
             topology: IRTopology::Points,
+            tangent_valid: false,
+            skinning: false,
         }
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum IRLayoutField {
     Position,
     Normal,
@@ -189,12 +281,14 @@ pub enum IRLayoutField {
     BoneWeights,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum IRLayoutSampleType {
     Float,
     U32,
 }
 
-pub struct IRLayout {
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct IRMeshLayoutItem {
     pub field: IRLayoutField,
     pub sample_type: IRLayoutSampleType,
     pub samples: usize,
@@ -207,8 +301,8 @@ impl IRMesh {
         let mut sum = size_of::<IRMesh>();
         sum += self.submesh.capacity() * size_of::<IRSubMesh>();
         for submesh in &self.submesh {
-            sum += submesh.vertices.capacity() * size_of::<IRMeshVertex>();
-            sum += submesh.indices.capacity() * size_of::<u32>();
+            sum += submesh.vertices.capacity() * size_of::<u8>();
+            sum += submesh.indices.capacity() * size_of::<u8>();
         }
         sum
     }

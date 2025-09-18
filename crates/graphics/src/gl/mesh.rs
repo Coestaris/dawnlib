@@ -2,7 +2,7 @@ use crate::gl::raii::array_buffer::{ArrayBuffer, ArrayBufferUsage};
 use crate::gl::raii::element_array_buffer::{ElementArrayBuffer, ElementArrayBufferUsage};
 use crate::gl::raii::vertex_array::VertexArray;
 use crate::passes::result::RenderResult;
-use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRMeshVertex, IRSubMesh, IRTopology};
+use dawn_assets::ir::mesh::{layout_of_submesh, IRIndexType, IRMesh, IRSubMesh, IRTopology};
 use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage};
 use glam::Vec3;
 use log::debug;
@@ -22,6 +22,13 @@ pub enum MeshError {
     ElementArrayBufferAllocationFailed,
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct BucketKey {
+    pub topology: IRTopology,
+    pub skinning: bool,
+    pub tangent_valid: bool,
+}
+
 pub struct SubMesh {
     pub material: Option<Asset>,
     pub min: Vec3,
@@ -32,6 +39,7 @@ pub struct SubMesh {
 }
 
 pub struct TopologyBucket {
+    pub key: BucketKey,
     pub vao: VertexArray,
     pub vbo: ArrayBuffer,
     pub ebo: ElementArrayBuffer,
@@ -46,7 +54,7 @@ pub struct Mesh {
 }
 
 struct IRBucket {
-    topology: IRTopology,
+    key: BucketKey,
     index_type: IRIndexType,
     irs: Vec<IRSubMesh>,
 }
@@ -57,8 +65,12 @@ impl IRBucket {
         gl: Arc<glow::Context>,
         deps: &HashMap<AssetID, Asset>,
     ) -> Result<TopologyBucket, MeshError> {
-        let vao = VertexArray::new(gl.clone(), self.topology, self.index_type.clone())
-            .ok_or(MeshError::VertexArrayAllocationFailed)?;
+        let vao = VertexArray::new(
+            gl.clone(),
+            self.key.topology.clone(),
+            self.index_type.clone(),
+        )
+        .ok_or(MeshError::VertexArrayAllocationFailed)?;
         let mut vbo = ArrayBuffer::new(gl.clone()).ok_or(MeshError::ArrayBufferAllocationFailed)?;
         let mut ebo = ElementArrayBuffer::new(gl.clone())
             .ok_or(MeshError::ElementArrayBufferAllocationFailed)?;
@@ -81,7 +93,8 @@ impl IRBucket {
         vbo_binding.feed(&joined_vertices, ArrayBufferUsage::StaticDraw);
         ebo_binding.feed(&joined_indices, ElementArrayBufferUsage::StaticDraw);
 
-        for (i, layout) in IRMeshVertex::layout().iter().enumerate() {
+        let layout = layout_of_submesh(self.key.tangent_valid, self.key.skinning);
+        for (i, layout) in layout.iter().enumerate() {
             vao_binding.setup_attribute(i as u32, layout);
         }
 
@@ -111,7 +124,7 @@ impl IRBucket {
                 min: submesh_ir.bounds.min(),
                 max: submesh_ir.bounds.max(),
                 index_offset: index_offset / divider,
-                vertex_offset: vertex_offset / size_of::<IRMeshVertex>(),
+                vertex_offset: vertex_offset / layout[0].stride_bytes,
                 index_count: submesh_ir.indices.len() / divider,
             });
 
@@ -120,6 +133,7 @@ impl IRBucket {
         }
 
         Ok(TopologyBucket {
+            key: self.key.clone(),
             vao,
             vbo,
             ebo,
@@ -144,15 +158,20 @@ impl Mesh {
             .submesh
             .iter()
             .fold(0, |acc, sm| acc + sm.vertices.len() + sm.indices.len());
+
+        // Bucket submeshes by topology, tangent space and skinning
         let mut ir_buckets = HashMap::new();
         for submesh in ir.submesh {
-            let bucket = ir_buckets
-                .entry(submesh.topology.clone())
-                .or_insert(IRBucket {
-                    topology: submesh.topology.clone(),
-                    index_type: ir.index_type.clone(),
-                    irs: Vec::new(),
-                });
+            let key = BucketKey {
+                topology: submesh.topology.clone(),
+                skinning: submesh.skinning,
+                tangent_valid: submesh.tangent_valid,
+            };
+            let bucket = ir_buckets.entry(key.clone()).or_insert(IRBucket {
+                key: key.clone(),
+                index_type: ir.index_type.clone(),
+                irs: Vec::new(),
+            });
             bucket.irs.push(submesh);
         }
 
@@ -172,10 +191,20 @@ impl Mesh {
     }
 
     #[inline(always)]
-    pub fn draw(&self, on_submesh: impl Fn(&SubMesh) -> (bool, RenderResult)) -> RenderResult {
+    pub fn draw(
+        &self,
+        on_bucket: impl Fn(&TopologyBucket) -> (bool, RenderResult),
+        on_submesh: impl Fn(&SubMesh) -> (bool, RenderResult),
+    ) -> RenderResult {
         let mut result = RenderResult::default();
 
         for bucket in &self.buckets {
+            let (skip, new_result) = on_bucket(bucket);
+            result += new_result;
+            if skip {
+                continue;
+            }
+
             let binding = bucket.vao.bind();
             for submesh in &bucket.submesh {
                 let (skip, new_result) = on_submesh(submesh);

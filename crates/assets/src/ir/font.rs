@@ -1,4 +1,4 @@
-use crate::ir::mesh::{IRIndexType, IRLayout, IRLayoutField, IRLayoutSampleType, IRTopology};
+use crate::ir::mesh::{IRIndexType, IRMeshLayoutItem, IRLayoutField, IRLayoutSampleType, IRTopology};
 use crate::AssetID;
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
@@ -25,16 +25,16 @@ impl IRGlyphVertex {
         }
     }
 
-    pub fn layout() -> [IRLayout; 2] {
+    pub fn layout() -> [IRMeshLayoutItem; 2] {
         [
-            IRLayout {
+            IRMeshLayoutItem {
                 field: IRLayoutField::Position,
                 sample_type: IRLayoutSampleType::Float,
                 samples: 2, // floats
                 stride_bytes: size_of::<IRGlyphVertex>(),
                 offset_bytes: offset_of!(IRGlyphVertex, position),
             },
-            IRLayout {
+            IRMeshLayoutItem {
                 field: IRLayoutField::TexCoord,
                 sample_type: IRLayoutSampleType::Float,
                 samples: 2, // floats

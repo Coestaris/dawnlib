@@ -3,9 +3,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct IRMaterial {
+    /// Albedo texture (the amount of light reflected from the surface)
+    /// Can be RGBA or RGB.
     pub albedo: AssetID,
-    pub metallic_roughness: AssetID,
+    /// Normal map
+    /// Always 3 channels.
     pub normal: AssetID,
+    /// Metallic-roughness texture
+    /// Always 2 channels: R: Metallic, G: Roughness
+    pub metallic_roughness: AssetID,
+    /// Occlusion texture (the amount of occlusion on the surface)
+    /// Always 1 channel.
     pub occlusion: AssetID,
 }
 

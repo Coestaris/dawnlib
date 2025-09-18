@@ -2,14 +2,12 @@ use crate::ir::{normalize_name, PartialIR};
 use crate::user::{UserAssetHeader, UserMeshAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::material::IRMaterial;
-use dawn_assets::ir::mesh::{
-    IRIndexType, IRMesh, IRMeshBounds, IRMeshVertex, IRSubMesh, IRTopology,
-};
+use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRMeshBounds, IRSubMesh, IRTopology};
 use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use dawn_util::profile::Measure;
-use glam::{vec3, Mat4, Vec2, Vec3, Vec4};
+use glam::{vec3, Mat4, UVec4, Vec2, Vec3, Vec4};
 use gltf::buffer::Data;
 use gltf::image::Format;
 use gltf::mesh::Mode;
@@ -175,7 +173,7 @@ impl<'a> MaterialTexture<'a> {
     fn allowed_formats(&self) -> &[Format] {
         match self {
             MaterialTexture::Albedo { .. } => &[Format::R8G8B8, Format::R8G8B8A8],
-            MaterialTexture::MetallicRoughness { .. } => &[Format::R8G8B8],
+            MaterialTexture::MetallicRoughness { .. } => &[Format::R8G8],
             MaterialTexture::Normal { .. } => &[Format::R8G8B8],
             MaterialTexture::Occlusion { .. } => &[Format::R8],
         }
@@ -298,14 +296,21 @@ fn try_resample(from: Format, to: Format, data: &Vec<u8>) -> Option<Vec<u8>> {
     match (from, to) {
         (Format::R8G8B8A8, Format::R8) => {
             // Convert RGBA8 to R8 by taking the red channel
-            for chunk in data.chunks(4) {
+            for chunk in data.chunks_exact(4) {
                 result.push(chunk[0]);
             }
         }
         (Format::R8G8B8, Format::R8) => {
             // Convert RGB8 to R8 by taking the red channel
-            for chunk in data.chunks(3) {
+            for chunk in data.chunks_exact(3) {
                 result.push(chunk[0]);
+            }
+        }
+        (Format::R8G8B8, Format::R8G8) => {
+            for chunk in data.chunks_exact(3) {
+                // Convert RGB8 to RG8 by taking the red and green channels
+                result.push(chunk[1]);
+                result.push(chunk[2]);
             }
         }
         _ => {
@@ -673,8 +678,7 @@ fn process_primitive(
         });
     }
 
-    // Try to get tangent and bitangent, if not present, compute them
-    // For simplicity, we will set them to zero for now.
+    let mut tangent_valid = false;
     let mut tangents = vec![Vec3::ZERO; positions.len()];
     let mut bitangents = vec![Vec3::ZERO; positions.len()];
     if let Some(tangents_iter) = reader.read_tangents() {
@@ -682,32 +686,92 @@ fn process_primitive(
             let t = Vec3::from([t[0], t[1], t[2]]).normalize();
             tangents[i] = t;
         }
-    } else {
-        // TODO: Compute tangents from normals and texture coordinates
+        // Calculate bitangents from normals and tangents
+        for i in 0..positions.len() {
+            let n = normals[i];
+            let t = tangents[i];
+            let b = n.cross(t).normalize();
+            bitangents[i] = b;
+        }
+        tangent_valid = true;
     }
-    // Calculate bitangents from normals and tangents
-    for i in 0..positions.len() {
-        let n = normals[i];
-        let t = tangents[i];
-        let b = n.cross(t).normalize();
-        bitangents[i] = b;
+
+    let mut skinning_valid = false;
+    let mut joints = vec![UVec4::ZERO; positions.len()];
+    let mut weights = vec![Vec4::ZERO; positions.len()];
+    if let Some(bones_iter) = reader.read_joints(0) {
+        for (i, b) in bones_iter.into_u16().enumerate() {
+            joints[i].x = b[0] as u32;
+            joints[i].y = b[1] as u32;
+            joints[i].z = b[2] as u32;
+            joints[i].w = b[3] as u32;
+        }
+        skinning_valid = true;
+    }
+    if let Some(weights_iter) = reader.read_weights(0) {
+        for (i, w) in weights_iter.into_f32().enumerate() {
+            weights[i].x = w[0];
+            weights[i].y = w[0];
+            weights[i].z = w[0];
+            weights[i].w = w[0];
+        }
+        skinning_valid = true;
     }
 
     let mut min = Vec3::splat(f32::MAX);
     let mut max = Vec3::splat(f32::MIN);
-    let mut vertices = Vec::with_capacity(positions.len() * size_of::<IRMeshVertex>());
-    for ((((position, normal), tex_coord), tangent), bitangent) in positions
+    let mut vertices = Vec::with_capacity(positions.len() * 100);
+    for ((((((position, normal), tex_coord), tangent), bitangent), joints), weights) in positions
         .iter()
         .zip(normals.iter())
         .zip(tex_coords.iter())
         .zip(tangents.iter())
         .zip(bitangents.iter())
+        .zip(joints.iter())
+        .zip(weights.iter())
     {
         min = min.min(*position);
         max = max.max(*position);
-        vertices.extend_from_slice(
-            IRMeshVertex::new(*position, *normal, *tex_coord, *tangent, *bitangent).into_bytes(),
-        );
+
+        // vec3 pos
+        vertices.extend_from_slice(position.x.to_le_bytes().as_slice());
+        vertices.extend_from_slice(position.y.to_le_bytes().as_slice());
+        vertices.extend_from_slice(position.z.to_le_bytes().as_slice());
+
+        // vec3 normal
+        vertices.extend_from_slice(normal.x.to_le_bytes().as_slice());
+        vertices.extend_from_slice(normal.y.to_le_bytes().as_slice());
+        vertices.extend_from_slice(normal.z.to_le_bytes().as_slice());
+
+        // vec2 tex_coord
+        vertices.extend_from_slice(tex_coord.x.to_le_bytes().as_slice());
+        vertices.extend_from_slice(tex_coord.y.to_le_bytes().as_slice());
+
+        if tangent_valid {
+            // vec3 tangent
+            vertices.extend_from_slice(tangent.x.to_le_bytes().as_slice());
+            vertices.extend_from_slice(tangent.y.to_le_bytes().as_slice());
+            vertices.extend_from_slice(tangent.z.to_le_bytes().as_slice());
+
+            // vec3 bitangent
+            vertices.extend_from_slice(bitangent.x.to_le_bytes().as_slice());
+            vertices.extend_from_slice(bitangent.y.to_le_bytes().as_slice());
+            vertices.extend_from_slice(bitangent.z.to_le_bytes().as_slice());
+        }
+
+        if skinning_valid {
+            // vec4<u32> indices
+            vertices.extend_from_slice(joints.x.to_le_bytes().as_slice());
+            vertices.extend_from_slice(joints.y.to_le_bytes().as_slice());
+            vertices.extend_from_slice(joints.z.to_le_bytes().as_slice());
+            vertices.extend_from_slice(joints.w.to_le_bytes().as_slice());
+
+            // vec4 weights
+            vertices.extend_from_slice(weights.x.to_le_bytes().as_slice());
+            vertices.extend_from_slice(weights.y.to_le_bytes().as_slice());
+            vertices.extend_from_slice(weights.z.to_le_bytes().as_slice());
+            vertices.extend_from_slice(weights.w.to_le_bytes().as_slice());
+        }
     }
 
     Ok(PrimitiveProcessResult {
@@ -732,6 +796,8 @@ fn process_primitive(
                     })
                 }
             },
+            tangent_valid,
+            skinning: skinning_valid,
         },
     })
 }

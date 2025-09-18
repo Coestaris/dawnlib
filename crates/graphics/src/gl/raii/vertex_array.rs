@@ -1,5 +1,5 @@
 use crate::passes::result::RenderResult;
-use dawn_assets::ir::mesh::{IRIndexType, IRLayout, IRLayoutSampleType, IRTopology};
+use dawn_assets::ir::mesh::{IRIndexType, IRMeshLayoutItem, IRLayoutSampleType, IRTopology};
 use glow::HasContext;
 use log::debug;
 use std::sync::Arc;
@@ -28,7 +28,7 @@ impl<'a> VertexArrayBinding<'a> {
         Self { gl, vertex_array }
     }
 
-    pub fn setup_attribute(&self, index: u32, attribute: &IRLayout) {
+    pub fn setup_attribute(&self, index: u32, attribute: &IRMeshLayoutItem) {
         let gl_format = match attribute.sample_type {
             IRLayoutSampleType::Float => glow::FLOAT,
             IRLayoutSampleType::U32 => glow::UNSIGNED_INT,
