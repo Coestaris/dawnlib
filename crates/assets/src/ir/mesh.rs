@@ -27,21 +27,21 @@ pub const fn layout_of_submesh(tangent_valid: bool, skinning: bool) -> &'static 
             field: IRLayoutField::Position,
             sample_type: IRLayoutSampleType::Float,
             samples: 3, // floats
-            stride_bytes: 28,
+            stride_bytes: 32,
             offset_bytes: 0,
         },
         IRMeshLayoutItem {
             field: IRLayoutField::Normal,
             sample_type: IRLayoutSampleType::Float,
             samples: 3, // floats
-            stride_bytes: 28,
+            stride_bytes: 32,
             offset_bytes: 12,
         },
         IRMeshLayoutItem {
             field: IRLayoutField::TexCoord,
             sample_type: IRLayoutSampleType::Float,
             samples: 2, // floats
-            stride_bytes: 28,
+            stride_bytes: 32,
             offset_bytes: 24,
         },
     ];
