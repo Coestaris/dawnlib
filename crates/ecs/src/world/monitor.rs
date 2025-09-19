@@ -19,8 +19,8 @@ pub(crate) struct WorldLoopMonitor {
 impl WorldLoopMonitor {
     pub fn new() -> Self {
         WorldLoopMonitor {
-            cycle_time: Stopwatch::new(0.5),
-            tps: Counter::new(0.5),
+            cycle_time: Stopwatch::new(0.9),
+            tps: Counter::new(0.9),
             las_update: Instant::now(),
             counter: 0,
         }

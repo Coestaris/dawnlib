@@ -118,16 +118,16 @@ impl RendererMonitorTrait for RendererMonitor {
 
         for (i, pass_time) in passes.iter().enumerate() {
             if i < self.pass_samples.len() {
-                let sample = &mut self.pass_samples[i];
-                let ms = pass_time.as_millis() as f32;
-                let average = sample.average().as_millis() as f32;
-                let average = average + (ms - average) * 0.5; // Smoothing factor
+                let sample = &self.pass_samples[i];
+                let ms = pass_time.as_micros() as f32;
+                let average = sample.average().as_micros() as f32;
+                let average = average + (ms - average) * 0.9; // Smoothing factor
 
                 // Update the sample with the new time
                 self.pass_samples[i] = MonitorSample::new(
                     sample.min().min(*pass_time),
+                    Duration::from_micros(average as u64),
                     sample.max().max(*pass_time),
-                    Duration::from_millis(average as u64),
                 );
             }
         }
@@ -192,12 +192,12 @@ impl RendererMonitorTrait for RendererMonitor {
 impl RendererMonitor {
     pub fn new() -> Self {
         RendererMonitor {
-            fps: Counter::new(0.5),
-            view: Stopwatch::new(0.5),
-            events: Stopwatch::new(0.5),
-            render: Stopwatch::new(0.5),
-            draw_calls: Counter::new(0.5),
-            drawn_primitives: Counter::new(0.5),
+            fps: Counter::new(0.9),
+            view: Stopwatch::new(0.9),
+            events: Stopwatch::new(0.9),
+            render: Stopwatch::new(0.9),
+            draw_calls: Counter::new(0.9),
+            drawn_primitives: Counter::new(0.9),
             pass_names: Vec::with_capacity(MAX_RENDER_PASSES),
             pass_samples: Vec::with_capacity(MAX_RENDER_PASSES),
             last_send: web_time::Instant::now(),

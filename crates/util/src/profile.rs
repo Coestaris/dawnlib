@@ -62,7 +62,7 @@ pub struct Stopwatch {
     min: Option<Duration>,
     max: Option<Duration>,
     average: Option<Duration>,
-    start: Instant,
+    pub start: Instant,
 }
 
 pub struct StopwatchGuard<'a> {
@@ -107,9 +107,9 @@ impl Stopwatch {
             self.max = Some(elapsed);
         }
         if let Some(average) = self.average {
-            let old = average.as_millis() as f32;
-            let new = elapsed.as_millis() as f32;
-            self.average = Some(Duration::from_millis(
+            let old = average.as_micros() as f32;
+            let new = elapsed.as_micros() as f32;
+            self.average = Some(Duration::from_micros(
                 (old * self.wma_factor + new * (1.0 - self.wma_factor)) as u64,
             ));
         } else {

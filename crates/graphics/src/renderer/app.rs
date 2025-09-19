@@ -205,7 +205,6 @@ where
                     }
                 }
             }
-            self.monitor.view_stop();
         } else {
             // Unlikely, but if we are not ready yet,
             // just wait for the Main thread to not freeze it.
@@ -325,6 +324,8 @@ where
                     self.after_frame.unlock();
                 }
                 WindowEvent::RedrawRequested => {
+                    self.monitor.view_stop();
+
                     // Notify that you're about to draw.
                     window.pre_present_notify();
 
