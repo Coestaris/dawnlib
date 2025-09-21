@@ -95,9 +95,12 @@ fn pf_to_gl(format: &IRPixelFormat) -> Result<GLPF, TextureError> {
         IRPixelFormat::RG16 => GLPF::new(glow::RG, glow::RG, glow::UNSIGNED_SHORT),
         IRPixelFormat::RGB16 => GLPF::new(glow::RGB, glow::RGB, glow::UNSIGNED_SHORT),
         IRPixelFormat::RGBA16 => GLPF::new(glow::RGBA, glow::RGBA, glow::UNSIGNED_SHORT),
+        IRPixelFormat::R16F => GLPF::new(glow::R16F, glow::RED, glow::FLOAT),
         IRPixelFormat::RG16F => GLPF::new(glow::RG16F, glow::RG, glow::FLOAT),
         IRPixelFormat::RGB16F => GLPF::new(glow::RGB16F, glow::RGB, glow::FLOAT),
         IRPixelFormat::RGBA16F => GLPF::new(glow::RGBA16F, glow::RGBA, glow::FLOAT),
+        IRPixelFormat::R32F => GLPF::new(glow::R32F, glow::RED, glow::FLOAT),
+        IRPixelFormat::RG32F => GLPF::new(glow::RG32F, glow::RG, glow::FLOAT),
         IRPixelFormat::RGB32F => GLPF::new(glow::RGB, glow::RGB, glow::FLOAT),
         IRPixelFormat::RGBA32F => GLPF::new(glow::RGBA, glow::RGBA, glow::FLOAT),
         IRPixelFormat::RGBA32UI => {
@@ -204,14 +207,14 @@ impl Texture {
         }
     }
 
-    pub fn feed_2d(
+    pub fn feed_2d<T>(
         &self,
         level: usize,
         width: usize,
         height: usize,
         border: bool,
         pixel_format: IRPixelFormat,
-        data: Option<&[u8]>,
+        data: Option<&[T]>,
     ) -> Result<(), TextureError> {
         let gl = pf_to_gl(&pixel_format)?;
         unsafe {
@@ -230,7 +233,10 @@ impl Texture {
                 gl.data_type,
                 match data {
                     None => glow::PixelUnpackData::Slice(None),
-                    Some(d) => glow::PixelUnpackData::Slice(Some(d)),
+                    Some(d) => glow::PixelUnpackData::Slice(Some(std::slice::from_raw_parts(
+                        d.as_ptr() as *const u8,
+                        size_of::<T>() * d.len(),
+                    ))),
                 },
             );
             self.gl.pixel_store_i32(glow::UNPACK_ALIGNMENT, 4);

@@ -70,14 +70,19 @@ pub enum IRPixelFormat {
     /// Red, green, blue, alpha (16 bits).
     RGBA16,
 
+    /// Red only (16 bits float)
+    R16F,
     /// Red, green (16 bits float)
     RG16F,
-
     /// Red, green, blue (16 bits float)
     RGB16F,
     /// Red, green, blue, alpha (16 bits float)
     RGBA16F,
 
+    /// Red only (32 bits float)
+    R32F,
+    /// Red, green (32 bits float)
+    RG32F,
     /// Red, green, blue (32 bits float)
     RGB32F,
     /// Red, green, blue, alpha (32 bits float)
