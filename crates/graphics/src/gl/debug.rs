@@ -117,6 +117,7 @@ where
         // Maximum supported OpenGL version on macOS is 4.1
         // Debug output is not available in this version
         // So we just log a warning and return
+        use log::warn;
         warn!("Debug output is not supported on macOS with OpenGL 4.1");
         gl.enable(glow::DEBUG_OUTPUT);
         gl.enable(glow::DEBUG_OUTPUT_SYNCHRONOUS);
