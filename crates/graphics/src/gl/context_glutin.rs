@@ -117,6 +117,7 @@ impl Context {
         let template = ConfigTemplateBuilder::new()
             .with_depth_size(24)
             .with_stencil_size(8)
+            .with_multisampling(1) // No multisampling by default
             .with_transparency(false)
             .with_alpha_size(0)
             .with_single_buffering(false)
