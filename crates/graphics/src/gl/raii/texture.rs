@@ -185,6 +185,10 @@ impl Texture {
         self.set_param(glow::TEXTURE_WRAP_S, wrap_to_gl(&wrap)?)
     }
 
+    pub fn disable_compare_mode(&self) -> Result<(), TextureError> {
+        self.set_param(glow::TEXTURE_COMPARE_MODE, glow::NONE)
+    }
+
     pub fn set_wrap_t(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
         self.set_param(glow::TEXTURE_WRAP_T, wrap_to_gl(&wrap)?)
     }
