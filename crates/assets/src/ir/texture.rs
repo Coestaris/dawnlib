@@ -111,6 +111,10 @@ impl Default for IRPixelFormat {
 pub enum IRTextureFilter {
     Nearest,
     Linear,
+    LinearMipmapLinear,
+    LinearMipmapNearest,
+    NearestMipmapLinear,
+    NearestMipmapNearest,
 }
 
 impl Default for IRTextureFilter {

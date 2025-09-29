@@ -3,7 +3,7 @@ use crate::user::{UserAssetHeader, UserMeshAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::material::IRMaterial;
 use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRMeshBounds, IRSubMesh, IRTopology};
-use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureType};
+use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use dawn_util::profile::Measure;

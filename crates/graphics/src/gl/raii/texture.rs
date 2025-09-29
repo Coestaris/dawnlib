@@ -54,10 +54,10 @@ fn filter_to_gl(filter: &IRTextureFilter) -> Result<u32, TextureError> {
     Ok(match filter {
         IRTextureFilter::Nearest => glow::NEAREST,
         IRTextureFilter::Linear => glow::LINEAR,
-        // TextureFilter::NearestMipmapNearest => glow::NEAREST_MIPMAP_NEAREST,
-        // TextureFilter::LinearMipmapNearest => glow::LINEAR_MIPMAP_NEAREST,
-        // TextureFilter::NearestMipmapLinear => glow::NEAREST_MIPMAP_LINEAR,
-        // TextureFilter::LinearMipmapLinear => glow::LINEAR_MIPMAP_LINEAR,
+        IRTextureFilter::NearestMipmapNearest => glow::NEAREST_MIPMAP_NEAREST,
+        IRTextureFilter::LinearMipmapNearest => glow::LINEAR_MIPMAP_NEAREST,
+        IRTextureFilter::NearestMipmapLinear => glow::NEAREST_MIPMAP_LINEAR,
+        IRTextureFilter::LinearMipmapLinear => glow::LINEAR_MIPMAP_LINEAR,
         _ => return Err(TextureError::UnsupportedTextureFilter(filter.clone())),
     })
 }
@@ -131,9 +131,7 @@ impl Texture {
         texture.set_wrap_r(ir.wrap_r.clone())?;
         texture.set_min_filter(ir.min_filter.clone())?;
         texture.set_mag_filter(ir.mag_filter.clone())?;
-        if ir.use_mipmaps {
-            texture.generate_mipmap();
-        }
+
         match ir.texture_type {
             IRTextureType::Texture2D { width, height } => {
                 texture.feed_2d(
@@ -149,6 +147,11 @@ impl Texture {
                 ir.texture_type.clone(),
             ))?,
         }
+
+        if ir.use_mipmaps {
+            texture.generate_mipmap();
+        }
+
         Texture::unbind(&gl, texture.texture_type, 0);
         Ok((
             texture,
