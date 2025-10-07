@@ -100,10 +100,6 @@ impl OpenGLInfo {
         }
     }
 
-    unsafe fn get_vendor(gl: &glow::Context) -> String {
-        gl.get_parameter_string(glow::VENDOR)
-    }
-
     unsafe fn get_renderer(gl: &glow::Context) -> String {
         gl.get_parameter_string(glow::RENDERER)
     }

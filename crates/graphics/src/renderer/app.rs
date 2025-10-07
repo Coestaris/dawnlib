@@ -217,7 +217,6 @@ where
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        #[cfg(not(web_platform))]
         let mut window_attributes = WindowAttributes::default()
             .with_title(self.config.title.clone())
             .with_inner_size(Size::Logical(LogicalSize::new(

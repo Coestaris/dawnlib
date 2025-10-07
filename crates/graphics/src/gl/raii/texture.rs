@@ -58,7 +58,6 @@ fn filter_to_gl(filter: &IRTextureFilter) -> Result<u32, TextureError> {
         IRTextureFilter::LinearMipmapNearest => glow::LINEAR_MIPMAP_NEAREST,
         IRTextureFilter::NearestMipmapLinear => glow::NEAREST_MIPMAP_LINEAR,
         IRTextureFilter::LinearMipmapLinear => glow::LINEAR_MIPMAP_LINEAR,
-        _ => return Err(TextureError::UnsupportedTextureFilter(filter.clone())),
     })
 }
 

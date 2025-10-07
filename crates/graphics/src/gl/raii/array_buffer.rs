@@ -18,7 +18,6 @@ impl ArrayBufferUsage {
 }
 pub struct ArrayBufferBinding<'a> {
     gl: &'a glow::Context,
-    inner: &'a ArrayBuffer,
 }
 
 impl<'a> ArrayBufferBinding<'a> {
@@ -28,10 +27,7 @@ impl<'a> ArrayBufferBinding<'a> {
             gl.bind_buffer(glow::ARRAY_BUFFER, Some(array_buffer.as_inner()));
         }
 
-        Self {
-            gl,
-            inner: array_buffer,
-        }
+        Self { gl }
     }
 
     pub fn feed<T>(&self, data: &[T], usage: ArrayBufferUsage) {

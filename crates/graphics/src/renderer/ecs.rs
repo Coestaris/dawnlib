@@ -49,6 +49,7 @@ struct SpotLightQuery<'a> {
 }
 
 #[derive(Query)]
+#[allow(dead_code)]
 struct AreaLightQuery<'a> {
     entity_id: EntityId,
     light: &'a ObjectAreaLight,

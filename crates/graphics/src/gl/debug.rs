@@ -110,7 +110,7 @@ impl std::fmt::Display for MessageSeverity {
 
 pub unsafe fn setup_debug_callback<F>(gl: &mut glow::Context, f: F)
 where
-    F: Fn(MessageSource, MessageType, MessageSeverity, &str) + 'static + Send + Sync,
+    F: Fn(MessageSource, MessageType, u32, MessageSeverity, &str) + 'static + Send + Sync,
 {
     #[cfg(target_os = "macos")]
     {
@@ -132,7 +132,7 @@ where
                 let message_type = MessageType::new(msg_type);
                 let severity = MessageSeverity::new(severity);
 
-                f(source, message_type, severity, msg);
+                f(source, message_type, id, severity, msg);
             },
         );
         // Filter out notifications

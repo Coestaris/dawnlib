@@ -180,17 +180,20 @@ impl Context {
             });
 
             // Setup the debug output for OpenGL.
-            setup_debug_callback(&mut glow, |source, rtype, severity, message| match rtype {
-                MessageType::Error => {
-                    error!("OpenGL: {}: {}: {}", source, severity, message);
-                }
-                MessageType::DeprecatedBehavior | MessageType::UndefinedBehavior => {
-                    warn!("OpenGL: {}: {}: {}", source, severity, message);
-                }
-                _ => {
-                    info!("OpenGL: {}: {}: {}", source, severity, message);
-                }
-            });
+            setup_debug_callback(
+                &mut glow,
+                |source, rtype, id, severity, message| match rtype {
+                    MessageType::Error => {
+                        error!("OpenGL: {source}: {severity}[{id}]: {message}");
+                    }
+                    MessageType::DeprecatedBehavior | MessageType::UndefinedBehavior => {
+                        warn!("OpenGL: {source}: {severity}[{id}]: {message}");
+                    }
+                    _ => {
+                        info!("OpenGL: {source}: {severity}[{id}]: {message}");
+                    }
+                },
+            );
 
             Ok((
                 window,

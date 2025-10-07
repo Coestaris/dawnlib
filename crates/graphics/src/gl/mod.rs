@@ -142,7 +142,7 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             factory.process_events::<E>(&self.gl);
         }
         if let Some(factory) = &mut self.material_factory {
-            factory.process_events::<E>(&self.gl);
+            factory.process_events::<E>();
         }
         if let Some(factory) = &mut self.font_factory {
             factory.process_events::<E>(&self.gl);

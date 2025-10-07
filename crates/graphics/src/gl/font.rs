@@ -26,7 +26,7 @@ pub enum FontError {
 #[derive(Debug)]
 pub struct Font {
     vao: VertexArray,
-    vbo: ArrayBuffer,
+    _vbo: ArrayBuffer,
 
     pub glyphs: HashMap<char, IRGlyph>,
     pub atlas: Asset,
@@ -76,7 +76,7 @@ impl Font {
                 y_advance: ir.y_advance,
                 space_advance: ir.space_advance,
                 vao,
-                vbo,
+                _vbo: vbo,
             },
             AssetMemoryUsage::new(0, 0),
         ))

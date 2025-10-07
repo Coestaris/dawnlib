@@ -132,7 +132,7 @@ impl MaterialAssetFactory {
         self.basic_factory.bind(binding);
     }
 
-    pub fn process_events<E: PassEventTrait>(&mut self, gl: &Arc<glow::Context>) {
+    pub fn process_events<E: PassEventTrait>(&mut self) {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Material(material) = message.ir {

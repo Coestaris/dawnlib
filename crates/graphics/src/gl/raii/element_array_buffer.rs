@@ -18,7 +18,6 @@ impl ElementArrayBufferUsage {
 }
 pub struct ElementArrayBufferBinding<'a> {
     gl: &'a glow::Context,
-    inner: &'a ElementArrayBuffer,
 }
 
 impl<'a> ElementArrayBufferBinding<'a> {
@@ -31,10 +30,7 @@ impl<'a> ElementArrayBufferBinding<'a> {
         unsafe {
             gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(array_buffer.as_inner()));
         }
-        Self {
-            gl,
-            inner: array_buffer,
-        }
+        Self { gl }
     }
 
     pub fn feed<T>(&self, data: &[T], usage: ElementArrayBufferUsage) {

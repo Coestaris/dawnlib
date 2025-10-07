@@ -75,7 +75,7 @@ impl AudioEventTargetId {
 
 pub(crate) type EventDispatcher = fn(*mut u8, &AudioEventType);
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Hash)]
 pub struct AudioEventTarget {
     dispatcher: EventDispatcher,
     id: AudioEventTargetId,
