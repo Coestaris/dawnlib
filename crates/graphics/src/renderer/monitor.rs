@@ -1,9 +1,9 @@
 use crate::passes::result::RenderResult;
-use crate::passes::MAX_RENDER_PASSES;
+use crate::passes::{ChainTimers, MAX_RENDER_PASSES};
 use crossbeam_channel::Sender;
 use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 use evenio::event::GlobalEvent;
-use log::debug;
+use log::{debug, warn};
 use std::panic::UnwindSafe;
 use web_time::Duration;
 
@@ -22,10 +22,13 @@ pub struct RendererMonitorEvent {
     /// The total time spend on rendering the frame
     /// (including the time spend on the backend).
     pub render: MonitorSample<Duration>,
-    /// The amount of time spend on each render pass.
-    /// The key is the name of the pass, and the value is the time spent on it.
-    /// This is used for profiling the render passes.
-    pub passes: Vec<(String, MonitorSample<Duration>)>,
+
+    /// The names of the render passes.
+    pub pass_names: Vec<String>,
+    /// The time spend on each render pass in the frame measured on the CPU.
+    pub pass_cpu_times: Vec<MonitorSample<Duration>>,
+    /// The time spend on each render pass in the frame measured on the GPU.
+    pub pass_gpu_times: Vec<MonitorSample<Duration>>,
 
     /// The approximate number of primitives drawn
     /// (triangles, lines, points, etc.) in the frame.
@@ -50,7 +53,7 @@ pub(crate) trait RendererMonitorTrait: Send + Sync + 'static + UnwindSafe {
     fn events_stop(&mut self) {}
 
     fn render_start(&mut self) {}
-    fn render_stop(&mut self, _result: RenderResult, _passes: &[Duration; MAX_RENDER_PASSES]) {}
+    fn render_stop(&mut self, _result: RenderResult, _timers: &mut ChainTimers) {}
 }
 
 pub(crate) struct RendererMonitor {
@@ -61,7 +64,8 @@ pub(crate) struct RendererMonitor {
     draw_calls: Counter,
     drawn_primitives: Counter,
     pass_names: Vec<String>,
-    pass_samples: Vec<MonitorSample<Duration>>,
+    cpu_pass_samples: Vec<MonitorSample<Duration>>,
+    gpu_pass_samples: Vec<MonitorSample<Duration>>,
     last_send: web_time::Instant,
     sender: Option<Sender<RendererMonitorEvent>>,
     counter: usize,
@@ -74,10 +78,16 @@ impl RendererMonitorTrait for RendererMonitor {
 
     fn set_pass_names(&mut self, names: &[&str]) {
         self.pass_names.clear();
-        self.pass_samples.clear();
+        self.cpu_pass_samples.clear();
+        self.gpu_pass_samples.clear();
         for name in names {
             self.pass_names.push(name.to_string());
-            (self.pass_samples).push(MonitorSample::new(
+            self.cpu_pass_samples.push(MonitorSample::new(
+                Duration::MAX,
+                Duration::ZERO,
+                Duration::ZERO,
+            ));
+            self.gpu_pass_samples.push(MonitorSample::new(
                 Duration::MAX,
                 Duration::ZERO,
                 Duration::ZERO,
@@ -107,7 +117,7 @@ impl RendererMonitorTrait for RendererMonitor {
         self.render.start();
     }
 
-    fn render_stop(&mut self, result: RenderResult, passes: &[Duration; MAX_RENDER_PASSES]) {
+    fn render_stop(&mut self, result: RenderResult, timers: &mut ChainTimers) {
         self.render.stop();
 
         if let RenderResult::Ok { primitives, calls } = result {
@@ -116,18 +126,33 @@ impl RendererMonitorTrait for RendererMonitor {
             self.draw_calls.count(calls);
         }
 
-        for (i, pass_time) in passes.iter().enumerate() {
-            if i < self.pass_samples.len() {
-                let sample = &self.pass_samples[i];
-                let ms = pass_time.as_micros() as f32;
-                let average = sample.average().as_micros() as f32;
-                let average = average + (ms - average) * 0.9; // Smoothing factor
-
+        for (i, cpu_time) in timers.cpu.iter().enumerate() {
+            if i < self.cpu_pass_samples.len() {
                 // Update the sample with the new time
-                self.pass_samples[i] = MonitorSample::new(
-                    sample.min().min(*pass_time),
+                self.cpu_pass_samples[i] = cpu_time.get().unwrap();
+            }
+        }
+        for (i, gpu_time) in timers.gpu.iter_mut().enumerate() {
+            if i < self.gpu_pass_samples.len() {
+                let sample = &self.gpu_pass_samples[i];
+                let duration = gpu_time.advance_and_get_time();
+                if duration.is_none() {
+                    warn!(
+                        "GPU timer for pass '{}' did not return a value",
+                        self.pass_names[i]
+                    );
+                    continue;
+                }
+
+                let duration = duration.unwrap();
+                let micros = duration.as_micros() as f32;
+                let average = sample.average().as_micros() as f32;
+                let average = average + (micros - average) * 0.9; // Smoothing factor
+
+                self.gpu_pass_samples[i] = MonitorSample::new(
+                    sample.min().min(duration),
                     Duration::from_micros(average as u64),
-                    sample.max().max(*pass_time),
+                    sample.max().max(duration),
                 );
             }
         }
@@ -141,11 +166,6 @@ impl RendererMonitorTrait for RendererMonitor {
             self.draw_calls.update();
 
             if let Some(sender) = &self.sender {
-                let mut passes = Vec::with_capacity(self.pass_names.len());
-                for (i, name) in self.pass_names.iter().enumerate() {
-                    passes.push((name.clone(), self.pass_samples[i].clone()));
-                }
-
                 let fps = self.fps.get().unwrap_or_default();
                 let view = self.view.get().unwrap_or_default();
                 let events = self.events.get().unwrap_or_default();
@@ -166,7 +186,9 @@ impl RendererMonitorTrait for RendererMonitor {
                     view,
                     events,
                     render,
-                    passes,
+                    pass_names: self.pass_names.clone(),
+                    pass_cpu_times: self.cpu_pass_samples.clone(),
+                    pass_gpu_times: self.gpu_pass_samples.clone(),
                     drawn_primitives: self.drawn_primitives.get().unwrap_or_default(),
                     draw_calls: self.draw_calls.get().unwrap_or_default(),
                     load,
@@ -199,7 +221,8 @@ impl RendererMonitor {
             draw_calls: Counter::new(0.9),
             drawn_primitives: Counter::new(0.9),
             pass_names: Vec::with_capacity(MAX_RENDER_PASSES),
-            pass_samples: Vec::with_capacity(MAX_RENDER_PASSES),
+            cpu_pass_samples: vec![],
+            gpu_pass_samples: vec![],
             last_send: web_time::Instant::now(),
             sender: None,
             counter: 0,

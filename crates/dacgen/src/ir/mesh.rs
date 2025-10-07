@@ -409,6 +409,9 @@ fn process_texture(
                         Format::R32G32B32FLOAT => IRPixelFormat::RGB32F,
                         Format::R32G32B32A32FLOAT => IRPixelFormat::RGBA32F,
                     },
+                    mag_filter: IRTextureFilter::Linear,
+                    min_filter: IRTextureFilter::NearestMipmapLinear,
+                    use_mipmaps: true,
                     ..Default::default()
                 }),
             }],

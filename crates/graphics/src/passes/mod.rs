@@ -1,9 +1,11 @@
+use crate::gl::timer::GPUTimer;
 use crate::passes::events::{PassEventTarget, PassEventTrait};
 use crate::passes::result::RenderResult;
 use crate::renderable::Renderable;
 use crate::renderer::backend::RendererBackend;
 use crate::renderer::DataStreamFrame;
-use web_time::Duration;
+use dawn_util::profile::Stopwatch;
+use std::sync::Arc;
 
 pub mod chain;
 pub mod events;
@@ -57,20 +59,39 @@ pub trait RenderPass<E: PassEventTrait>: 'static {
     }
 }
 
+pub struct ChainTimers {
+    // The CPU timers for each render pass in the chain.
+    pub cpu: [Stopwatch; MAX_RENDER_PASSES],
+    // The GPU timers for each render pass in the chain.
+    pub gpu: [GPUTimer; MAX_RENDER_PASSES],
+}
+
+impl ChainTimers {
+    pub fn new(cpu_wma: f32, gl: Arc<glow::Context>) -> Self {
+        let cpu = array_init::array_init(|_| Stopwatch::new(cpu_wma));
+        let gpu = array_init::array_init(|_| GPUTimer::new(gl.clone()).unwrap());
+        ChainTimers { cpu, gpu }
+    }
+}
+
 pub struct ChainExecuteCtx<'a, E: PassEventTrait> {
     // The renderables to be processed by the render pass.
     pub(crate) frame: &'a DataStreamFrame,
-    // Amount of time consumed by render pass in the chain.
-    pub(crate) durations: [Duration; MAX_RENDER_PASSES],
+    // The timers for each render pass in the chain.
+    pub(crate) timers: &'a mut ChainTimers,
     // The renderer backend context
     pub(crate) backend: &'a mut RendererBackend<E>,
 }
 
 impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
-    pub fn new(frame: &'a DataStreamFrame, backend: &'a mut RendererBackend<E>) -> Self {
+    pub fn new(
+        frame: &'a DataStreamFrame,
+        backend: &'a mut RendererBackend<E>,
+        timers: &'a mut ChainTimers,
+    ) -> Self {
         ChainExecuteCtx {
             frame,
-            durations: [Duration::ZERO; MAX_RENDER_PASSES],
+            timers,
             backend,
         }
     }
@@ -81,7 +102,8 @@ impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
         E: PassEventTrait,
         P: RenderPass<E>,
     {
-        let start = web_time::Instant::now();
+        self.timers.cpu[idx].start();
+        self.timers.gpu[idx].start();
 
         let mut result = RenderResult::default();
         result += pass.begin(self.backend, self.frame);
@@ -90,8 +112,8 @@ impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
         }
         result += pass.end(self.backend);
 
-        let elapsed = start.elapsed();
-        self.durations[idx] = elapsed;
+        self.timers.gpu[idx].stop();
+        self.timers.cpu[idx].stop();
 
         result
     }

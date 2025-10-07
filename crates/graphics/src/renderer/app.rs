@@ -2,10 +2,11 @@
 use crate::gl::context_glutin::Context;
 #[cfg(target_arch = "wasm32")]
 use crate::gl::context_webgl::Context;
+use crate::gl::timer::GPUTimer;
 use crate::passes::chain::RenderChain;
 use crate::passes::events::RenderPassEvent;
 use crate::passes::pipeline::RenderPipeline;
-use crate::passes::ChainExecuteCtx;
+use crate::passes::{ChainExecuteCtx, ChainTimers, MAX_RENDER_PASSES};
 use crate::renderer::backend::RendererBackendTrait;
 use crate::renderer::monitor::RendererMonitorTrait;
 use crate::renderer::RendererConfig;
@@ -14,6 +15,7 @@ use crate::renderer::{
     DataStreamFrame, InputEvent, OutputEvent, PassEventTrait, RendezvousTrait, WindowConfig,
 };
 use crossbeam_channel::{Receiver, Sender};
+use dawn_util::profile::Stopwatch;
 use log::{info, warn};
 use std::mem;
 use std::sync::atomic::AtomicBool;
@@ -64,6 +66,9 @@ where
     // The backend and window must be dropped after the pipeline
     backend: Option<RendererBackend<E>>,
     window: Option<Window>,
+
+    // Timers for measuring passes duration
+    pass_timers: Option<ChainTimers>,
 }
 
 impl<P, C, E, R, BF, AF> Application<P, C, E, R, BF, AF>
@@ -107,6 +112,7 @@ where
             backend: None,
             input_out,
             callback,
+            pass_timers: None,
         })
     }
 }
@@ -283,6 +289,11 @@ where
         // Notify the monitor about the pass names
         let pass_names = self.pipeline.as_ref().unwrap().get_names().clone();
         self.monitor.set_pass_names(&pass_names);
+
+        self.pass_timers = Some(ChainTimers::new(
+            0.5,
+            self.backend.as_ref().unwrap().gl.clone(),
+        ));
     }
 
     fn window_event(
@@ -346,9 +357,9 @@ where
                     }
 
                     // Render the frame
-                    let mut ctx = ChainExecuteCtx::new(frame, backend);
+                    let mut timers = self.pass_timers.as_mut().unwrap();
+                    let mut ctx = ChainExecuteCtx::new(frame, backend, &mut timers);
                     let pass_result = pipeline.execute(&mut ctx);
-                    let durations = mem::take(&mut ctx.durations);
                     drop(ctx);
 
                     self.renderer.after_render(window, backend);
@@ -356,7 +367,7 @@ where
                     // Do not include after frame in the monitoring, because it usually synchronizes
                     // the rendered frame with the OS by swapping buffer, that usually is synchronized
                     // with the refresh rate of the display. So this will not be informative.
-                    self.monitor.render_stop(pass_result, &durations);
+                    self.monitor.render_stop(pass_result, timers);
                 }
                 _ => {}
             }

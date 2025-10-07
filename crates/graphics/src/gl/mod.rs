@@ -9,6 +9,7 @@ pub mod material;
 pub mod mesh;
 pub mod probe;
 pub mod raii;
+pub mod timer;
 
 use crate::gl::assets::{
     FontAssetFactory, MaterialAssetFactory, MeshAssetFactory, ShaderAssetFactory,
