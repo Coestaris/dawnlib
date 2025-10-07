@@ -1,5 +1,5 @@
 use crate::passes::result::RenderResult;
-use dawn_assets::ir::mesh::{IRIndexType, IRMeshLayoutItem, IRLayoutSampleType, IRTopology};
+use dawn_assets::ir::mesh::{IRIndexType, IRLayoutSampleType, IRMeshLayoutItem, IRTopology};
 use glow::HasContext;
 use log::debug;
 use std::sync::Arc;

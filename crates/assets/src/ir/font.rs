@@ -1,4 +1,6 @@
-use crate::ir::mesh::{IRIndexType, IRMeshLayoutItem, IRLayoutField, IRLayoutSampleType, IRTopology};
+use crate::ir::mesh::{
+    IRIndexType, IRLayoutField, IRLayoutSampleType, IRMeshLayoutItem, IRTopology,
+};
 use crate::AssetID;
 use glam::Vec2;
 use serde::{Deserialize, Serialize};

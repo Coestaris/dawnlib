@@ -126,8 +126,8 @@ pub unsafe fn sse42_block_m32(input: &PlanarBlock<f32>, output: &mut Interleaved
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
 pub unsafe fn neon_block_m4(input: &PlanarBlock<f32>, output: &mut InterleavedBlock<f32>) {
-    use core::arch::aarch64::*;
     use crate::sample::{LEFT_CHANNEL, RIGHT_CHANNEL};
+    use core::arch::aarch64::*;
 
     let mut ch0 = input.samples[LEFT_CHANNEL].as_ptr();
     let mut ch1 = input.samples[RIGHT_CHANNEL].as_ptr();

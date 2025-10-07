@@ -94,7 +94,7 @@ pub enum IRPixelFormat {
     /// Used for internal depth storage, and
     /// usually cannot be used for Asset textures.
     DEPTH16,
-    
+
     /// 24-bit depth buffer.
     /// Used for internal depth storage, and
     /// usually cannot be used for Asset textures.
