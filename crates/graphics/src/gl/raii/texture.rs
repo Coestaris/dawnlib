@@ -88,6 +88,7 @@ fn pf_to_gl(format: &IRPixelFormat) -> Result<GLPF, TextureError> {
     Ok(match format {
         IRPixelFormat::R8 => GLPF::new(glow::R8, glow::RED, glow::UNSIGNED_BYTE),
         IRPixelFormat::RG8 => GLPF::new(glow::RG, glow::RG, glow::UNSIGNED_BYTE),
+        IRPixelFormat::RG8_SNORM => GLPF::new(glow::RG8_SNORM, glow::RG, glow::BYTE),
         IRPixelFormat::RGB8 => GLPF::new(glow::RGB, glow::RGB, glow::UNSIGNED_BYTE),
         IRPixelFormat::RGBA8 => GLPF::new(glow::RGBA, glow::RGBA, glow::UNSIGNED_BYTE),
         IRPixelFormat::R16 => GLPF::new(glow::RED, glow::RED, glow::UNSIGNED_SHORT),

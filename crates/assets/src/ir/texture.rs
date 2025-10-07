@@ -50,12 +50,16 @@ impl Default for IRTextureType {
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(non_camel_case_types)]
 pub enum IRPixelFormat {
     Unknown,
     /// Red only.
     R8,
     /// Red, green.
     RG8,
+    /// Red, green (signed normalized).
+    RG8_SNORM,
+
     /// Red, green, blue.
     RGB8,
     /// Red, green, blue, alpha.
