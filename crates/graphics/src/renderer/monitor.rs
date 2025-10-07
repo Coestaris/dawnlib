@@ -3,7 +3,7 @@ use crate::passes::{ChainTimers, MAX_RENDER_PASSES};
 use crossbeam_channel::Sender;
 use dawn_util::profile::{Counter, MonitorSample, Stopwatch};
 use evenio::event::GlobalEvent;
-use log::{debug, warn};
+use log::debug;
 use std::panic::UnwindSafe;
 use web_time::Duration;
 

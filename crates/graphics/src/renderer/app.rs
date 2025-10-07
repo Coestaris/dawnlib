@@ -2,11 +2,10 @@
 use crate::gl::context_glutin::Context;
 #[cfg(target_arch = "wasm32")]
 use crate::gl::context_webgl::Context;
-use crate::gl::timer::GPUTimer;
 use crate::passes::chain::RenderChain;
 use crate::passes::events::RenderPassEvent;
 use crate::passes::pipeline::RenderPipeline;
-use crate::passes::{ChainExecuteCtx, ChainTimers, MAX_RENDER_PASSES};
+use crate::passes::{ChainExecuteCtx, ChainTimers};
 use crate::renderer::backend::RendererBackendTrait;
 use crate::renderer::monitor::RendererMonitorTrait;
 use crate::renderer::RendererConfig;
@@ -15,7 +14,6 @@ use crate::renderer::{
     DataStreamFrame, InputEvent, OutputEvent, PassEventTrait, RendezvousTrait, WindowConfig,
 };
 use crossbeam_channel::{Receiver, Sender};
-use dawn_util::profile::Stopwatch;
 use log::{info, warn};
 use std::mem;
 use std::sync::atomic::AtomicBool;
