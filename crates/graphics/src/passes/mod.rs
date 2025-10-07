@@ -37,7 +37,12 @@ pub trait RenderPass<E: PassEventTrait>: 'static {
     /// Begin the render pass execution.
     /// This method is called before processing any renderables or meshes.
     #[inline(always)]
-    fn begin(&mut self, _backend: &RendererBackend<E>, _frame: &DataStreamFrame) -> RenderResult {
+    fn begin(
+        &mut self,
+        _win: &winit::window::Window,
+        _backend: &RendererBackend<E>,
+        _frame: &DataStreamFrame,
+    ) -> RenderResult {
         RenderResult::default()
     }
 
@@ -45,6 +50,7 @@ pub trait RenderPass<E: PassEventTrait>: 'static {
     #[inline(always)]
     fn on_renderable(
         &mut self,
+        _win: &winit::window::Window,
         _backend: &mut RendererBackend<E>,
         _renderable: &Renderable,
     ) -> RenderResult {
@@ -54,7 +60,11 @@ pub trait RenderPass<E: PassEventTrait>: 'static {
     /// End the render pass execution.
     /// This method is called after processing all renderables and meshes.
     #[inline(always)]
-    fn end(&mut self, _backend: &mut RendererBackend<E>) -> RenderResult {
+    fn end(
+        &mut self,
+        _win: &winit::window::Window,
+        _backend: &mut RendererBackend<E>,
+    ) -> RenderResult {
         RenderResult::default()
     }
 }
@@ -79,6 +89,8 @@ pub struct ChainExecuteCtx<'a, E: PassEventTrait> {
     pub(crate) frame: &'a DataStreamFrame,
     // The timers for each render pass in the chain.
     pub(crate) timers: &'a mut ChainTimers,
+    // The window reference
+    pub(crate) window: &'a winit::window::Window,
     // The renderer backend context
     pub(crate) backend: &'a mut RendererBackend<E>,
 }
@@ -86,12 +98,14 @@ pub struct ChainExecuteCtx<'a, E: PassEventTrait> {
 impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
     pub fn new(
         frame: &'a DataStreamFrame,
+        window: &'a winit::window::Window,
         backend: &'a mut RendererBackend<E>,
         timers: &'a mut ChainTimers,
     ) -> Self {
         ChainExecuteCtx {
             frame,
             timers,
+            window,
             backend,
         }
     }
@@ -106,11 +120,11 @@ impl<'a, E: PassEventTrait> ChainExecuteCtx<'a, E> {
         self.timers.gpu[idx].start();
 
         let mut result = RenderResult::default();
-        result += pass.begin(self.backend, self.frame);
+        result += pass.begin(self.window, self.backend, self.frame);
         for renderable in self.frame.renderables.iter() {
-            result += pass.on_renderable(self.backend, renderable);
+            result += pass.on_renderable(self.window, self.backend, renderable);
         }
-        result += pass.end(self.backend);
+        result += pass.end(self.window, self.backend);
 
         self.timers.gpu[idx].stop();
         self.timers.cpu[idx].stop();

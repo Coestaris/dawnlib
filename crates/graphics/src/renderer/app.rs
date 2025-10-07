@@ -358,7 +358,7 @@ where
 
                     // Render the frame
                     let mut timers = self.pass_timers.as_mut().unwrap();
-                    let mut ctx = ChainExecuteCtx::new(frame, backend, &mut timers);
+                    let mut ctx = ChainExecuteCtx::new(frame, window, backend, &mut timers);
                     let pass_result = pipeline.execute(&mut ctx);
                     drop(ctx);
 
