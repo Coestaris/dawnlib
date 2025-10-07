@@ -109,6 +109,11 @@ fn pf_to_gl(format: &IRPixelFormat) -> Result<GLPF, TextureError> {
         IRPixelFormat::DEPTH32F => {
             GLPF::new(glow::DEPTH_COMPONENT32F, glow::DEPTH_COMPONENT, glow::FLOAT)
         }
+        IRPixelFormat::DEPTH16 => GLPF::new(
+            glow::DEPTH_COMPONENT16,
+            glow::DEPTH_COMPONENT,
+            glow::UNSIGNED_SHORT,
+        ),
         IRPixelFormat::DEPTH24 => GLPF::new(
             glow::DEPTH_COMPONENT24,
             glow::DEPTH_COMPONENT,
