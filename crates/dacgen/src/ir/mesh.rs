@@ -7,7 +7,7 @@ use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureFilter, IRText
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use dawn_util::profile::Measure;
-use glam::{vec3, Mat4, UVec4, Vec2, Vec3, Vec4};
+use glam::{vec3, Mat4, UVec4, Vec3, Vec4};
 use gltf::buffer::Data;
 use gltf::image::Format;
 use gltf::mesh::Mode;
@@ -15,6 +15,7 @@ use gltf::scene::Transform;
 use gltf::Texture;
 use log::warn;
 use rayon::prelude::*;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -134,7 +135,7 @@ enum MaterialTexture<'a> {
 }
 
 impl<'a> MaterialTexture<'a> {
-    fn as_multipler(&self) -> f32 {
+    fn as_multiplier(&self) -> f32 {
         match self {
             MaterialTexture::Albedo { .. } => 1.0,
             MaterialTexture::MetallicRoughness { .. } => 1.0,
@@ -143,7 +144,7 @@ impl<'a> MaterialTexture<'a> {
         }
     }
 
-    fn as_texture(&self) -> Option<&Texture> {
+    fn as_texture(&self) -> Option<&Texture<'_>> {
         match self {
             MaterialTexture::Albedo { texture, .. } => texture.as_ref(),
             MaterialTexture::MetallicRoughness { texture, .. } => texture.as_ref(),
@@ -198,14 +199,6 @@ fn texture_named_id(
 
 fn texture_unnamed_r_texture_id(value: f32) -> AssetID {
     AssetID::new(format!("common_r_texture_{:03}", (value * 1000.0) as u32))
-}
-
-fn texture_unnamed_rg_texture_id(color: Vec2) -> AssetID {
-    AssetID::new(format!(
-        "common_rg_texture_{:03}_{:03}",
-        (color.x * 100.0) as u32,
-        (color.y * 100.0) as u32
-    ))
 }
 
 fn texture_unnamed_rgb_texture_id(color: Vec3) -> AssetID {
@@ -322,6 +315,15 @@ fn try_resample(from: Format, to: Format, data: &Vec<u8>) -> Option<Vec<u8>> {
     Some(result)
 }
 
+fn try_multiply(
+    _format: Format,
+    data: Cow<[u8]>,
+    _multiplier: f32,
+) -> Result<Cow<[u8]>, MeshError> {
+    // TODO: Implement
+    Ok(data)
+}
+
 fn process_texture(
     material_id: AssetID,
     texture_type: MaterialTexture,
@@ -353,15 +355,16 @@ fn process_texture(
                 texture_index: texture.index(),
             }
         })?;
+
+        let multiplier = texture_type.as_multiplier();
         let mut format = data.format;
         let width = data.width;
         let height = data.height;
-        let mut data = &data.pixels;
 
-        let mut resampled: Option<Vec<u8>> = None;
         let expected_formats = texture_type.allowed_formats();
-        if !expected_formats.contains(&format) {
-            if let Some(result) = try_resample(format, texture_type.default_format(), data) {
+        let data = if !expected_formats.contains(&format) {
+            if let Some(result) = try_resample(format, texture_type.default_format(), &data.pixels)
+            {
                 warn!(
                     "Resampled texture {} from format {:?} to {:?}",
                     id.as_str(),
@@ -369,8 +372,7 @@ fn process_texture(
                     texture_type.default_format()
                 );
                 format = texture_type.default_format();
-                resampled = Some(result);
-                data = resampled.as_ref().unwrap();
+                Cow::Owned(result)
             } else {
                 return Err(MeshError::UnexpectedTextureFormat {
                     texture_id: id.clone(),
@@ -379,9 +381,11 @@ fn process_texture(
                     found: format,
                 });
             }
-        }
+        } else {
+            Cow::Borrowed(data.pixels.as_slice())
+        };
 
-        // TODO: Handle the multiplier for normal and occlusion maps.
+        let data = try_multiply(format, data, multiplier)?;
 
         Ok((
             id.clone(),
@@ -395,7 +399,7 @@ fn process_texture(
                     license: None,
                 },
                 ir: IRAsset::Texture(IRTexture {
-                    data: data.clone(),
+                    data: data.into_owned(),
                     texture_type: IRTextureType::Texture2D { width, height },
                     pixel_format: match format {
                         Format::R8 => IRPixelFormat::R8,

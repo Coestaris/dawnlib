@@ -137,10 +137,6 @@ impl RendererMonitorTrait for RendererMonitor {
                 let sample = &self.gpu_pass_samples[i];
                 let duration = gpu_time.advance_and_get_time();
                 if duration.is_none() {
-                    warn!(
-                        "GPU timer for pass '{}' did not return a value",
-                        self.pass_names[i]
-                    );
                     continue;
                 }
 
