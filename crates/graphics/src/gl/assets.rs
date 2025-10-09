@@ -13,11 +13,11 @@ use web_time::Duration;
 
 pub(crate) struct ShaderAssetFactory {
     basic_factory: BasicFactory<Program>,
-    shader_defines: HashMap<String, String>,
+    shader_defines: Arc<dyn Fn() -> HashMap<String, String>>,
 }
 
 impl ShaderAssetFactory {
-    pub fn new(shader_defines: HashMap<String, String>) -> Self {
+    pub fn new(shader_defines: Arc<dyn Fn() -> HashMap<String, String>>) -> Self {
         ShaderAssetFactory {
             basic_factory: BasicFactory::new(),
             shader_defines,
@@ -33,7 +33,7 @@ impl ShaderAssetFactory {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Shader(shader) = message.ir {
-                    let res = Program::from_ir::<E>(gl.clone(), shader, &self.shader_defines)?;
+                    let res = Program::from_ir::<E>(gl.clone(), shader, &(self.shader_defines)())?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected shader metadata"))

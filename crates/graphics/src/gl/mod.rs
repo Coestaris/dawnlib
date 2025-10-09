@@ -47,7 +47,7 @@ pub struct GLRenderer<E: PassEventTrait> {
 
 #[derive(Clone)]
 pub struct GLRendererConfig {
-    pub shader_defines: HashMap<String, String>,
+    pub shader_defines: Arc<dyn Fn() -> HashMap<String, String>>,
     pub texture_factory_binding: Option<FactoryBinding>,
     pub shader_factory_binding: Option<FactoryBinding>,
     pub mesh_factory_binding: Option<FactoryBinding>,
