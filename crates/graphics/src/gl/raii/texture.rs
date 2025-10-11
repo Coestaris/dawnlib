@@ -213,6 +213,10 @@ impl Texture {
         self.set_param(glow::TEXTURE_MAG_FILTER, filter_to_gl(&filter)?)
     }
 
+    pub fn set_max_level(&self, level: i32) -> Result<(), TextureError> {
+        self.set_param(glow::TEXTURE_MAX_LEVEL, level as u32)
+    }
+
     pub fn generate_mipmap(&self) {
         unsafe {
             self.gl.generate_mipmap(self.texture_type as u32);
