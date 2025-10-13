@@ -3,7 +3,7 @@ use crate::user::{UserAssetHeader, UserMeshAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::material::IRMaterial;
 use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRMeshBounds, IRSubMesh, IRTopology};
-use dawn_assets::ir::texture::{IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType};
+use dawn_assets::ir::texture2d::{IRPixelFormat, IRTexture2D, IRTextureFilter};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use dawn_util::profile::Measure;
@@ -239,18 +239,16 @@ fn fake_texture_rgb(id: AssetID, color: Vec3) -> Result<(AssetID, Vec<PartialIR>
         vec![PartialIR {
             id: id.clone(),
             header: UserAssetHeader {
-                asset_type: AssetType::Texture,
+                asset_type: AssetType::Texture2D,
                 dependencies: Default::default(),
                 tags: vec![],
                 author: Some("Auto-generated".to_string()),
                 license: None,
             },
-            ir: IRAsset::Texture(IRTexture {
+            ir: IRAsset::Texture(IRTexture2D {
                 data,
-                texture_type: IRTextureType::Texture2D {
-                    width: 1,
-                    height: 1,
-                },
+                width: 1,
+                height: 1,
                 pixel_format: IRPixelFormat::RGBA8,
                 ..Default::default()
             }),
@@ -265,18 +263,16 @@ fn fake_texture_r(id: AssetID, value: f32) -> Result<(AssetID, Vec<PartialIR>), 
         vec![PartialIR {
             id: id.clone(),
             header: UserAssetHeader {
-                asset_type: AssetType::Texture,
+                asset_type: AssetType::Texture2D,
                 dependencies: Default::default(),
                 tags: vec![],
                 author: Some("Auto-generated".to_string()),
                 license: None,
             },
-            ir: IRAsset::Texture(IRTexture {
+            ir: IRAsset::Texture(IRTexture2D {
                 data,
-                texture_type: IRTextureType::Texture2D {
-                    width: 1,
-                    height: 1,
-                },
+                width: 1,
+                height: 1,
                 pixel_format: IRPixelFormat::R8,
                 ..Default::default()
             }),
@@ -392,15 +388,16 @@ fn process_texture(
             vec![PartialIR {
                 id: id.clone(),
                 header: UserAssetHeader {
-                    asset_type: AssetType::Texture,
+                    asset_type: AssetType::Texture2D,
                     dependencies: Default::default(),
                     tags: vec![],
                     author: Some("Auto-generated".to_string()),
                     license: None,
                 },
-                ir: IRAsset::Texture(IRTexture {
+                ir: IRAsset::Texture(IRTexture2D {
                     data: data.into_owned(),
-                    texture_type: IRTextureType::Texture2D { width, height },
+                    width,
+                    height,
                     pixel_format: match format {
                         Format::R8 => IRPixelFormat::R8,
                         Format::R8G8 => IRPixelFormat::RG8,

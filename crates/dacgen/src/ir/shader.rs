@@ -79,8 +79,16 @@ pub fn convert_shader(
 ) -> anyhow::Result<Vec<PartialIR>> {
     let mut sources = HashMap::new();
     for source in user.sources.iter() {
+        let shader_file = match source.origin {
+            ShaderOrigin::Inline { .. } => {
+                // Well, at least we can try to get the path
+                file.path.clone()
+            }
+            ShaderOrigin::External(ref s) => s.as_path(cache_dir, cwd)?,
+        };
+
         let text = read_origin(&source.origin, cache_dir, cwd)?;
-        let text = preprocess_shader(&text, &file.path, cache_dir, cwd)?;
+        let text = preprocess_shader(&text, &shader_file, cache_dir, cwd)?;
         sources.insert(source.kind, text.as_bytes().to_vec());
     }
 

@@ -2,7 +2,7 @@ use crate::gl::font::Font;
 use crate::gl::material::Material;
 use crate::gl::mesh::Mesh;
 use crate::gl::raii::shader_program::Program;
-use crate::gl::raii::texture::Texture;
+use crate::gl::raii::texture::Texture2D;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
 use dawn_assets::ir::IRAsset;
@@ -48,7 +48,7 @@ impl ShaderAssetFactory {
 }
 
 pub(crate) struct TextureAssetFactory {
-    basic_factory: BasicFactory<Texture>,
+    basic_factory: BasicFactory<Texture2D>,
 }
 
 impl TextureAssetFactory {
@@ -59,7 +59,7 @@ impl TextureAssetFactory {
     }
 
     pub fn bind(&mut self, binding: FactoryBinding) {
-        assert_eq!(binding.asset_type(), AssetType::Texture);
+        assert_eq!(binding.asset_type(), AssetType::Texture2D);
         self.basic_factory.bind(binding);
     }
 
@@ -67,7 +67,7 @@ impl TextureAssetFactory {
         self.basic_factory.process_events(
             |message| {
                 if let IRAsset::Texture(texture) = message.ir {
-                    let res = Texture::from_ir::<E>(gl.clone(), texture)?;
+                    let res = Texture2D::from_ir::<E>(gl.clone(), texture)?;
                     Ok(res)
                 } else {
                     Err(anyhow::anyhow!("Expected texture metadata"))

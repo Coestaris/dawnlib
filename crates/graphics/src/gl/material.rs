@@ -1,4 +1,4 @@
-use crate::gl::raii::texture::Texture;
+use crate::gl::raii::texture::Texture2D;
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::material::IRMaterial;
 use dawn_assets::{Asset, AssetCastable, AssetID, AssetMemoryUsage, TypedAsset};
@@ -21,10 +21,10 @@ pub enum MaterialError {
 }
 
 pub struct Material {
-    pub albedo: TypedAsset<Texture>,
-    pub metallic_roughness: TypedAsset<Texture>,
-    pub normal: TypedAsset<Texture>,
-    pub occlusion: TypedAsset<Texture>,
+    pub albedo: TypedAsset<Texture2D>,
+    pub metallic_roughness: TypedAsset<Texture2D>,
+    pub normal: TypedAsset<Texture2D>,
+    pub occlusion: TypedAsset<Texture2D>,
 }
 
 impl AssetCastable for Material {}

@@ -2,54 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum IRTextureType {
-    Unknown,
-    Texture1D {
-        width: u32,
-    },
-    Texture2D {
-        width: u32,
-        height: u32,
-    },
-    TextureCube {
-        size: u32,
-    },
-    Texture3D {
-        width: u32,
-        height: u32,
-        depth: u32,
-    },
-    Texture2DArray {
-        width: u32,
-        height: u32,
-        layers: u32,
-    },
-    TextureCubeArray {
-        size: u32,
-        layers: u32,
-    },
-    Texture2DMultisample {
-        width: u32,
-        height: u32,
-        samples: u32,
-    },
-    Texture2DMultisampleArray {
-        width: u32,
-        height: u32,
-        layers: u32,
-        samples: u32,
-    },
-    TextureBuffer {
-        size: u32,
-    },
-}
-
-impl Default for IRTextureType {
-    fn default() -> Self {
-        IRTextureType::Unknown
-    }
-}
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
 pub enum IRPixelFormat {
     Unknown,
@@ -148,56 +100,58 @@ impl Default for IRTextureWrap {
 
 /// Internal representation of texture data
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
-pub struct IRTexture {
+pub struct IRTexture2D {
     // Texture data is stored as an interleaved byte array,
     // in GPU-friendly format
     #[serde(with = "serde_bytes")]
     pub data: Vec<u8>,
-    pub texture_type: IRTextureType,
+
+    pub width: u32,
+    pub height: u32,
+
     pub pixel_format: IRPixelFormat,
     pub use_mipmaps: bool,
     pub min_filter: IRTextureFilter,
     pub mag_filter: IRTextureFilter,
     pub wrap_s: IRTextureWrap,
     pub wrap_t: IRTextureWrap,
-    pub wrap_r: IRTextureWrap,
 }
 
-impl Debug for IRTexture {
+impl Debug for IRTexture2D {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("IRTexture")
             .field("data_length", &self.data.len())
-            .field("texture_type", &self.texture_type)
+            .field("width", &self.width)
+            .field("height", &self.height)
             .field("pixel_format", &self.pixel_format)
             .field("use_mipmaps", &self.use_mipmaps)
             .field("min_filter", &self.min_filter)
             .field("mag_filter", &self.mag_filter)
             .field("wrap_s", &self.wrap_s)
             .field("wrap_t", &self.wrap_t)
-            .field("wrap_r", &self.wrap_r)
             .finish()
     }
 }
 
-impl Default for IRTexture {
+impl Default for IRTexture2D {
     fn default() -> Self {
-        IRTexture {
+        IRTexture2D {
             data: vec![],
-            texture_type: Default::default(),
+            width: 0,
+            height: 0,
             pixel_format: Default::default(),
             use_mipmaps: false,
             min_filter: Default::default(),
             mag_filter: Default::default(),
             wrap_s: Default::default(),
             wrap_t: Default::default(),
-            wrap_r: Default::default(),
         }
     }
 }
 
-impl IRTexture {
+impl IRTexture2D {
     pub fn memory_usage(&self) -> usize {
-        let mut sum = size_of::<IRTexture>();
+        let mut sum = size_of::<IRTexture2D>();
         sum += self.data.capacity();
         sum
     }

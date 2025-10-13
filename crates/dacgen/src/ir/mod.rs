@@ -5,7 +5,7 @@ use crate::ir::font::convert_font;
 use crate::ir::material::convert_material;
 use crate::ir::mesh::convert_mesh;
 use crate::ir::shader::convert_shader;
-use crate::ir::texture::convert_texture;
+use crate::ir::texture2d::convert_texture2d;
 use crate::user::{UserAssetHeader, UserAssetProperties};
 use crate::{ChecksumAlgorithm, UserAssetFile, UserIRAsset};
 use dawn_assets::ir::IRAsset;
@@ -20,7 +20,7 @@ mod font;
 mod material;
 mod mesh;
 mod shader;
-mod texture;
+mod texture2d;
 
 /// Normalize the file name by removing the extension, converting to lowercase,
 /// replacing whitespace with underscores, and removing special characters.
@@ -89,7 +89,7 @@ impl UserAssetFile {
 
         let irs = match &self.asset.properties {
             UserAssetProperties::Shader(shader) => convert_shader(self, cache_dir, cwd, shader),
-            UserAssetProperties::Texture(texture) => convert_texture(self, cache_dir, cwd, texture),
+            UserAssetProperties::Texture2D(texture) => convert_texture2d(self, cache_dir, cwd, texture),
             UserAssetProperties::Audio(audio) => convert_audio(self, cache_dir, cwd, audio),
             UserAssetProperties::Mesh(mesh) => convert_mesh(self, cache_dir, cwd, mesh),
             UserAssetProperties::Material(mat) => convert_material(self, cache_dir, cwd, mat),

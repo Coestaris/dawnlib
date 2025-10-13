@@ -1,5 +1,5 @@
 use crate::gl::raii::renderbuffer::Renderbuffer;
-use crate::gl::raii::texture::Texture;
+use crate::gl::raii::texture::Texture2D;
 use glam::UVec2;
 use glow::HasContext;
 use log::debug;
@@ -139,7 +139,7 @@ impl Framebuffer {
     pub fn attach_texture_2d(
         &self,
         attachment: FramebufferAttachment,
-        texture: &Texture,
+        texture: &Texture2D,
         mip_level: i32,
     ) {
         unsafe {

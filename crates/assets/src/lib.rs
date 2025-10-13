@@ -91,7 +91,7 @@ impl Default for AssetHeader {
 pub enum AssetType {
     Unknown,
     Shader,
-    Texture,
+    Texture2D,
     Audio,
     Notes,
     Material,
@@ -106,7 +106,7 @@ impl AssetType {
         match self {
             AssetType::Unknown => "Unknown",
             AssetType::Shader => "Shader",
-            AssetType::Texture => "Texture",
+            AssetType::Texture2D => "Texture2D",
             AssetType::Audio => "Audio",
             AssetType::Notes => "Notes",
             AssetType::Material => "Material",

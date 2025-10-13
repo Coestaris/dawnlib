@@ -1,7 +1,5 @@
 use crate::passes::events::PassEventTrait;
-use dawn_assets::ir::texture::{
-    IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap,
-};
+use dawn_assets::ir::texture2d::{IRPixelFormat, IRTexture2D, IRTextureFilter, IRTextureWrap};
 use dawn_assets::{AssetCastable, AssetMemoryUsage};
 use glow::HasContext;
 use log::debug;
@@ -9,18 +7,15 @@ use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Debug)]
-pub struct Texture {
+pub struct Texture2D {
     gl: Arc<glow::Context>,
     inner: glow::Texture,
-    texture_type: TextureBind,
 }
 
 #[derive(Debug, Error)]
 pub enum TextureError {
     #[error("Failed to create texture")]
     FailedToCreateTexture,
-    #[error("Unsupported texture type: {0:?}")]
-    UnsupportedTextureType(IRTextureType),
     #[error("Unsupported texture wrap: {0:?}")]
     UnsupportedTextureWrap(IRTextureWrap),
     #[error("Unsupported texture filter: {0:?}")]
@@ -31,15 +26,7 @@ pub enum TextureError {
     UnsupportedPixelType(IRPixelFormat),
 }
 
-impl AssetCastable for Texture {}
-
-fn tex_type_to_gl(tex_type: &IRTextureType) -> Result<TextureBind, TextureError> {
-    Ok(match tex_type {
-        IRTextureType::Texture2D { .. } => TextureBind::Texture2D,
-        IRTextureType::TextureCube { .. } => TextureBind::TextureCubeMap,
-        _ => return Err(TextureError::UnsupportedTextureType(tex_type.clone())),
-    })
-}
+impl AssetCastable for Texture2D {}
 
 fn wrap_to_gl(wrap: &IRTextureWrap) -> Result<u32, TextureError> {
     Ok(match wrap {
@@ -75,13 +62,6 @@ impl GLPF {
             data_type,
         }
     }
-}
-
-#[repr(u32)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextureBind {
-    Texture2D = glow::TEXTURE_2D,
-    TextureCubeMap = glow::TEXTURE_CUBE_MAP,
 }
 
 fn pf_to_gl(format: &IRPixelFormat) -> Result<GLPF, TextureError> {
@@ -123,86 +103,72 @@ fn pf_to_gl(format: &IRPixelFormat) -> Result<GLPF, TextureError> {
     })
 }
 
-impl Texture {
+impl Texture2D {
     pub fn from_ir<E: PassEventTrait>(
         gl: Arc<glow::Context>,
-        ir: IRTexture,
+        ir: IRTexture2D,
     ) -> Result<(Self, AssetMemoryUsage), TextureError> {
-        let texture = Self::new(gl.clone(), ir.texture_type.clone())?;
+        let texture = Self::new(gl.clone())?;
 
-        Texture::bind(&gl, texture.texture_type, &texture, 0);
+        Texture2D::bind(&gl, &texture, 0);
         texture.set_wrap_s(ir.wrap_s.clone())?;
         texture.set_wrap_t(ir.wrap_t.clone())?;
-        texture.set_wrap_r(ir.wrap_r.clone())?;
         texture.set_min_filter(ir.min_filter.clone())?;
         texture.set_mag_filter(ir.mag_filter.clone())?;
 
-        match ir.texture_type {
-            IRTextureType::Texture2D { width, height } => {
-                texture.feed_2d(
-                    0,
-                    width as usize,
-                    height as usize,
-                    false,
-                    ir.pixel_format.clone(),
-                    Some(&ir.data),
-                )?;
-            }
-            _ => Err(TextureError::UnsupportedTextureType(
-                ir.texture_type.clone(),
-            ))?,
-        }
+        texture.feed_2d(
+            0,
+            ir.width as usize,
+            ir.height as usize,
+            false,
+            ir.pixel_format.clone(),
+            Some(&ir.data),
+        )?;
 
         if ir.use_mipmaps {
             texture.generate_mipmap();
         }
 
-        Texture::unbind(&gl, texture.texture_type, 0);
+        Texture2D::unbind(&gl, 0);
         Ok((
             texture,
-            AssetMemoryUsage::new(size_of::<Texture>(), ir.data.len()),
+            AssetMemoryUsage::new(size_of::<Texture2D>(), ir.data.len()),
         ))
     }
 
-    pub fn bind(gl: &glow::Context, texture_type: TextureBind, texture: &Self, texture_index: u32) {
+    pub fn bind(gl: &glow::Context, texture: &Self, texture_index: u32) {
         assert!(texture_index < 32);
-        assert_eq!(texture_type, texture.texture_type);
         unsafe {
             gl.active_texture(glow::TEXTURE0 + texture_index as u32);
-            gl.bind_texture(texture_type as u32, Some(texture.as_inner()));
+            gl.bind_texture(glow::TEXTURE_2D, Some(texture.as_inner()));
         }
     }
 
-    pub fn unbind(gl: &glow::Context, texture_type: TextureBind, texture_index: u32) {
+    pub fn unbind(gl: &glow::Context, texture_index: u32) {
         assert!(texture_index < 32);
         unsafe {
             gl.active_texture(glow::TEXTURE0 + texture_index as u32);
-            gl.bind_texture(texture_type as u32, None);
+            gl.bind_texture(glow::TEXTURE_2D, None);
         }
     }
 
     fn set_param(&self, param: u32, value: u32) -> Result<(), TextureError> {
         unsafe {
             self.gl
-                .tex_parameter_i32(self.texture_type as u32, param, value as i32);
+                .tex_parameter_i32(glow::TEXTURE_2D as u32, param, value as i32);
         }
         Ok(())
-    }
-
-    pub fn set_wrap_s(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
-        self.set_param(glow::TEXTURE_WRAP_S, wrap_to_gl(&wrap)?)
     }
 
     pub fn disable_compare_mode(&self) -> Result<(), TextureError> {
         self.set_param(glow::TEXTURE_COMPARE_MODE, glow::NONE)
     }
+    pub fn set_wrap_s(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
+        self.set_param(glow::TEXTURE_WRAP_S, wrap_to_gl(&wrap)?)
+    }
 
     pub fn set_wrap_t(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
         self.set_param(glow::TEXTURE_WRAP_T, wrap_to_gl(&wrap)?)
-    }
-
-    pub fn set_wrap_r(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
-        self.set_param(glow::TEXTURE_WRAP_R, wrap_to_gl(&wrap)?)
     }
 
     pub fn set_min_filter(&self, filter: IRTextureFilter) -> Result<(), TextureError> {
@@ -219,7 +185,7 @@ impl Texture {
 
     pub fn generate_mipmap(&self) {
         unsafe {
-            self.gl.generate_mipmap(self.texture_type as u32);
+            self.gl.generate_mipmap(glow::TEXTURE_2D);
         }
     }
 
@@ -239,7 +205,7 @@ impl Texture {
             }
 
             self.gl.tex_image_2d(
-                self.texture_type as u32,
+                glow::TEXTURE_2D,
                 level as i32,
                 gl.internal as i32,
                 width as i32,
@@ -267,32 +233,22 @@ impl Texture {
     }
 
     pub fn new2d(gl: Arc<glow::Context>) -> Result<Self, TextureError> {
-        Self::new(
-            gl,
-            IRTextureType::Texture2D {
-                width: 0u32,
-                height: 0u32,
-            },
-        )
+        Self::new(gl)
     }
 
-    pub fn new(gl: Arc<glow::Context>, texture_type: IRTextureType) -> Result<Self, TextureError> {
+    pub fn new(gl: Arc<glow::Context>) -> Result<Self, TextureError> {
         unsafe {
             let id = gl
                 .create_texture()
                 .map_err(|_| TextureError::FailedToCreateTexture)?;
 
             debug!("Allocated Texture ID: {:?}", id);
-            Ok(Texture {
-                gl,
-                inner: id,
-                texture_type: tex_type_to_gl(&texture_type)?,
-            })
+            Ok(Texture2D { gl, inner: id })
         }
     }
 }
 
-impl Drop for Texture {
+impl Drop for Texture2D {
     fn drop(&mut self) {
         debug!("Dropping Texture ID: {:?}", self.inner);
         unsafe {

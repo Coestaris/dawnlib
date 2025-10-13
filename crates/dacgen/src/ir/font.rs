@@ -3,9 +3,7 @@ use crate::user::{UserAssetHeader, UserFontAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::font::{IRFont, IRGlyph, IRGlyphVertex};
 use dawn_assets::ir::mesh::{IRIndexType, IRTopology};
-use dawn_assets::ir::texture::{
-    IRPixelFormat, IRTexture, IRTextureFilter, IRTextureType, IRTextureWrap,
-};
+use dawn_assets::ir::texture2d::{IRPixelFormat, IRTexture2D, IRTextureFilter, IRTextureWrap};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use glam::Vec2;
@@ -34,25 +32,22 @@ fn convert_texture(
         vec![PartialIR {
             id: texture_id.clone(),
             header: UserAssetHeader {
-                asset_type: AssetType::Texture,
+                asset_type: AssetType::Texture2D,
                 dependencies: Default::default(),
                 tags: vec![],
                 author: Some("Auto-generated".to_string()),
                 license: None,
             },
-            ir: IRAsset::Texture(IRTexture {
+            ir: IRAsset::Texture(IRTexture2D {
                 data,
-                texture_type: IRTextureType::Texture2D {
-                    width: w,
-                    height: h,
-                },
+                width: w,
+                height: h,
                 pixel_format: IRPixelFormat::R8,
                 use_mipmaps: false,
                 min_filter: IRTextureFilter::Linear,
                 mag_filter: IRTextureFilter::Linear,
                 wrap_s: IRTextureWrap::ClampToEdge,
                 wrap_t: IRTextureWrap::ClampToEdge,
-                wrap_r: IRTextureWrap::ClampToEdge,
             }),
         }],
         texture_id,

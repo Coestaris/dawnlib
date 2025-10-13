@@ -2,7 +2,7 @@ use crate::deep_hash::{with_std, DeepHash, DeepHashCtx};
 use crate::source::SourceRef;
 use dawn_assets::ir::dictionary::IRDictionaryEntry;
 use dawn_assets::ir::shader::IRShaderSourceKind;
-use dawn_assets::ir::texture::{IRPixelFormat, IRTextureFilter, IRTextureType, IRTextureWrap};
+use dawn_assets::ir::texture2d::{IRPixelFormat, IRTextureFilter, IRTextureWrap};
 use dawn_assets::{AssetID, AssetType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -39,8 +39,8 @@ pub(crate) struct UserShaderAsset {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub(crate) struct UserTextureAsset {
-    pub sources: Vec<SourceRef>,
+pub(crate) struct UserTexture2DAsset {
+    pub source: SourceRef,
     #[serde(default)]
     pub pixel_format: IRPixelFormat,
     #[serde(default)]
@@ -50,13 +50,9 @@ pub(crate) struct UserTextureAsset {
     #[serde(default)]
     pub mag_filter: IRTextureFilter,
     #[serde(default)]
-    pub texture_type: IRTextureType,
-    #[serde(default)]
     pub wrap_s: IRTextureWrap,
     #[serde(default)]
     pub wrap_t: IRTextureWrap,
-    #[serde(default)]
-    pub wrap_r: IRTextureWrap,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -186,7 +182,7 @@ pub(crate) struct UserBlobAsset {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum UserAssetProperties {
     Shader(UserShaderAsset),
-    Texture(UserTextureAsset),
+    Texture2D(UserTexture2DAsset),
     Audio(UserAudioAsset),
     Material(UserMaterialAsset),
     Mesh(UserMeshAsset),
@@ -241,17 +237,15 @@ impl DeepHash for UserShaderAsset {
     }
 }
 
-impl DeepHash for UserTextureAsset {
+impl DeepHash for UserTexture2DAsset {
     fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
-        self.sources.deep_hash(state, ctx)?;
+        self.source.deep_hash(state, ctx)?;
         with_std(&self.pixel_format, state);
         self.use_mipmaps.deep_hash(state, ctx)?;
         with_std(&self.min_filter, state);
         with_std(&self.mag_filter, state);
-        with_std(&self.texture_type, state);
         with_std(&self.wrap_s, state);
         with_std(&self.wrap_t, state);
-        with_std(&self.wrap_r, state);
         Ok(())
     }
 }
@@ -371,7 +365,7 @@ impl DeepHash for UserAssetProperties {
                 0u8.deep_hash(state, ctx)?;
                 s.deep_hash(state, ctx)?;
             }
-            UserAssetProperties::Texture(t) => {
+            UserAssetProperties::Texture2D(t) => {
                 1u8.deep_hash(state, ctx)?;
                 t.deep_hash(state, ctx)?;
             }
