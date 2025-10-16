@@ -1,14 +1,13 @@
 use crate::ir::{normalize_name, PartialIR};
-use crate::user::{UserAssetHeader, UserTexture2DAsset};
+use crate::user::UserTexture2DAsset;
 use crate::UserAssetFile;
 use anyhow::anyhow;
-use dawn_assets::ir::texture2d::{IRPixelFormat, IRTexture2D, IRTextureWrap};
+use dawn_assets::ir::texture2d::{IRPixelFormat, IRTexture2D};
 use dawn_assets::ir::IRAsset;
-use dawn_assets::AssetID;
 use image::{DynamicImage, Rgba};
 use std::path::Path;
 
-struct Stream {
+pub(crate) struct Stream {
     data: Vec<u8>,
 }
 
@@ -30,7 +29,7 @@ impl Stream {
     }
 }
 
-fn pack_texture2d(
+fn rgba_to_any(
     image: &DynamicImage,
     width: u32,
     height: u32,
@@ -51,6 +50,55 @@ fn pack_texture2d(
     Ok(stream.to_vec())
 }
 
+pub fn convert_any(
+    dynamic_image: DynamicImage,
+    desired_width: u32,
+    desired_height: u32,
+    pixel_format: &IRPixelFormat,
+) -> anyhow::Result<Vec<u8>> {
+    match pixel_format {
+        IRPixelFormat::RGBA8 => {
+            rgba_to_any(
+                &dynamic_image,
+                desired_width,
+                desired_height,
+                |stream, pixel| {
+                    stream.push(pixel[0]); // R
+                    stream.push(pixel[1]); // G
+                    stream.push(pixel[2]); // B
+                    stream.push(pixel[3]); // A
+                },
+            )
+        }
+        IRPixelFormat::RGB8 => {
+            rgba_to_any(
+                &dynamic_image,
+                desired_width,
+                desired_height,
+                |stream, pixel| {
+                    stream.push(pixel[0]); // R
+                    stream.push(pixel[1]); // G
+                    stream.push(pixel[2]); // B
+                },
+            )
+        }
+        IRPixelFormat::R8 => {
+            rgba_to_any(
+                &dynamic_image,
+                desired_width,
+                desired_height,
+                |stream, pixel| {
+                    stream.push(pixel[0]); // R
+                },
+            )
+        }
+        _ => Err(anyhow!(
+            "Unsupported pixel format for user asset: {:?}",
+            pixel_format
+        )),
+    }
+}
+
 pub fn convert_texture2d(
     file: &UserAssetFile,
     cache_dir: &Path,
@@ -60,37 +108,9 @@ pub fn convert_texture2d(
     let texture = user.source.as_path(cache_dir, cwd)?;
     let img = image::open(&texture)?;
 
-    let width = img.width();
-    let height = img.height();
-
-    let data = match user.pixel_format {
-        IRPixelFormat::RGBA8 => {
-            pack_texture2d(&img, width, height, |stream, pixel| {
-                stream.push(pixel[0]); // R
-                stream.push(pixel[1]); // G
-                stream.push(pixel[2]); // B
-                stream.push(pixel[3]); // A
-            })?
-        }
-        IRPixelFormat::RGB8 => {
-            pack_texture2d(&img, width, height, |stream, pixel| {
-                stream.push(pixel[0]); // R
-                stream.push(pixel[1]); // G
-                stream.push(pixel[2]); // B
-            })?
-        }
-        IRPixelFormat::R8 => {
-            pack_texture2d(&img, width, height, |stream, pixel| {
-                stream.push(pixel[0]); // R
-            })?
-        }
-        _ => {
-            return Err(anyhow!(
-                "Unsupported pixel format for user asset: {:?}",
-                user.pixel_format
-            ));
-        }
-    };
+    let width = user.width.unwrap_or(img.width());
+    let height = user.height.unwrap_or(img.height());
+    let data = convert_any(img, width, height, &user.pixel_format)?;
 
     Ok(vec![PartialIR::new_from_id(
         IRAsset::Texture2D(IRTexture2D {

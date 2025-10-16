@@ -42,6 +42,8 @@ pub(crate) struct UserShaderAsset {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct UserTexture2DAsset {
     pub source: SourceRef,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
     #[serde(default)]
     pub pixel_format: IRPixelFormat,
     #[serde(default)]

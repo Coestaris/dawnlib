@@ -32,7 +32,7 @@ impl IRTextureCubeOrder {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub struct IRTextureCubeSideData {
     // Texture data is stored as an interleaved byte array,
     // in GPU-friendly format
