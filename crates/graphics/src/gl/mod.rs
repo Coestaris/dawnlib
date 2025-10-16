@@ -13,7 +13,7 @@ pub mod timer;
 
 use crate::gl::assets::{
     FontAssetFactory, MaterialAssetFactory, MeshAssetFactory, ShaderAssetFactory,
-    TextureAssetFactory,
+    Texture2DAssetFactory, TextureCubeAssetFactory,
 };
 #[cfg(not(target_arch = "wasm32"))]
 use crate::gl::context_glutin::{Context, ContextError};
@@ -38,7 +38,8 @@ pub struct GLRenderer<E: PassEventTrait> {
     pub gl: Arc<glow::Context>,
 
     // Factories for texture and shader assets
-    texture_factory: Option<TextureAssetFactory>,
+    texture2d_factory: Option<Texture2DAssetFactory>,
+    texture_cube_factory: Option<TextureCubeAssetFactory>,
     shader_factory: Option<ShaderAssetFactory>,
     mesh_factory: Option<MeshAssetFactory>,
     material_factory: Option<MaterialAssetFactory>,
@@ -48,7 +49,8 @@ pub struct GLRenderer<E: PassEventTrait> {
 #[derive(Clone)]
 pub struct GLRendererConfig {
     pub shader_defines: Arc<dyn Fn() -> HashMap<String, String>>,
-    pub texture_factory_binding: Option<FactoryBinding>,
+    pub texture2d_factory_binding: Option<FactoryBinding>,
+    pub texture_cube_factory_binding: Option<FactoryBinding>,
     pub shader_factory_binding: Option<FactoryBinding>,
     pub mesh_factory_binding: Option<FactoryBinding>,
     pub material_factory_binding: Option<FactoryBinding>,
@@ -79,8 +81,15 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
 
             // Setup factories for texture and shader assets
             // These factories are used to load and manage texture and shader assets.
-            let texture_factory = if let Some(binding) = cfg.texture_factory_binding {
-                let mut factory = TextureAssetFactory::new();
+            let texture2d_factory = if let Some(binding) = cfg.texture2d_factory_binding {
+                let mut factory = Texture2DAssetFactory::new();
+                factory.bind(binding);
+                Some(factory)
+            } else {
+                None
+            };
+            let texture_cube_factory = if let Some(binding) = cfg.texture_cube_factory_binding {
+                let mut factory = TextureCubeAssetFactory::new();
                 factory.bind(binding);
                 Some(factory)
             } else {
@@ -118,7 +127,8 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
             Ok(GLRenderer::<E> {
                 _marker: Default::default(),
                 context,
-                texture_factory,
+                texture2d_factory,
+                texture_cube_factory,
                 shader_factory,
                 mesh_factory,
                 material_factory,
@@ -132,7 +142,10 @@ impl<E: PassEventTrait> RendererBackendTrait<E> for GLRenderer<E> {
     #[inline(always)]
     fn before_frame(&mut self) -> Result<(), RendererBackendError> {
         // Process events asset factories
-        if let Some(factory) = &mut self.texture_factory {
+        if let Some(factory) = &mut self.texture2d_factory {
+            factory.process_events::<E>(&self.gl);
+        }
+        if let Some(factory) = &mut self.texture_cube_factory {
             factory.process_events::<E>(&self.gl);
         }
         if let Some(factory) = &mut self.shader_factory {

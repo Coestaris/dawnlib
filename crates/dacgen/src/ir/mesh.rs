@@ -245,7 +245,7 @@ fn fake_texture_rgb(id: AssetID, color: Vec3) -> Result<(AssetID, Vec<PartialIR>
                 author: Some("Auto-generated".to_string()),
                 license: None,
             },
-            ir: IRAsset::Texture(IRTexture2D {
+            ir: IRAsset::Texture2D(IRTexture2D {
                 data,
                 width: 1,
                 height: 1,
@@ -269,7 +269,7 @@ fn fake_texture_r(id: AssetID, value: f32) -> Result<(AssetID, Vec<PartialIR>), 
                 author: Some("Auto-generated".to_string()),
                 license: None,
             },
-            ir: IRAsset::Texture(IRTexture2D {
+            ir: IRAsset::Texture2D(IRTexture2D {
                 data,
                 width: 1,
                 height: 1,
@@ -394,7 +394,7 @@ fn process_texture(
                     author: Some("Auto-generated".to_string()),
                     license: None,
                 },
-                ir: IRAsset::Texture(IRTexture2D {
+                ir: IRAsset::Texture2D(IRTexture2D {
                     data: data.into_owned(),
                     width,
                     height,
@@ -934,7 +934,7 @@ fn convert_mesh_inner(
     #[cfg(any())]
     for ir in irs.iter() {
         match &ir.ir {
-            IRAsset::Texture(tex) => match tex.pixel_format {
+            IRAsset::Texture2D(tex) => match tex.pixel_format {
                 IRPixelFormat::R8 => {
                     let img = DynamicImage::ImageLuma8(
                         image::ImageBuffer::from_raw(

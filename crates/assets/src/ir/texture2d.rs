@@ -119,7 +119,7 @@ pub struct IRTexture2D {
 
 impl Debug for IRTexture2D {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("IRTexture")
+        f.debug_struct("IRTexture2D")
             .field("data_length", &self.data.len())
             .field("width", &self.width)
             .field("height", &self.height)

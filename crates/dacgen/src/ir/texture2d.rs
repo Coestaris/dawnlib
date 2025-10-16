@@ -93,7 +93,7 @@ pub fn convert_texture2d(
     };
 
     Ok(vec![PartialIR::new_from_id(
-        IRAsset::Texture(IRTexture2D {
+        IRAsset::Texture2D(IRTexture2D {
             data,
             width,
             height,

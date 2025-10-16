@@ -38,7 +38,7 @@ fn convert_texture(
                 author: Some("Auto-generated".to_string()),
                 license: None,
             },
-            ir: IRAsset::Texture(IRTexture2D {
+            ir: IRAsset::Texture2D(IRTexture2D {
                 data,
                 width: w,
                 height: h,

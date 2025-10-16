@@ -2,7 +2,7 @@ use crate::gl::font::Font;
 use crate::gl::material::Material;
 use crate::gl::mesh::Mesh;
 use crate::gl::raii::shader_program::Program;
-use crate::gl::raii::texture::Texture2D;
+use crate::gl::raii::texture::{Texture2D, TextureCube};
 use crate::passes::events::PassEventTrait;
 use dawn_assets::factory::{BasicFactory, FactoryBinding};
 use dawn_assets::ir::IRAsset;
@@ -47,13 +47,13 @@ impl ShaderAssetFactory {
     }
 }
 
-pub(crate) struct TextureAssetFactory {
+pub(crate) struct Texture2DAssetFactory {
     basic_factory: BasicFactory<Texture2D>,
 }
 
-impl TextureAssetFactory {
+impl Texture2DAssetFactory {
     pub fn new() -> Self {
-        TextureAssetFactory {
+        Texture2DAssetFactory {
             basic_factory: BasicFactory::new(),
         }
     }
@@ -66,11 +66,45 @@ impl TextureAssetFactory {
     pub fn process_events<E: PassEventTrait>(&mut self, gl: &Arc<glow::Context>) {
         self.basic_factory.process_events(
             |message| {
-                if let IRAsset::Texture(texture) = message.ir {
+                if let IRAsset::Texture2D(texture) = message.ir {
                     let res = Texture2D::from_ir::<E>(gl.clone(), texture)?;
                     Ok(res)
                 } else {
-                    Err(anyhow::anyhow!("Expected texture metadata"))
+                    Err(anyhow::anyhow!("Expected texture2d metadata"))
+                }
+            },
+            |_| {
+                // Free will be handled in the Drop implementation of Texture
+            },
+            Duration::ZERO,
+        );
+    }
+}
+
+pub(crate) struct TextureCubeAssetFactory {
+    basic_factory: BasicFactory<TextureCube>
+}
+
+impl TextureCubeAssetFactory {
+    pub fn new() -> Self {
+        TextureCubeAssetFactory {
+            basic_factory: BasicFactory::new(),
+        }
+    }
+
+    pub fn bind(&mut self, binding: FactoryBinding) {
+        assert_eq!(binding.asset_type(), AssetType::TextureCube);
+        self.basic_factory.bind(binding);
+    }
+
+    pub fn process_events<E: PassEventTrait>(&mut self, gl: &Arc<glow::Context>) {
+        self.basic_factory.process_events(
+            |message| {
+                if let IRAsset::TextureCube(texture) = message.ir {
+                    let res = TextureCube::from_ir::<E>(gl.clone(), texture)?;
+                    Ok(res)
+                } else {
+                    Err(anyhow::anyhow!("Expected texture_cube metadata"))
                 }
             },
             |_| {

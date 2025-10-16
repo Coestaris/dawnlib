@@ -1,8 +1,10 @@
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::texture2d::{IRPixelFormat, IRTexture2D, IRTextureFilter, IRTextureWrap};
+use dawn_assets::ir::texture_cube::{IRTextureCube, IRTextureCubeOrder, IRTextureCubeSide};
 use dawn_assets::{AssetCastable, AssetMemoryUsage};
-use glow::HasContext;
+use glow::{Context, HasContext, Texture};
 use log::debug;
+use std::process::id;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -10,6 +12,87 @@ use thiserror::Error;
 pub struct Texture2D {
     gl: Arc<glow::Context>,
     inner: glow::Texture,
+}
+
+#[derive(Debug)]
+pub struct TextureCube {
+    gl: Arc<glow::Context>,
+    inner: glow::Texture,
+}
+
+pub trait GLTexture {
+    fn set_parameter(&self, param: u32, value: u32) -> Result<(), TextureError>;
+    fn gl(&self) -> &glow::Context;
+    fn as_inner(&self) -> glow::Texture;
+
+    fn disable_compare_mode(&self) -> Result<(), TextureError> {
+        self.set_parameter(glow::TEXTURE_COMPARE_MODE, glow::NONE)
+    }
+    fn set_wrap_s(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
+        self.set_parameter(glow::TEXTURE_WRAP_S, wrap_to_gl(&wrap)?)
+    }
+
+    fn set_wrap_t(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
+        self.set_parameter(glow::TEXTURE_WRAP_T, wrap_to_gl(&wrap)?)
+    }
+
+    fn set_wrap_r(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
+        self.set_parameter(glow::TEXTURE_WRAP_R, wrap_to_gl(&wrap)?)
+    }
+
+    fn set_min_filter(&self, filter: IRTextureFilter) -> Result<(), TextureError> {
+        self.set_parameter(glow::TEXTURE_MIN_FILTER, filter_to_gl(&filter)?)
+    }
+
+    fn set_mag_filter(&self, filter: IRTextureFilter) -> Result<(), TextureError> {
+        self.set_parameter(glow::TEXTURE_MAG_FILTER, filter_to_gl(&filter)?)
+    }
+
+    fn set_max_level(&self, level: i32) -> Result<(), TextureError> {
+        self.set_parameter(glow::TEXTURE_MAX_LEVEL, level as u32)
+    }
+
+    fn generate_mipmap(&self) {
+        unsafe {
+            self.gl().generate_mipmap(glow::TEXTURE_2D);
+        }
+    }
+}
+
+impl GLTexture for Texture2D {
+    fn set_parameter(&self, param: u32, value: u32) -> Result<(), TextureError> {
+        unsafe {
+            self.gl()
+                .tex_parameter_i32(glow::TEXTURE_2D, param, value as i32);
+        }
+        Ok(())
+    }
+
+    fn gl(&self) -> &Context {
+        &self.gl
+    }
+
+    fn as_inner(&self) -> Texture {
+        self.inner
+    }
+}
+
+impl GLTexture for TextureCube {
+    fn set_parameter(&self, param: u32, value: u32) -> Result<(), TextureError> {
+        unsafe {
+            self.gl()
+                .tex_parameter_i32(glow::TEXTURE_CUBE_MAP, param, value as i32);
+        }
+        Ok(())
+    }
+
+    fn gl(&self) -> &Context {
+        &self.gl
+    }
+
+    fn as_inner(&self) -> Texture {
+        self.inner
+    }
 }
 
 #[derive(Debug, Error)]
@@ -27,6 +110,7 @@ pub enum TextureError {
 }
 
 impl AssetCastable for Texture2D {}
+impl AssetCastable for TextureCube {}
 
 fn wrap_to_gl(wrap: &IRTextureWrap) -> Result<u32, TextureError> {
     Ok(match wrap {
@@ -45,6 +129,17 @@ fn filter_to_gl(filter: &IRTextureFilter) -> Result<u32, TextureError> {
         IRTextureFilter::LinearMipmapNearest => glow::LINEAR_MIPMAP_NEAREST,
         IRTextureFilter::NearestMipmapLinear => glow::NEAREST_MIPMAP_LINEAR,
         IRTextureFilter::LinearMipmapLinear => glow::LINEAR_MIPMAP_LINEAR,
+    })
+}
+
+fn side_to_gl(side: &IRTextureCubeSide) -> Result<u32, TextureError> {
+    Ok(match side {
+        IRTextureCubeSide::PositiveX => glow::TEXTURE_CUBE_MAP_POSITIVE_X,
+        IRTextureCubeSide::NegativeX => glow::TEXTURE_CUBE_MAP_NEGATIVE_X,
+        IRTextureCubeSide::PositiveY => glow::TEXTURE_CUBE_MAP_POSITIVE_Y,
+        IRTextureCubeSide::NegativeY => glow::TEXTURE_CUBE_MAP_NEGATIVE_Y,
+        IRTextureCubeSide::PositiveZ => glow::TEXTURE_CUBE_MAP_POSITIVE_Z,
+        IRTextureCubeSide::NegativeZ => glow::TEXTURE_CUBE_MAP_NEGATIVE_Z,
     })
 }
 
@@ -116,7 +211,7 @@ impl Texture2D {
         texture.set_min_filter(ir.min_filter.clone())?;
         texture.set_mag_filter(ir.mag_filter.clone())?;
 
-        texture.feed_2d(
+        texture.feed(
             0,
             ir.width as usize,
             ir.height as usize,
@@ -152,44 +247,7 @@ impl Texture2D {
         }
     }
 
-    fn set_param(&self, param: u32, value: u32) -> Result<(), TextureError> {
-        unsafe {
-            self.gl
-                .tex_parameter_i32(glow::TEXTURE_2D as u32, param, value as i32);
-        }
-        Ok(())
-    }
-
-    pub fn disable_compare_mode(&self) -> Result<(), TextureError> {
-        self.set_param(glow::TEXTURE_COMPARE_MODE, glow::NONE)
-    }
-    pub fn set_wrap_s(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
-        self.set_param(glow::TEXTURE_WRAP_S, wrap_to_gl(&wrap)?)
-    }
-
-    pub fn set_wrap_t(&self, wrap: IRTextureWrap) -> Result<(), TextureError> {
-        self.set_param(glow::TEXTURE_WRAP_T, wrap_to_gl(&wrap)?)
-    }
-
-    pub fn set_min_filter(&self, filter: IRTextureFilter) -> Result<(), TextureError> {
-        self.set_param(glow::TEXTURE_MIN_FILTER, filter_to_gl(&filter)?)
-    }
-
-    pub fn set_mag_filter(&self, filter: IRTextureFilter) -> Result<(), TextureError> {
-        self.set_param(glow::TEXTURE_MAG_FILTER, filter_to_gl(&filter)?)
-    }
-
-    pub fn set_max_level(&self, level: i32) -> Result<(), TextureError> {
-        self.set_param(glow::TEXTURE_MAX_LEVEL, level as u32)
-    }
-
-    pub fn generate_mipmap(&self) {
-        unsafe {
-            self.gl.generate_mipmap(glow::TEXTURE_2D);
-        }
-    }
-
-    pub fn feed_2d<T>(
+    pub fn feed<T>(
         &self,
         level: usize,
         width: usize,
@@ -227,13 +285,98 @@ impl Texture2D {
         Ok(())
     }
 
-    #[inline(always)]
-    pub fn as_inner(&self) -> glow::Texture {
-        self.inner
+    pub fn new(gl: Arc<glow::Context>) -> Result<Self, TextureError> {
+        unsafe {
+            let id = gl
+                .create_texture()
+                .map_err(|_| TextureError::FailedToCreateTexture)?;
+
+            debug!("Allocated Texture2D ID: {:?}", id);
+            Ok(Texture2D { gl, inner: id })
+        }
+    }
+}
+
+impl TextureCube {
+    pub fn from_ir<E: PassEventTrait>(
+        gl: Arc<glow::Context>,
+        ir: IRTextureCube,
+    ) -> Result<(Self, AssetMemoryUsage), TextureError> {
+        let texture = Self::new(gl.clone())?;
+        TextureCube::bind(&gl, &texture, 0);
+
+        let sides = ir.order.to_sides();
+        for (side, data) in sides.iter().zip(&ir.sides) {
+            texture.feed_side(
+                side.clone(),
+                ir.size as usize,
+                ir.pixel_format.clone(),
+                Some(&data.data),
+            )?;
+        }
+
+        texture.set_wrap_s(ir.wrap_s.clone())?;
+        texture.set_wrap_t(ir.wrap_t.clone())?;
+        texture.set_wrap_r(ir.wrap_r.clone())?;
+        texture.set_min_filter(ir.min_filter.clone())?;
+        texture.set_mag_filter(ir.mag_filter.clone())?;
+        TextureCube::unbind(&gl, 0);
+
+        Ok((
+            texture,
+            AssetMemoryUsage::new(
+                size_of::<TextureCube>(),
+                ir.sides.iter().map(|s| s.data.len()).sum(),
+            ),
+        ))
     }
 
-    pub fn new2d(gl: Arc<glow::Context>) -> Result<Self, TextureError> {
-        Self::new(gl)
+    pub fn bind(gl: &glow::Context, texture: &Self, texture_index: u32) {
+        assert!(texture_index < 32);
+        unsafe {
+            gl.active_texture(glow::TEXTURE0 + texture_index as u32);
+            gl.bind_texture(glow::TEXTURE_CUBE_MAP, Some(texture.as_inner()));
+        }
+    }
+
+    pub fn unbind(gl: &glow::Context, texture_index: u32) {
+        assert!(texture_index < 32);
+        unsafe {
+            gl.active_texture(glow::TEXTURE0 + texture_index as u32);
+            gl.bind_texture(glow::TEXTURE_CUBE_MAP, None);
+        }
+    }
+
+    pub fn feed_side<T>(
+        &self,
+        side: IRTextureCubeSide,
+        size: usize,
+        pixel_format: IRPixelFormat,
+        data: Option<&[T]>,
+    ) -> Result<(), TextureError> {
+        let gl = pf_to_gl(&pixel_format)?;
+
+        unsafe {
+            self.gl.tex_image_2d(
+                side_to_gl(&side)?,
+                0,
+                gl.internal as i32,
+                size as i32,
+                size as i32,
+                0,
+                gl.format,
+                gl.data_type,
+                match data {
+                    None => glow::PixelUnpackData::Slice(None),
+                    Some(d) => glow::PixelUnpackData::Slice(Some(std::slice::from_raw_parts(
+                        d.as_ptr() as *const u8,
+                        size_of::<T>() * d.len(),
+                    ))),
+                },
+            )
+        }
+
+        Ok(())
     }
 
     pub fn new(gl: Arc<glow::Context>) -> Result<Self, TextureError> {
@@ -242,15 +385,23 @@ impl Texture2D {
                 .create_texture()
                 .map_err(|_| TextureError::FailedToCreateTexture)?;
 
-            debug!("Allocated Texture ID: {:?}", id);
-            Ok(Texture2D { gl, inner: id })
+            debug!("Allocated TextureCube ID: {:?}", id);
+            Ok(TextureCube { gl, inner: id })
         }
     }
 }
 
 impl Drop for Texture2D {
     fn drop(&mut self) {
-        debug!("Dropping Texture ID: {:?}", self.inner);
+        debug!("Dropping Texture2D ID: {:?}", self.inner);
+        unsafe {
+            self.gl.delete_texture(self.inner);
+        }
+    }
+}
+impl Drop for TextureCube {
+    fn drop(&mut self) {
+        debug!("Dropping TextureCube ID: {:?}", self.inner);
         unsafe {
             self.gl.delete_texture(self.inner);
         }

@@ -12,6 +12,7 @@ use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetChecksum, AssetHeader, AssetID};
 use dawn_util::profile::Measure;
 use std::path::{Path, PathBuf};
+use crate::ir::texture_cube::convert_texture_cube;
 
 mod audio;
 mod blob;
@@ -21,6 +22,7 @@ mod material;
 mod mesh;
 mod shader;
 mod texture2d;
+mod texture_cube;
 
 /// Normalize the file name by removing the extension, converting to lowercase,
 /// replacing whitespace with underscores, and removing special characters.
@@ -90,6 +92,7 @@ impl UserAssetFile {
         let irs = match &self.asset.properties {
             UserAssetProperties::Shader(shader) => convert_shader(self, cache_dir, cwd, shader),
             UserAssetProperties::Texture2D(texture) => convert_texture2d(self, cache_dir, cwd, texture),
+            UserAssetProperties::TextureCube(cube) => convert_texture_cube(self, cache_dir, cwd, cube),
             UserAssetProperties::Audio(audio) => convert_audio(self, cache_dir, cwd, audio),
             UserAssetProperties::Mesh(mesh) => convert_mesh(self, cache_dir, cwd, mesh),
             UserAssetProperties::Material(mat) => convert_material(self, cache_dir, cwd, mat),

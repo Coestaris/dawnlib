@@ -1,5 +1,5 @@
 use crate::gl::raii::renderbuffer::Renderbuffer;
-use crate::gl::raii::texture::Texture2D;
+use crate::gl::raii::texture::{GLTexture, Texture2D};
 use glam::UVec2;
 use glow::HasContext;
 use log::debug;

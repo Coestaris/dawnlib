@@ -3,6 +3,7 @@ use crate::source::SourceRef;
 use dawn_assets::ir::dictionary::IRDictionaryEntry;
 use dawn_assets::ir::shader::IRShaderSourceKind;
 use dawn_assets::ir::texture2d::{IRPixelFormat, IRTextureFilter, IRTextureWrap};
+use dawn_assets::ir::texture_cube::IRTextureCubeOrder;
 use dawn_assets::{AssetID, AssetType};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -53,6 +54,34 @@ pub(crate) struct UserTexture2DAsset {
     pub wrap_s: IRTextureWrap,
     #[serde(default)]
     pub wrap_t: IRTextureWrap,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub enum UserTextureCubeSource {
+    Cross(SourceRef),
+    Faces {
+        faces: [SourceRef; 6],
+        order: IRTextureCubeOrder,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UserTextureCubeAsset {
+    pub source: UserTextureCubeSource,
+    #[serde(default)]
+    pub pixel_format: IRPixelFormat,
+    #[serde(default)]
+    pub use_mipmaps: bool,
+    #[serde(default)]
+    pub min_filter: IRTextureFilter,
+    #[serde(default)]
+    pub mag_filter: IRTextureFilter,
+    #[serde(default)]
+    pub wrap_s: IRTextureWrap,
+    #[serde(default)]
+    pub wrap_t: IRTextureWrap,
+    #[serde(default)]
+    pub wrap_r: IRTextureWrap,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -183,6 +212,7 @@ pub(crate) struct UserBlobAsset {
 pub enum UserAssetProperties {
     Shader(UserShaderAsset),
     Texture2D(UserTexture2DAsset),
+    TextureCube(UserTextureCubeAsset),
     Audio(UserAudioAsset),
     Material(UserMaterialAsset),
     Mesh(UserMeshAsset),
@@ -358,6 +388,40 @@ impl DeepHash for UserDictionaryAsset {
     }
 }
 
+impl DeepHash for UserTextureCubeSource {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
+        match self {
+            UserTextureCubeSource::Cross(s) => {
+                0u8.deep_hash(state, ctx)?;
+                s.deep_hash(state, ctx)?;
+            }
+            UserTextureCubeSource::Faces { faces, order } => {
+                1u8.deep_hash(state, ctx)?;
+                for face in faces {
+                    face.deep_hash(state, ctx)?;
+                }
+                with_std(order, state);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl DeepHash for UserTextureCubeAsset {
+    fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
+        self.source.deep_hash(state, ctx)?;
+        with_std(&self.pixel_format, state);
+        self.use_mipmaps.deep_hash(state, ctx)?;
+        with_std(&self.min_filter, state);
+        with_std(&self.mag_filter, state);
+        with_std(&self.wrap_s, state);
+        with_std(&self.wrap_t, state);
+        with_std(&self.wrap_r, state);
+        Ok(())
+    }
+}
+
 impl DeepHash for UserAssetProperties {
     fn deep_hash<T: Hasher>(&self, state: &mut T, ctx: &mut DeepHashCtx) -> anyhow::Result<()> {
         match self {
@@ -392,6 +456,10 @@ impl DeepHash for UserAssetProperties {
             UserAssetProperties::Blob(b) => {
                 7u8.deep_hash(state, ctx)?;
                 b.deep_hash(state, ctx)?;
+            }
+            UserAssetProperties::TextureCube(c) => {
+                8u8.deep_hash(state, ctx)?;
+                c.deep_hash(state, ctx)?;
             }
         }
         Ok(())

@@ -7,6 +7,8 @@ pub mod mesh;
 pub mod notes;
 pub mod shader;
 pub mod texture2d;
+pub mod texture_cube;
+
 use crate::ir::audio::IRAudio;
 use crate::ir::blob::IRBlob;
 use crate::ir::dictionary::IRDictionary;
@@ -18,13 +20,15 @@ use crate::ir::shader::IRShader;
 use crate::ir::texture2d::IRTexture2D;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
+use crate::ir::texture_cube::IRTextureCube;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum IRAsset {
     Unknown,
     Shader(IRShader),
     Audio(IRAudio),
-    Texture(IRTexture2D),
+    Texture2D(IRTexture2D),
+    TextureCube(IRTextureCube),
     Notes(IRNotes),
     Mesh(IRMesh),
     Material(IRMaterial),
@@ -45,7 +49,8 @@ impl IRAsset {
             IRAsset::Unknown => 0,
             IRAsset::Shader(shader) => shader.memory_usage(),
             IRAsset::Audio(audio) => audio.memory_usage(),
-            IRAsset::Texture(texture) => texture.memory_usage(),
+            IRAsset::Texture2D(texture) => texture.memory_usage(),
+            IRAsset::TextureCube(texture) => texture.memory_usage(),
             IRAsset::Notes(notes) => notes.memory_usage(),
             IRAsset::Mesh(mesh) => mesh.memory_usage(),
             IRAsset::Material(material) => material.memory_usage(),
