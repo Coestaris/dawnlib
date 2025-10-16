@@ -3,7 +3,7 @@ use crate::user::{UserAssetHeader, UserMeshAsset};
 use crate::UserAssetFile;
 use dawn_assets::ir::material::IRMaterial;
 use dawn_assets::ir::mesh::{IRIndexType, IRMesh, IRMeshBounds, IRSubMesh, IRTopology};
-use dawn_assets::ir::texture2d::{IRPixelFormat, IRTexture2D, IRTextureFilter};
+use dawn_assets::ir::texture2d::{IRPixelFormat, IRTexture2D, IRTextureFilter, IRTextureWrap};
 use dawn_assets::ir::IRAsset;
 use dawn_assets::{AssetID, AssetType};
 use dawn_util::profile::Measure;
@@ -12,6 +12,7 @@ use gltf::buffer::Data;
 use gltf::image::Format;
 use gltf::mesh::Mode;
 use gltf::scene::Transform;
+use gltf::texture::WrappingMode;
 use gltf::Texture;
 use log::warn;
 use rayon::prelude::*;
@@ -413,6 +414,16 @@ fn process_texture(
                     mag_filter: IRTextureFilter::Linear,
                     min_filter: IRTextureFilter::NearestMipmapLinear,
                     use_mipmaps: true,
+                    wrap_s: match texture.sampler().wrap_s() {
+                        WrappingMode::ClampToEdge => IRTextureWrap::ClampToEdge,
+                        WrappingMode::MirroredRepeat => IRTextureWrap::MirroredRepeat,
+                        WrappingMode::Repeat => IRTextureWrap::Repeat,
+                    },
+                    wrap_t: match texture.sampler().wrap_t() {
+                        WrappingMode::ClampToEdge => IRTextureWrap::ClampToEdge,
+                        WrappingMode::MirroredRepeat => IRTextureWrap::MirroredRepeat,
+                        WrappingMode::Repeat => IRTextureWrap::Repeat,
+                    },
                     ..Default::default()
                 }),
             }],
@@ -483,9 +494,25 @@ fn process_material(
         // to avoid blocking other threads.
     }
 
+    let mut transparent = false;
     let (albedo_id, albedo_irs) = process_texture(
         id.clone(),
         if let Some(pbr) = material.pbr_metallic_roughness().base_color_texture() {
+            match ctx
+                .images
+                .get(pbr.texture().source().index())
+                .unwrap()
+                .format
+            {
+                Format::R8G8B8A8 =>  {
+                    println!("Material {} is transparent due to RGBA8 albedo texture", id.as_str());
+                    transparent = true
+                },
+                _ => {
+                    println!("Material {} is not transparent", id.as_str());
+                }
+            }
+
             MaterialTexture::Albedo {
                 texture: Some(pbr.texture()),
                 fallback_color: Vec4::new(1.0, 1.0, 1.0, 1.0),
@@ -582,6 +609,7 @@ fn process_material(
             normal: normal_id,
             metallic_roughness: metallic_roughness_id,
             occlusion: occlusion_id,
+            transparent,
         }),
     });
 

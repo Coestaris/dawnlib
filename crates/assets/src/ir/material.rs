@@ -15,6 +15,8 @@ pub struct IRMaterial {
     /// Occlusion texture (the amount of occlusion on the surface)
     /// Always 1 channel.
     pub occlusion: AssetID,
+    /// True if the material supports transparency.
+    pub transparent: bool,
 }
 
 impl Default for IRMaterial {
@@ -24,6 +26,7 @@ impl Default for IRMaterial {
             metallic_roughness: Default::default(),
             normal: Default::default(),
             occlusion: Default::default(),
+            transparent: false,
         }
     }
 }

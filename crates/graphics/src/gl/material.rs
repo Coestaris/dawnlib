@@ -25,6 +25,7 @@ pub struct Material {
     pub metallic_roughness: TypedAsset<Texture2D>,
     pub normal: TypedAsset<Texture2D>,
     pub occlusion: TypedAsset<Texture2D>,
+    pub transparent: bool,
 }
 
 impl AssetCastable for Material {}
@@ -65,6 +66,7 @@ impl Material {
                 metallic_roughness,
                 normal,
                 occlusion,
+                transparent: ir.transparent,
             },
             AssetMemoryUsage::new(size_of::<Material>(), 0),
         ))
