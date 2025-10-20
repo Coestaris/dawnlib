@@ -75,7 +75,7 @@ impl IRBucket {
         let mut ebo = ElementArrayBuffer::new(gl.clone())
             .ok_or(MeshError::ElementArrayBufferAllocationFailed)?;
 
-        let vao_binding = vao.bind();
+        VertexArray::bind(&gl, &vao);
         let vbo_binding = vbo.bind();
         let ebo_binding = ebo.bind();
 
@@ -95,12 +95,12 @@ impl IRBucket {
 
         let layout = layout_of_submesh(self.key.tangent_valid, self.key.skinning);
         for (i, layout) in layout.iter().enumerate() {
-            vao_binding.setup_attribute(i as u32, layout);
+            vao.setup_attribute(i as u32, layout);
         }
 
         drop(vbo_binding);
         drop(ebo_binding);
-        drop(vao_binding);
+        VertexArray::unbind(&gl);
 
         let divider = match self.index_type {
             IRIndexType::U16 => 2,
@@ -188,40 +188,5 @@ impl Mesh {
             },
             AssetMemoryUsage::new(size_of::<Mesh>(), sum),
         ))
-    }
-
-    #[inline(always)]
-    pub fn draw(
-        &self,
-        on_bucket: impl Fn(&TopologyBucket) -> (bool, RenderResult),
-        on_submesh: impl Fn(&SubMesh) -> (bool, RenderResult),
-    ) -> RenderResult {
-        let mut result = RenderResult::default();
-
-        for bucket in &self.buckets {
-            let (skip, new_result) = on_bucket(bucket);
-            result += new_result;
-            if skip {
-                continue;
-            }
-
-            let binding = bucket.vao.bind();
-            for submesh in &bucket.submesh {
-                let (skip, new_result) = on_submesh(submesh);
-                result += new_result;
-
-                if skip {
-                    continue;
-                }
-
-                result += binding.draw_elements_base_vertex(
-                    submesh.index_count,
-                    submesh.index_offset,
-                    submesh.vertex_offset,
-                );
-            }
-        }
-
-        result
     }
 }

@@ -47,10 +47,10 @@ impl Font {
         let vao = VertexArray::new(gl.clone(), ir.topology, ir.index_type)
             .ok_or(FontError::VertexArrayAllocationFailed)?;
         let mut vbo = ArrayBuffer::new(gl.clone()).ok_or(FontError::ArrayBufferAllocationFailed)?;
-        let mut ebo =
-            ElementArrayBuffer::new(gl).ok_or(FontError::ElementArrayBufferAllocationFailed)?;
+        let mut ebo = ElementArrayBuffer::new(gl.clone())
+            .ok_or(FontError::ElementArrayBufferAllocationFailed)?;
 
-        let vao_binding = vao.bind();
+        VertexArray::bind(&gl, &vao);
         let vbo_binding = vbo.bind();
         let ebo_binding = ebo.bind();
 
@@ -58,11 +58,11 @@ impl Font {
         ebo_binding.feed(&ir.indices, ElementArrayBufferUsage::StaticDraw);
 
         for (i, layout) in IRGlyphVertex::layout().iter().enumerate() {
-            vao_binding.setup_attribute(i as u32, layout);
+            vao.setup_attribute(i as u32, layout);
         }
 
         drop(vbo_binding);
-        drop(vao_binding);
+        VertexArray::unbind(&gl);
 
         let atlas = deps
             .get(&ir.atlas)
@@ -84,12 +84,13 @@ impl Font {
 
     pub fn render_string(
         &self,
+        gl: &glow::Context,
         string: &str,
         mut on_glyph: impl FnMut(char, Option<&IRGlyph>) -> (bool, RenderResult),
     ) -> RenderResult {
         let mut result = RenderResult::default();
 
-        let biding = self.vao.bind();
+        VertexArray::bind(gl, &self.vao);
         for c in string.chars() {
             let glyph = self.glyphs.get(&c).map_or_else(|| None, |g| Some(g));
 
@@ -103,8 +104,11 @@ impl Font {
             let glyph = glyph.unwrap_or_else(|| {
                 panic!("Glyph for character '{}' not found in font", c);
             });
-            result += biding.draw_elements(glyph.index_count, glyph.index_offset);
+            result += self
+                .vao
+                .draw_elements(glyph.index_count, glyph.index_offset);
         }
+        VertexArray::unbind(gl);
 
         result
     }

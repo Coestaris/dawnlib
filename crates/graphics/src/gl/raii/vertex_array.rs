@@ -14,82 +14,6 @@ pub struct VertexArray {
     index_size: usize,
 }
 
-pub struct VertexArrayBinding<'a> {
-    gl: &'a glow::Context,
-    vertex_array: &'a VertexArray,
-}
-
-impl<'a> VertexArrayBinding<'a> {
-    #[inline(always)]
-    fn new(gl: &'a glow::Context, vertex_array: &'a VertexArray) -> Self {
-        unsafe {
-            gl.bind_vertex_array(Some(vertex_array.as_inner()));
-        }
-        Self { gl, vertex_array }
-    }
-
-    pub fn setup_attribute(&self, index: u32, attribute: &IRMeshLayoutItem) {
-        let gl_format = match attribute.sample_type {
-            IRLayoutSampleType::Float => glow::FLOAT,
-            IRLayoutSampleType::U32 => glow::UNSIGNED_INT,
-        };
-
-        unsafe {
-            self.gl.enable_vertex_attrib_array(index);
-            self.gl.vertex_attrib_pointer_f32(
-                index,
-                attribute.samples as i32,
-                gl_format,
-                false,
-                attribute.stride_bytes as i32,
-                attribute.offset_bytes as i32,
-            );
-        }
-    }
-
-    #[inline(always)]
-    pub fn draw_elements_base_vertex(
-        &self,
-        index_count: usize,
-        index_offset: usize,
-        base_vertex: usize,
-    ) -> RenderResult {
-        unsafe {
-            self.gl.draw_elements_base_vertex(
-                self.vertex_array.draw_mode,
-                index_count as i32,
-                self.vertex_array.index_type,
-                (index_offset * self.vertex_array.index_size) as i32,
-                base_vertex as i32,
-            );
-        }
-
-        RenderResult::ok(1, index_count / self.vertex_array.topology_size)
-    }
-
-    pub fn draw_elements(&self, index_count: usize, index_offset: usize) -> RenderResult {
-        unsafe {
-            self.gl.draw_elements(
-                self.vertex_array.draw_mode,
-                index_count as i32,
-                self.vertex_array.index_type,
-                (index_offset * self.vertex_array.index_size) as i32,
-            );
-        }
-
-        RenderResult::ok(1, index_count / self.vertex_array.topology_size)
-    }
-}
-
-impl<'a> Drop for VertexArrayBinding<'a> {
-    #[inline(always)]
-    fn drop(&mut self) {
-        unsafe {
-            self.gl.bind_vertex_array(None);
-        }
-    }
-}
-
 impl VertexArray {
     pub fn new(gl: Arc<glow::Context>, primitive: IRTopology, index: IRIndexType) -> Option<Self> {
         unsafe {
@@ -121,14 +45,74 @@ impl VertexArray {
         }
     }
 
-    #[inline(always)]
-    #[must_use]
-    pub fn bind(&self) -> VertexArrayBinding<'_> {
-        VertexArrayBinding::new(&self.gl, self)
+    pub fn setup_attribute(&self, index: u32, attribute: &IRMeshLayoutItem) {
+        let gl_format = match attribute.sample_type {
+            IRLayoutSampleType::Float => glow::FLOAT,
+            IRLayoutSampleType::U32 => glow::UNSIGNED_INT,
+        };
+
+        unsafe {
+            self.gl.enable_vertex_attrib_array(index);
+            self.gl.vertex_attrib_pointer_f32(
+                index,
+                attribute.samples as i32,
+                gl_format,
+                false,
+                attribute.stride_bytes as i32,
+                attribute.offset_bytes as i32,
+            );
+        }
     }
 
     #[inline(always)]
-    pub(crate) fn as_inner(&self) -> glow::VertexArray {
+    pub fn draw_elements_base_vertex(
+        &self,
+        index_count: usize,
+        index_offset: usize,
+        base_vertex: usize,
+    ) -> RenderResult {
+        unsafe {
+            self.gl.draw_elements_base_vertex(
+                self.draw_mode,
+                index_count as i32,
+                self.index_type,
+                (index_offset * self.index_size) as i32,
+                base_vertex as i32,
+            );
+        }
+
+        RenderResult::ok(1, index_count / self.topology_size)
+    }
+
+    pub fn draw_elements(&self, index_count: usize, index_offset: usize) -> RenderResult {
+        unsafe {
+            self.gl.draw_elements(
+                self.draw_mode,
+                index_count as i32,
+                self.index_type,
+                (index_offset * self.index_size) as i32,
+            );
+        }
+
+        RenderResult::ok(1, index_count / self.topology_size)
+    }
+
+    #[inline(always)]
+    pub fn bind(gl: &glow::Context, vao: &VertexArray) {
+        unsafe {
+            gl.bind_vertex_array(Some(vao.as_inner()));
+        }
+    }
+
+    #[inline(always)]
+    pub fn unbind(gl: &glow::Context) {
+        unsafe {
+            gl.bind_vertex_array(None);
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_inner(&self) -> glow::VertexArray {
         self.id
     }
 }
