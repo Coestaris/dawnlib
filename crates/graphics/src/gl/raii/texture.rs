@@ -1,10 +1,9 @@
 use crate::passes::events::PassEventTrait;
 use dawn_assets::ir::texture2d::{IRPixelFormat, IRTexture2D, IRTextureFilter, IRTextureWrap};
-use dawn_assets::ir::texture_cube::{IRTextureCube, IRTextureCubeOrder, IRTextureCubeSide};
+use dawn_assets::ir::texture_cube::{IRTextureCube, IRTextureCubeSide};
 use dawn_assets::{AssetCastable, AssetMemoryUsage};
 use glow::{Context, HasContext, Texture};
 use log::debug;
-use std::process::id;
 use std::sync::Arc;
 use thiserror::Error;
 
