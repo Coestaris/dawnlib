@@ -82,7 +82,7 @@ impl Texture2DAssetFactory {
 }
 
 pub(crate) struct TextureCubeAssetFactory {
-    basic_factory: BasicFactory<TextureCube>
+    basic_factory: BasicFactory<TextureCube>,
 }
 
 impl TextureCubeAssetFactory {

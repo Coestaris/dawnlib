@@ -504,10 +504,13 @@ fn process_material(
                 .unwrap()
                 .format
             {
-                Format::R8G8B8A8 =>  {
-                    println!("Material {} is transparent due to RGBA8 albedo texture", id.as_str());
+                Format::R8G8B8A8 => {
+                    println!(
+                        "Material {} is transparent due to RGBA8 albedo texture",
+                        id.as_str()
+                    );
                     transparent = true
-                },
+                }
                 _ => {
                     println!("Material {} is not transparent", id.as_str());
                 }

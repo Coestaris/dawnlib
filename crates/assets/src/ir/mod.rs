@@ -18,9 +18,9 @@ use crate::ir::mesh::IRMesh;
 use crate::ir::notes::IRNotes;
 use crate::ir::shader::IRShader;
 use crate::ir::texture2d::IRTexture2D;
+use crate::ir::texture_cube::IRTextureCube;
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
-use crate::ir::texture_cube::IRTextureCube;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum IRAsset {

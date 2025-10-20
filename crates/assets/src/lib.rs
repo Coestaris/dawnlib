@@ -108,7 +108,7 @@ impl AssetType {
             AssetType::Unknown => "Unknown",
             AssetType::Shader => "Shader",
             AssetType::Texture2D => "Texture2D",
-            AssetType::TextureCube => "TextureCube",           
+            AssetType::TextureCube => "TextureCube",
             AssetType::Audio => "Audio",
             AssetType::Notes => "Notes",
             AssetType::Material => "Material",
