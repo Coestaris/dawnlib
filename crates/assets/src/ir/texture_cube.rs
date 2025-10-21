@@ -1,4 +1,4 @@
-use crate::ir::texture2d::{IRPixelFormat, IRTexture2D, IRTextureFilter, IRTextureWrap};
+use crate::ir::texture2d::{IRPixelFormat, IRTextureFilter, IRTextureWrap};
 use serde::{Deserialize, Serialize};
 use std::fmt::Debug;
 

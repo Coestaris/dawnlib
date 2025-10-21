@@ -28,11 +28,11 @@ fn cross_to_faces(cross_path: &DynamicImage) -> anyhow::Result<(Vec<DynamicImage
         (3 * side, side), // Back
     ];
 
-    for (i, pos) in positions.iter().enumerate() {
+    for pos in positions.iter() {
         let x = pos.0;
         let y = pos.1;
 
-        // Copy the cross texture
+        // Copy the cross-texture
         let mut face = DynamicImage::new_rgba8(side, side);
         for xx in 0..side {
             for yy in 0..side {
@@ -59,7 +59,7 @@ pub fn convert_texture_cube(
             let img = image::open(&file)?;
             cross_to_faces(&img)?
         }
-        UserTextureCubeSource::Faces { faces, order } => {
+        UserTextureCubeSource::Faces { faces, order: _ } => {
             let mut images = vec![];
             for face in faces {
                 let file = face.as_path(cache_dir, cwd)?;
